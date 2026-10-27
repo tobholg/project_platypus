@@ -353,13 +353,13 @@ fn give_mana(mut commands: Commands, new: Query<Entity, (With<LocalPlayer>, With
 }
 
 /// Wands recharge; mana comes back, except to someone holding a field open
-/// (a channelled spell runs it down).
-fn recharge(mut wands: ResMut<Wands>, mut mana: Query<(Entity, &mut Mana)>, fields: Query<&Well>) {
+/// (a channelled spell runs it down) or a ward up.
+fn recharge(mut wands: ResMut<Wands>, mut mana: Query<(Entity, &mut Mana, Has<crate::gear::shield::Warding>)>, fields: Query<&Well>) {
     for w in wands.0.values_mut() {
         w.wait = (w.wait - DT).max(0.0);
     }
-    for (e, mut m) in &mut mana {
-        if fields.iter().any(|f| f.caster == e) {
+    for (e, mut m, warding) in &mut mana {
+        if warding || fields.iter().any(|f| f.caster == e) {
             continue;
         }
         m.cur = (m.cur + m.regen * DT).min(m.max);

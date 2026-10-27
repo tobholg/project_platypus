@@ -128,6 +128,9 @@ pub struct GearDef {
     /// A shield, in the off hand (`shield.rs`).
     #[serde(default)]
     pub shield: Option<shield::ShieldDef>,
+    /// A ward, in the off hand: a repulsor round you held up (`shield.rs`).
+    #[serde(default)]
+    pub ward: Option<shield::WardDef>,
 }
 
 /// Rocket boots: `time` s of thrust (refilled on landing), `thrust`
@@ -273,7 +276,7 @@ impl Plugin for GearPlugin {
             .init_resource::<look::Wardrobe>()
             .add_systems(Update, (outfit, apply, look::dress).chain().after(crate::creatures::def::hot_reload_creatures))
             .init_resource::<hook::RopeCanvas>()
-            .add_systems(Update, (shield::raise, shield::draw).chain())
+            .add_systems(Update, (shield::raise, shield::ward, shield::draw).chain())
             .add_systems(FixedUpdate, (boots::exhaust.in_set(crate::world::TickSet::Bodies), hook::rope.in_set(crate::world::TickSet::Bodies).before(crate::creatures::move_creatures)))
             .add_systems(Update, hook::let_go.after(crate::death::DeathSet))
             .add_systems(PostUpdate, hook::draw.after(crate::creatures::interpolate).before(bevy::transform::TransformSystems::Propagate));

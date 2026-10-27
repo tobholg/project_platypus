@@ -291,7 +291,7 @@
                 ("force_wand", 1), ("repulsor_wand", 1), ("slow_wand", 1), ("updraft_wand", 1), ("void_wand", 1),
                 // (Spare gear: under water, diving helmet and flippers for
                 // the mithril, which sinks.)
-                ("mithril_boots", 1), ("cloud_boots", 1), ("storm_boots", 1), ("chain_hook", 1), ("iron_shield", 1), ("mining_helmet", 1),
+                ("mithril_boots", 1), ("cloud_boots", 1), ("storm_boots", 1), ("chain_hook", 1), ("iron_shield", 1), ("repulsor_ward", 1), ("mining_helmet", 1),
                 ("diving_helmet", 1), ("flippers", 1), ("ember_amulet", 1), ("frost_charm", 1), ("storm_ring", 1),
                 ("hammer", 1), ("copper_axe", 1), ("glowstick", 30), ("block:platform", 200), ("bow", 1), ("arrow", 198),
                 ("door", 2), ("table", 1), ("chair", 2), ("bed", 1), ("hanging_lantern", 4), ("block:firebrick", 60), ("bucket", 1), ("flask", 1),

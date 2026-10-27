@@ -220,6 +220,13 @@
         (id: "iron_shield", name: "Iron shield", color: (160, 166, 180),
             about: "Heavy, steady: a blow costs little to catch. Hold the right button to raise it.",
             gear: (slot: OffHand, stats: { Armor: 5, Poise: 5 }, shield: (guard: 1.0, stability: 0.8, drain: 7))),
+        // A ward: held up (the right button, or Q), a repulsor bubble round
+        // you that throws back what comes at you and turns back what's shot
+        // into it; it drinks mana while it's up, more for each blow it
+        // turns (gear/shield.rs `ward`). radius: cells round you.
+        (id: "repulsor_ward", name: "Repulsor ward", color: (140, 200, 255),
+            about: "A ring of force-worked silver. Hold the right button (or Q) and a bubble of bent space surrounds you: what walks into it is thrown back, what's shot into it turned back. It drinks your mana while it's up.",
+            gear: (slot: OffHand, ward: (radius: 34, drain: 15, blow: 15))),
 
         // ---- iron (Heavy): warriors ----
         (id: "iron_helm", name: "Iron helm", color: (168, 176, 194),
@@ -319,8 +326,8 @@
             about: "Yellow rubber fins: your strokes under water half as strong again. Off the drowned, now and then.",
             gear: (slot: Feet, weight: Light, stats: { SwimSpeed: 50 },
             look: (recolor: [(colors: { 'B': (222, 182, 34), 'C': (168, 132, 20), 'U': (250, 226, 110), 'o': (120, 92, 12) })]))),
-        (id: "diving_helmet", name: "Diving helmet", color: (196, 150, 60),
-            about: "A brass dome with a glass porthole and a little air of its own: four minutes under water on a breath.",
+        (id: "diving_helmet", name: "Diving helmet", color: (196, 150, 60), light: Headlamp,
+            about: "A brass dome with a glass porthole, a little air of its own and a lamp over the glass: four minutes under water on a breath, a beam where you look.",
             gear: (slot: Head, weight: Heavy, stats: { Armor: 3, Breath: 1233 },
             look: (palette: { 'b': (112, 78, 28), 'B': (196, 150, 60), 'h': (240, 208, 124), 'g': (84, 60, 24), 'G': (96, 156, 176), 'w': (220, 246, 255), 'r': (236, 196, 108), 'c': (82, 70, 56) }, over: [(parts: ["head", "blink"], at: (-1, -2), rows: [
                 ".....bbbbb.....",

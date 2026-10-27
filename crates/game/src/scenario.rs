@@ -413,7 +413,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, void_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, fall_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, save_script)
-            .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script, wardrobe_script, herbcut_script, zombiejump_script, crushcheck_script, batcount_script, airswing_script, dive_script, paint_script, firewall_script, fields_script))
+            .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script, wardrobe_script, herbcut_script, zombiejump_script, crushcheck_script, batcount_script, airswing_script, dive_script, paint_script, firewall_script, fields_script, ward_script))
             .add_systems(PreUpdate, craft_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pack_script.after(bevy::ui::UiSystems::Focus).before(crate::pause::key))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
@@ -16788,6 +16788,51 @@ fn dive_script(
             breath.map(|b| ((b.left * 10.0).round() / 10.0, (b.most * 10.0).round() / 10.0)),
             h.hp
         );
+    }
+}
+
+/// `ward` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat PLATYPUS_SAVE=off`): a
+/// repulsor ward in the player's off hand, a zombie walking at it from
+/// either side; Q held from 2 s to 7 s (the right button, `hands::q_is_right`).
+/// Logs its mana, whether the ward's up, the zombies' distances and speeds.
+fn ward_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut player: Query<(&Kinematics, &mut crate::gear::Equipment, Option<&crate::magic::Mana>, Has<crate::gear::shield::Warding>), With<LocalPlayer>>,
+    others: Query<(&crate::creatures::Creature, &Kinematics), Without<LocalPlayer>>,
+    mut state: Local<(u8, f32)>,
+) {
+    if s.name != "ward" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let (Some(items), Ok((k, mut eq, mana, warding))) = (items, player.single_mut()) else { return };
+    let (step, next) = &mut *state;
+    if *step == 0 && t > 0.5 {
+        if let Some(id) = items.id("repulsor_ward") {
+            eq.worn[crate::gear::OFF_HAND] = Some(crate::hands::items::Stack::new(id, 1));
+        }
+        for dx in [-70.0, 70.0] {
+            crate::creatures::def::spawn_creature(&mut commands, "zombie", k.body.pos + Vec2::new(dx, 4.0), |_| {});
+        }
+        *step = 1;
+    }
+    if *step == 1 && t > 2.0 {
+        keys.press(KeyCode::KeyQ);
+        *step = 2;
+    }
+    if *step == 2 && t > 7.0 {
+        keys.release(KeyCode::KeyQ);
+        *step = 3;
+    }
+    if t >= *next {
+        *next = t + 0.5;
+        let zs: Vec<String> = others.iter().filter(|(c, _)| c.kind == "zombie").map(|(_, ok)| format!("{:+.0} ({:.0}/s)", ok.body.pos.x - k.body.pos.x, ok.body.vel.length())).collect();
+        info!("ward: t {t:.1} up {warding} mana {:.0}; zombies {}", mana.map_or(0.0, |m| m.cur), zs.join(", "));
     }
 }
 

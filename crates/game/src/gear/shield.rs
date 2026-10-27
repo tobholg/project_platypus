@@ -15,6 +15,13 @@
 //!
 //! What's caught is what lands as a blow (`combat::Hit`: blades, claws,
 //! arrows); spells and fire still find you.
+//!
+//! A ward (`gear.ward`: a repulsor ward) is held up the same way, but it's
+//! magic: a repulsor bubble round you (`magic::field`), going where you go,
+//! never throwing you out: what walks into it is thrown back, spells and
+//! arrows shot into it turned back (yours now). It drinks mana while it's
+//! up (`drain` a second, none coming back meanwhile), more for each blow
+//! it turns; out of mana, it falls.
 
 use bevy::prelude::*;
 use serde::Deserialize;
@@ -37,6 +44,29 @@ pub struct ShieldDef {
     pub drain: f32,
 }
 
+/// A ward's make (gear.ron, `gear.ward`): how far round you, the mana a
+/// second while it's up, the mana a blow it turns costs (per second of
+/// the field's wear).
+#[derive(Clone, Copy, Debug, Deserialize)]
+pub struct WardDef {
+    pub radius: f32,
+    pub drain: f32,
+    #[serde(default = "ward_blow")]
+    pub blow: f32,
+}
+
+fn ward_blow() -> f32 {
+    25.0
+}
+
+/// Run dry, a ward rises again only with this share of the mana back (or
+/// the button let go and pressed again).
+const WARD_AGAIN: f32 = 0.25;
+
+/// Holding a ward up (no mana comes back meanwhile: `magic::recharge`).
+#[derive(Component)]
+pub struct Warding;
+
 /// The player's guard: raised now; broken (seconds till it can rise again).
 #[derive(Component, Default, Clone, Copy, Debug)]
 pub struct Guard {
@@ -53,6 +83,59 @@ pub const BROKEN_STAGGER: f32 = 0.5;
 /// The shield worn in the off hand, if any.
 pub fn worn(items: &Items, eq: &Equipment) -> Option<ShieldDef> {
     eq.worn[OFF_HAND].and_then(|s| items.def(s.item).gear.as_ref()?.shield)
+}
+
+/// The ward worn in the off hand, if any.
+pub fn ward_worn(items: &Items, eq: &Equipment) -> Option<WardDef> {
+    eq.worn[OFF_HAND].and_then(|s| items.def(s.item).gear.as_ref()?.ward)
+}
+
+/// The right button holds a ward up round you, while there's mana: it
+/// drinks it, more for each blow it turns.
+#[allow(clippy::too_many_arguments)]
+pub fn ward(
+    mut commands: Commands,
+    time: Res<Time>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    items: Option<Res<Items>>,
+    hand: Res<crate::hands::Hand>,
+    (open, over, dev): (Res<crate::hands::ui::InventoryOpen>, Res<crate::dev::PointerOverUi>, Res<crate::hands::DevTools>),
+    mut fields: ResMut<crate::magic::field::Fields>,
+    mut sparks: ResMut<crate::vfx::Sparks>,
+    mut player: Query<(Entity, &Equipment, &Inventory, &Kinematics, Option<&mut crate::magic::Mana>, Has<Warding>), With<LocalPlayer>>,
+    mut spent: Local<bool>,
+) {
+    let Some(items) = items else { return };
+    let Ok((e, eq, inv, k, mana, warding)) = player.single_mut() else { return };
+    let Some(def) = ward_worn(&items, eq) else {
+        if warding {
+            commands.entity(e).remove::<Warding>();
+        }
+        return;
+    };
+    let Some(mut mana) = mana else { return };
+    // (What's in hand that wants the right button keeps it.)
+    let busy = inv.slots.get(hand.active()).copied().flatten().is_some_and(|s| matches!(items.def(s.item).use_, Use::Focus { .. } | Use::Vessel { .. }));
+    let dt = time.delta_secs();
+    // (Run dry, it won't rise again till the button's let go, or there's a
+    // quarter of the mana back: no flicker on the last drops.)
+    let held = mouse.pressed(MouseButton::Right);
+    if !held || mana.cur >= mana.max * WARD_AGAIN {
+        *spent = false;
+    }
+    let up = held && !*spent && !busy && !open.0 && !over.0 && !dev.0 && mana.cur > def.drain * dt;
+    if held && !up && mana.cur <= def.drain * dt {
+        *spent = true;
+    }
+    if up {
+        let worn = crate::magic::field::ward_up(&mut fields, &mut sparks, e, k.body.pos, def.radius);
+        mana.cur = (mana.cur - def.drain * dt - worn * def.blow).max(0.0);
+        if !warding {
+            commands.entity(e).insert(Warding);
+        }
+    } else if warding {
+        commands.entity(e).remove::<Warding>();
+    }
 }
 
 /// The right button raises it, while there's stamina and the guard isn't

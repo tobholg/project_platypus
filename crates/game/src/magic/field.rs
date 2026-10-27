@@ -11,7 +11,9 @@
 //!   (anything: you too; open one under you and you're launched), as hard
 //!   as it came and harder; an arrow or spell shot into it turns back the
 //!   way it came (yours too: lob them over it), an enemy's yours now. Each blow ripples it (thoom) and wears it down (`WEAR`). Like
-//!   glass, it magnifies what's behind it.
+//!   glass, it magnifies what's behind it. A ward (a repulsor ward held
+//!   up, `gear::shield`) is one round its caster, going where they go,
+//!   never throwing them out, up only while it's held (`ward_up`).
 //! - A slow field (Void): inside it, everything runs at an eighth of its
 //!   speed (`SLOW`), you too: bodies, blows and swings, spells and arrows,
 //!   what falls and flows, sparks of it in flight, the sounds it makes. It
@@ -65,6 +67,8 @@ pub struct Field {
     pub left: f32,
     pub age: f32,
     pub by: Entity,
+    /// Round its caster (a ward): it goes with them, and spares them.
+    pub ward: bool,
 }
 
 impl Field {
@@ -257,7 +261,7 @@ pub fn open(world: &World, fields: &mut Fields, sparks: &mut crate::vfx::Sparks,
     if mine.len() >= cast.most.max(1) {
         fields.fields.remove(mine[0]);
     }
-    fields.fields.push(Field { kind: cast.kind, at, radius: cast.radius, top, left: cast.lasts, age: 0.0, by: caster });
+    fields.fields.push(Field { kind: cast.kind, at, radius: cast.radius, top, left: cast.lasts, age: 0.0, by: caster, ward: false });
     let e = match cast.kind {
         FieldKind::Repulse => &*GLINT,
         FieldKind::Slow => &*HAZE,
@@ -266,6 +270,25 @@ pub fn open(world: &World, fields: &mut Fields, sparks: &mut crate::vfx::Sparks,
     sparks.emit(e, 24, at, Vec2::Y, Vec2::ZERO);
     at
 }
+
+/// A ward held up round `by` at `at`, `radius` across: one there already
+/// follows them and lasts a moment more; else it opens. Let go, it fades.
+/// Returns how hard it's been struck since last asked (its blows' wear).
+pub fn ward_up(fields: &mut Fields, sparks: &mut crate::vfx::Sparks, by: Entity, at: Vec2, radius: f32) -> f32 {
+    if let Some(f) = fields.fields.iter_mut().find(|f| f.ward && f.by == by) {
+        let worn = (WARD_HOLD - f.left).max(0.0);
+        f.at = at;
+        f.radius = radius;
+        f.left = WARD_HOLD;
+        return worn;
+    }
+    fields.fields.push(Field { kind: FieldKind::Repulse, at, radius, top: at.y, left: WARD_HOLD, age: 0.0, by, ward: true });
+    sparks.emit(&GLINT, 24, at, Vec2::Y, Vec2::ZERO);
+    0.0
+}
+
+/// A ward lasts this long past its last holding (then fades out).
+const WARD_HOLD: f32 = 1.05;
 
 /// Fields age, and go.
 pub fn age(time: Res<Time>, mut fields: ResMut<Fields>) {
@@ -345,7 +368,8 @@ pub fn repel(
     // (Where the casters stand: what's caught goes away from them.)
     let at: HashMap<Entity, Vec2> = fields.fields.iter().filter_map(|f| walkers.get(f.by).ok().map(|w| (f.by, w.1.body.pos))).collect();
     for (e, mut k, anim, player) in &mut walkers {
-        let Some(i) = fields.touching(k.body.pos, k.body.half, FieldKind::Repulse) else { continue };
+        // (A ward spares the one it's round.)
+        let Some(i) = fields.fields.iter().position(|f| f.kind == FieldKind::Repulse && f.touches(k.body.pos, k.body.half) && !(f.ward && f.by == e)) else { continue };
         let k = &mut *k;
         // (Stepped in this tick: back where it was. Already in it: it was
         // caught as it opened, and is blasted out.)

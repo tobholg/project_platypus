@@ -839,6 +839,7 @@
         (makes: "arcane_altar", needs: [("block:stone", 10), ("silver_bar", 5), ("block:amethyst", 3)], at: "anvil", locked: true),
 
         // ---- at the arcane altar: foci ----
+        (makes: "repulsor_ward", needs: [("silver_bar", 6), ("block:amethyst", 4)], at: "arcane_altar"),
         (makes: "fire_wand", needs: [("block:planks", 3), ("block:ruby", 2)], at: "arcane_altar"),
         (makes: "frost_wand", needs: [("block:planks", 3), ("block:ice", 4), ("block:amethyst", 1)], at: "arcane_altar"),
         (makes: "acid_wand", needs: [("block:planks", 3), ("block:emerald", 2)], at: "arcane_altar"),

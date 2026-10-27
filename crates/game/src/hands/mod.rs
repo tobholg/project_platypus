@@ -147,7 +147,7 @@ impl Plugin for HandsPlugin {
             .init_resource::<Hand>()
             .init_resource::<HandInput>()
             .add_systems(Startup, build_items)
-            .add_systems(PreUpdate, sample_input.after(crate::camera::track_cursor).after(bevy::ui::UiSystems::Focus))
+            .add_systems(PreUpdate, (q_is_right.after(bevy::input::InputSystems), sample_input.after(crate::camera::track_cursor).after(bevy::ui::UiSystems::Focus)).chain())
             .add_systems(Update, (toggle_dev, select, wield, give_start, outline.run_if(play), mark, icons::make_icons, icons::reload_icons, dress_bombs, doors, beds))
             .add_systems(FixedUpdate, use_hands.run_if(play).in_set(TickSet::Intent))
             .add_systems(FixedUpdate, collect.after(crate::props::fly).in_set(TickSet::Bodies))
@@ -220,6 +220,22 @@ fn toggle_dev(keys: Res<ButtonInput<KeyCode>>, mode: Res<crate::mode::Mode>, mut
     // while playing.)
     if !mode.dev() {
         dev.0 = false;
+    }
+}
+
+/// Q is the right button too (a trackpad has no right button to hold):
+/// pressed, the right button's pressed; let go, let go. Everything the
+/// right button does, Q does: a focus's second spell, raising a shield or
+/// a ward, a door, a chest, a light picked up. (Not with the pack open, a
+/// key being typed, or the dev toolbelt in hand: Q's its own there.)
+fn q_is_right(keys: Res<ButtonInput<KeyCode>>, mut mouse: ResMut<ButtonInput<MouseButton>>, open: Res<InventoryOpen>, typing: Res<crate::dev::KeyboardTaken>, dev: Res<DevTools>, mut held: Local<bool>) {
+    if !*held && keys.pressed(chests::INTERACT) && !open.0 && !typing.0 && !dev.0 {
+        mouse.press(MouseButton::Right);
+        *held = true;
+    }
+    if *held && !keys.pressed(chests::INTERACT) {
+        mouse.release(MouseButton::Right);
+        *held = false;
     }
 }
 
