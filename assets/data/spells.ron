@@ -95,5 +95,7 @@
             about: "A phase spider's net: a wad of web lobbed at you, sticking you where you stand."),
         (id: "spider_spit", name: "Spider spit", runes: ["gravity", "arrow", "venom_glob", "acid_glob"], delay: 0.1, recharge: 0.1, element: Acid, beast: true,
             about: "A big glob of acid, lobbed: it splashes over what it hits."),
+        (id: "abyssal_bolt", name: "Abyssal bolt", runes: ["homing", "abyss_orb", "abyss_bite", "abyss_burst"], delay: 0.1, recharge: 0.1, element: Void, beast: true,
+            about: "The leviathan's: a slow orb of cold blue light, a volley of them, curving onto what's in the water and bursting."),
     ],
 )

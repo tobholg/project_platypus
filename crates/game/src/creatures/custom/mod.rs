@@ -36,6 +36,7 @@ pub mod dread;
 pub mod dummy;
 pub mod explosive;
 pub mod gnasher;
+pub mod leviathan;
 pub mod hatchery;
 pub mod mimic;
 pub mod necro;
@@ -80,6 +81,7 @@ impl Plugin for CustomPlugin {
             .register_custom::<necro::Necro>()
             .register_custom::<watcher::Watcher>()
             .register_custom::<gnasher::Gnasher>()
+            .register_custom::<leviathan::Leviathan>()
             .register_custom::<cave_bat::CaveBat>()
             .register_custom::<rat::Rat>()
             .register_custom::<phase::Phase>();

@@ -3940,7 +3940,9 @@ fn kick_script(
 /// alive) just over each in turn, `PLATYPUS_LAKE_SECS` (8) each, logging
 /// the frame rate there and the sim's tick. (With `--features spikes` and
 /// `PLATYPUS_PROFILE`, where the time went.)
+#[allow(clippy::too_many_arguments)]
 fn lakes_script(
+    mut commands: Commands,
     s: Res<Scenario>,
     sim: Res<SimWorld>,
     mut menu: ResMut<crate::devmenu::DevMenu>,
@@ -3949,6 +3951,8 @@ fn lakes_script(
     mut player: Query<(&mut Kinematics, &mut crate::creatures::Health), With<LocalPlayer>>,
     mut state: Local<(Vec<(CellPos, usize)>, usize, f32, u32, f32)>,
     mut sample: Local<f32>,
+    mut put: Local<bool>,
+    leviathans: Query<(&crate::creatures::custom::leviathan::Leviathan, &Kinematics, &crate::creatures::Health), Without<LocalPlayer>>,
 ) {
     if s.name != "lakes" {
         return;
@@ -4028,6 +4032,16 @@ fn lakes_script(
         k.body.pos = Vec2::new(c.x as f32 + 0.5, c.y as f32 + 12.0 + up);
         k.body.vel = Vec2::ZERO;
     }
+    // (`PLATYPUS_LAKE_WITH=kind`: one of those off to the side of the
+    // player, 1.5 s after the first lake's reached.)
+    if !*put && *at != usize::MAX && t > *since + 1.5
+        && let Ok(kind) = std::env::var("PLATYPUS_LAKE_WITH")
+    {
+        *put = true;
+        let at = k.body.pos + Vec2::new(380.0, -120.0);
+        crate::creatures::def::spawn_creature(&mut commands, &kind, at, |_| {});
+        info!("lakes: a {kind} at ({:.0}, {:.0})", at.x, at.y);
+    }
     *frames += 1;
     *ticks += metrics.tick_time.as_secs_f32() * 1000.0;
     // Each second: how busy the cells are (chunks awake, cells visited, the
@@ -4037,6 +4051,9 @@ fn lakes_script(
         let m = &metrics.last;
         let phases: Vec<String> = platypus_sim::PHASES.iter().zip(m.phases).map(|(n, d)| format!("{n} {:.1}", d.as_secs_f32() * 1000.0)).collect();
         info!("lakes: t {t:.0} tick {:.2} ms: {} chunks awake, {} cells visited; {}", metrics.tick_time.as_secs_f32() * 1000.0, m.active_chunks, m.visited_cells, phases.join(", "));
+        for (l, lk, lh) in &leviathans {
+            info!("lakes: the leviathan {} at {:+.0},{:+.0} from the player, {:.0} cells/s, {:.0} hp (submerged {:.2}, grounded {}, {:?}, vel {:.0},{:.0})", l.doing(), lk.body.pos.x - k.body.pos.x, lk.body.pos.y - k.body.pos.y, lk.body.vel.length(), lh.hp, lk.loco.contacts.submerged, lk.loco.grounded(), lk.loco.state, lk.body.vel.x, lk.body.vel.y);
+        }
         // Round the lake's middle: its water, how much of it is off the
         // ambient heat, how much still sloshing (not at rest).
         if let Some(&(c, _)) = lakes.get(*at) {

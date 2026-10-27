@@ -426,6 +426,11 @@ impl Creatures {
         let with_nature = |mut def: CreatureDef| -> Result<CreatureDef, String> {
             def.nature = crate::creatures::nature::Nature::of_kind(&kinds, def.kind.as_deref(), &def.profile, &def.cant).map_err(|e| format!("{}: {e}", def.name))?;
             def.nature.kindle = def.catches;
+            // (A stroking swimmer's glide is its movement's, wherever that's
+            // copied from: `swim.rs`.)
+            if let Some(sw) = &def.swim {
+                def.movement.stroke_drag = sw.drag;
+            }
             Ok(def)
         };
         let Ok(entries) = std::fs::read_dir(dir) else {

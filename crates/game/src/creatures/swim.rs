@@ -24,9 +24,9 @@ use bevy::prelude::*;
 use serde::Deserialize;
 
 use super::body::animation::{Animator, Hug};
-use super::body::legs::{plate, stroke};
+use super::body::legs::stroke;
 use super::body::parts::{Part, PartKind, Parts};
-use super::{Controls, Kinematics, MoveStats};
+use super::{Controls, Kinematics};
 use crate::canvas::{Canvas, CanvasSprites};
 use crate::world::{ChunkLoader, TickSet};
 
@@ -138,7 +138,8 @@ pub struct FinDef {
 
 /// Light along its flanks: a spot on every so many plates (and a line
 /// down its side between them, `line`), pulsing in waves running down it
-/// (so many a second; 0: steady).
+/// (so many a second; 0: steady); and so many lights spread down it,
+/// lighting the water round it (each this bright).
 #[derive(Clone, Debug, Deserialize)]
 pub struct GlowDef {
     pub color: (u8, u8, u8),
@@ -147,6 +148,14 @@ pub struct GlowDef {
     pub pulse: f32,
     #[serde(default)]
     pub line: bool,
+    #[serde(default)]
+    pub lights: usize,
+    #[serde(default = "light_strength")]
+    pub strength: f32,
+}
+
+fn light_strength() -> f32 {
+    0.2
 }
 
 /// A swimmer's strokes and its body as it lies.
@@ -167,13 +176,18 @@ pub struct Swimmer {
     way: VecDeque<Vec2>,
     /// Its plates: where, and which way they point (toward its head).
     pub plates: Vec<(Vec2, Vec2)>,
+    /// A flare of its glow (its own code's tells): how bright (0..1), and
+    /// where down it (a share, head to tail; below 0: all of it).
+    pub flare: (f32, f32),
+    /// Its lights down its body.
+    lights: Vec<Entity>,
     /// Its stroke count, for jitter.
     strokes: u32,
 }
 
 impl Swimmer {
     fn new(heading: f32) -> Swimmer {
-        Swimmer { heading, stroke_left: 0.0, pulse: 0.0, burst: 0.0, phase: 0.0, glow: 0.0, way: VecDeque::new(), plates: Vec::new(), strokes: 0 }
+        Swimmer { heading, stroke_left: 0.0, pulse: 0.0, burst: 0.0, phase: 0.0, glow: 0.0, way: VecDeque::new(), plates: Vec::new(), flare: (0.0, 0.0), lights: Vec::new(), strokes: 0 }
     }
 
     /// A strike: a hard kick along `dir` (to `speed`), its head turned
@@ -200,12 +214,12 @@ fn round(a: f32, b: f32) -> f32 {
     (a - b + TAU * 1.5).rem_euclid(TAU) - TAU * 0.5
 }
 
-/// A swimmer's strokes and glide; its drag to its movement.
-fn grow(mut commands: Commands, mut q: Query<(Entity, &Animator, &Kinematics, Option<&mut MoveStats>), Without<Swimmer>>) {
-    for (e, anim, k, stats) in &mut q {
-        let Some(sd) = anim.def.swim.as_ref() else { continue };
-        if let Some(mut s) = stats {
-            s.0.stroke_drag = sd.drag;
+/// A swimmer's strokes (its glide's its movement's: `def.rs` sets
+/// `stroke_drag` from `drag`).
+fn grow(mut commands: Commands, q: Query<(Entity, &Animator, &Kinematics), Without<Swimmer>>) {
+    for (e, anim, k) in &q {
+        if anim.def.swim.is_none() {
+            continue;
         }
         commands.entity(e).insert((Swimmer::new(if k.loco.facing < 0.0 { std::f32::consts::PI } else { 0.0 }), Hug::default()));
     }
@@ -266,10 +280,15 @@ fn tilt(s: &Swimmer, k: &Kinematics) -> f32 {
     sin.atan2(cos.abs()) * k.loco.facing
 }
 
-/// Where its body joins its head: its art's `grip` (turned with its head),
-/// else its middle.
+/// An anchor of its head's art, turned with its head (`Hug`): its maw,
+/// where its body joins.
+pub fn anchor(anim: &Animator, k: &Kinematics, turn: f32, name: &str) -> Option<Vec2> {
+    super::custom::frame_anchor(anim, k, name, "").map(|g| k.body.pos + Vec2::from_angle(turn).rotate(g - k.body.pos))
+}
+
+/// Where its body joins its head: its art's `grip`, else its middle.
 fn neck(anim: &Animator, k: &Kinematics, turn: f32) -> Vec2 {
-    super::custom::frame_anchor(anim, k, "grip", "").map_or(k.body.pos, |g| k.body.pos + Vec2::from_angle(turn).rotate(g - k.body.pos))
+    anchor(anim, k, turn, "grip").unwrap_or(k.body.pos)
 }
 
 /// A plate's size against the biggest (`swell`, `taper`).
@@ -283,7 +302,8 @@ fn scale(b: &BodyDef, t: f32) -> f32 {
 
 /// Its plates along the way its head went, the wave on them; its plates
 /// to take blows.
-fn follow(mut commands: Commands, time: Res<Time>, mut q: Query<(Entity, &mut Swimmer, &Kinematics, &Animator, Option<&mut Parts>, &mut Hug)>) {
+#[allow(clippy::type_complexity)]
+fn follow(mut commands: Commands, time: Res<Time>, mut q: Query<(Entity, &mut Swimmer, &Kinematics, &Animator, Option<&mut Parts>, &mut Hug)>, mut lamps: Query<(&mut Transform, &mut crate::light::LightSource), Without<Swimmer>>) {
     let dt = time.delta_secs().min(0.05);
     for (e, mut s, k, anim, parts, mut hug) in &mut q {
         // (Its head turned the way it swims, eased.)
@@ -299,7 +319,10 @@ fn follow(mut commands: Commands, time: Res<Time>, mut q: Query<(Entity, &mut Sw
         let pulse = s.pulse;
         s.phase += dt * TAU * (WAVE_HZ.0 + WAVE_HZ.1 * pulse);
         s.glow += dt;
-        let total = b.spacing * (n as f32 + 1.0);
+        // (Each plate after the last its spacing on, as big as it is: the
+        // small ones toward its tail close together, no gaps.)
+        let gaps: Vec<f32> = (0..n).map(|j| b.spacing * scale(b, j as f32 / (n - 1).max(1) as f32).max(0.4)).collect();
+        let total: f32 = gaps.iter().sum::<f32>() + b.spacing;
         if s.way.is_empty() {
             // (Laid out straight behind its head.)
             let back = -Vec2::from_angle(s.heading);
@@ -327,9 +350,9 @@ fn follow(mut commands: Commands, time: Res<Time>, mut q: Query<(Entity, &mut Sw
         let (length, sway, at_head, rest) = b.wave;
         let swell = rest + (1.0 - rest) * pulse;
         let mut plates = Vec::with_capacity(n);
-        let (mut i, mut walked) = (0usize, 0.0);
+        let (mut i, mut walked, mut want) = (0usize, 0.0, 0.0);
         for j in 0..n {
-            let want = b.spacing * (j as f32 + 1.0);
+            want += gaps[j];
             while i + 1 < s.way.len() && walked + s.way[i].distance(s.way[i + 1]) < want {
                 walked += s.way[i].distance(s.way[i + 1]);
                 i += 1;
@@ -366,7 +389,31 @@ fn follow(mut commands: Commands, time: Res<Time>, mut q: Query<(Entity, &mut Sw
             }
         }
         s.plates = plates;
+        // Its lights down it (its glow's colour, flaring with it).
+        if let Some(g) = &b.glow {
+            if s.lights.len() != g.lights {
+                for l in s.lights.drain(..) {
+                    commands.entity(l).despawn();
+                }
+                s.lights = (0..g.lights).map(|_| commands.spawn((Name::new("Swimmer's light"), crate::light::LightSource { color: [0.0; 3], flicker: 0.0 }, Transform::default(), ChildOf(e))).id()).collect();
+            }
+            for (i, &l) in s.lights.iter().enumerate() {
+                let t = (i as f32 + 0.5) / g.lights as f32;
+                let j = ((t * (n - 1) as f32).round() as usize).min(n - 1);
+                let Ok((mut tf, mut light)) = lamps.get_mut(l) else { continue };
+                // (A child of it: where its plate is, from it.)
+                let at = s.plates[j].0 - k.body.pos;
+                tf.translation = at.extend(0.0);
+                let bright = g.strength * (1.0 + 2.0 * flare_at(s.flare, t));
+                light.color = [g.color.0 as f32 / 255.0 * bright, g.color.1 as f32 / 255.0 * bright, g.color.2 as f32 / 255.0 * bright];
+            }
+        }
     }
+}
+
+/// How much of a flare is at `t` down its body (0..1).
+fn flare_at((bright, at): (f32, f32), t: f32) -> f32 {
+    if at < 0.0 { bright } else { bright * (-((t - at) / 0.12).powi(2)).exp() }
 }
 
 /// Swimmers' bodies, lit as the world is (behind their heads).
@@ -393,8 +440,51 @@ fn rgb((r, g, b): (u8, u8, u8)) -> [u8; 4] {
     [r, g, b, 255]
 }
 
+/// A glowing fin's membrane: its glow, faint.
+const MEMBRANE: u8 = 110;
+
+fn faint((r, g, b): (u8, u8, u8)) -> [u8; 4] {
+    [r, g, b, MEMBRANE]
+}
+
 fn dark((r, g, b): (u8, u8, u8)) -> (u8, u8, u8) {
     ((r as f32 * 0.6) as u8, (g as f32 * 0.6) as u8, (b as f32 * 0.6) as u8)
+}
+
+/// A plate: a capsule from `a` to `b`, `r` round, each cell once: its
+/// outline (a cell round it: `outline`), or lit along its upper side
+/// (`up`), its belly under, its fill between. (Every plate's outline
+/// first, then their fills: one body, not a string of beads.)
+#[allow(clippy::too_many_arguments)]
+fn capsule(a: Vec2, b: Vec2, r: f32, outline: bool, line: [u8; 4], fill: [u8; 4], lit: [u8; 4], belly: [u8; 4], up: Vec2, out: &mut Vec<(IVec2, [u8; 4])>) {
+    let d = b - a;
+    let len2 = d.length_squared().max(1e-4);
+    let lo = (a.min(b) - Vec2::splat(r + 1.5)).floor().as_ivec2();
+    let hi = (a.max(b) + Vec2::splat(r + 1.5)).ceil().as_ivec2();
+    let across = d.perp().normalize_or(Vec2::Y);
+    let across = if across.dot(up) < 0.0 { -across } else { across };
+    for y in lo.y..=hi.y {
+        for x in lo.x..=hi.x {
+            let q = Vec2::new(x as f32 + 0.5, y as f32 + 0.5);
+            let t = ((q - a).dot(d) / len2).clamp(0.0, 1.0);
+            let off = q - (a + d * t);
+            let dist = off.length();
+            if dist > r + 1.0 || (outline && dist <= r) || (!outline && dist > r) {
+                continue;
+            }
+            let side = off.dot(across);
+            let c = if outline {
+                line
+            } else if side > r - 1.2 {
+                lit
+            } else if side < -(r - 1.2) {
+                belly
+            } else {
+                fill
+            };
+            out.push((IVec2::new(x, y), c));
+        }
+    }
 }
 
 /// A fin: a fan of strokes from its tip to each point along its base.
@@ -447,38 +537,46 @@ fn draw(
             let tip = at - dir * f.size.0 * (0.35 + lean) + u * (r + f.size.1 * sc);
             fin(a0, a1, tip, rgb(f.color), &mut cells);
             if let Some(g) = f.glow {
+                fin(a0, a1, tip, faint(g), &mut lights);
                 stroke(a0, tip, 0.5, 0.5, rgb(g), &mut lights);
                 stroke(tip, a1, 0.5, 0.5, rgb(g), &mut lights);
             }
         }
         if let Some(f) = fins(FinKind::Tail).next() {
+            // Its tail's fan: from the end of it out to two tips, swept
+            // with the wave.
             let (at, dir) = s.plates[n - 1];
             let u = up(dir);
             let sweep = (s.phase - TAU * (n - 1) as f32 / b.wave.0.max(1.0)).sin() * 0.35;
             let base = at - dir * b.size.0 * scale(b, 1.0) * 0.4;
-            for side in [1.0f32, -1.0] {
-                let tip = base - dir * f.size.0 + u * (f.size.1 * side + f.size.1 * sweep);
-                fin(base + u * side * 1.5, base - u * side * 0.5, tip, rgb(f.color), &mut cells);
-                if let Some(g) = f.glow {
-                    stroke(base, tip, 0.5, 0.5, rgb(g), &mut lights);
-                }
+            let (ta, tb) = (base - dir * f.size.0 + u * f.size.1 * (1.0 + sweep), base - dir * f.size.0 * 0.85 - u * f.size.1 * (1.0 - sweep));
+            fin(ta, tb, base, rgb(f.color), &mut cells);
+            if let Some(g) = f.glow {
+                fin(ta, tb, base, faint(g), &mut lights);
+                stroke(base, ta, 0.5, 0.5, rgb(g), &mut lights);
+                stroke(base, tb, 0.5, 0.5, rgb(g), &mut lights);
+                stroke(ta, tb, 0.5, 0.5, rgb(g), &mut lights);
             }
         }
-        // Its plates, tail first.
-        for j in (0..n).rev() {
+        // Its plates, tail first: all their outlines, then their fills.
+        let shape = |j: usize| {
             let (at, dir) = s.plates[j];
             let sc = scale(b, j as f32 / (n - 1).max(1) as f32);
             let (len, r) = (b.size.0 * sc, b.size.1 * 0.5 * sc);
-            let (pa, pb) = (at - dir * len * 0.5, at + dir * len * 0.5);
-            let u = up(dir);
-            stroke(pa, pb, r + 1.0, r + 1.0, line, &mut cells);
-            stroke(pa, pb, r, r, fill, &mut cells);
-            let inset = dir * r * 0.6;
-            plate(pa + inset, pb - inset, r, fill, Some(belly), &mut cells, u);
-            plate(pa + inset, pb - inset, r, fill, Some(lit), &mut cells, -u);
+            (at - dir * len * 0.5, at + dir * len * 0.5, r, up(dir))
+        };
+        for j in (0..n).rev() {
+            let (pa, pb, r, u) = shape(j);
+            capsule(pa, pb, r, true, line, fill, lit, belly, u, &mut cells);
+        }
+        for j in (0..n).rev() {
+            let (at, _) = s.plates[j];
+            let (pa, pb, r, u) = shape(j);
+            capsule(pa, pb, r, false, line, fill, lit, belly, u, &mut cells);
             // Its glow: a spot on every so many plates, a line between.
             if let Some(g) = &b.glow {
                 let wave = if g.pulse > 0.0 { 0.55 + 0.45 * (s.glow * g.pulse * TAU - j as f32 * 0.45).sin() } else { 1.0 };
+                let wave = (wave + flare_at(s.flare, j as f32 / (n - 1).max(1) as f32)).min(1.0);
                 let (cr, cg, cb) = g.color;
                 let c = [cr, cg, cb, (255.0 * wave) as u8];
                 if j % g.every.max(1) == 0 {
@@ -497,8 +595,11 @@ fn draw(
             let u = up(dir);
             let flap = 0.4 + 0.6 * s.pulse;
             let tip = at - dir * f.size.0 - u * f.size.1 * flap;
-            fin(at + dir * 2.0, at - dir * 2.0, tip, rgb(f.color), &mut cells);
+            let (a0, a1) = (at + dir * f.size.0 * 0.25, at - dir * f.size.0 * 0.15);
+            fin(a0, a1, tip, rgb(f.color), &mut cells);
             if let Some(g) = f.glow {
+                fin(a0, a1, tip, faint(g), &mut lights);
+                stroke(a0, tip, 0.5, 0.5, rgb(g), &mut lights);
                 stroke(at, tip, 0.5, 0.5, rgb(g), &mut lights);
             }
         }
