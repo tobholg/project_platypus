@@ -205,6 +205,10 @@ pub struct Swimmer {
     /// A flare of its glow (its own code's tells): how bright (0..1), and
     /// where down it (a share, head to tail; below 0: all of it).
     pub flare: (f32, f32),
+    /// A ball of its glow gathering in its maw (its own code's: 0 none, 1
+    /// full), lighting the water round it.
+    pub charge: f32,
+    charge_light: Option<Entity>,
     /// Its lights down its body, and at its eye.
     lights: Vec<Entity>,
     eye_light: Option<Entity>,
@@ -218,7 +222,7 @@ pub struct Swimmer {
 
 impl Swimmer {
     fn new(heading: f32) -> Swimmer {
-        Swimmer { heading, stroke_left: 0.0, pulse: 0.0, burst: 0.0, phase: 0.0, glow: 0.0, way: VecDeque::new(), plates: Vec::new(), flare: (0.0, 0.0), lights: Vec::new(), eye_light: None, tendrils: Vec::new(), shocked: Vec::new(), strokes: 0 }
+        Swimmer { heading, stroke_left: 0.0, pulse: 0.0, burst: 0.0, phase: 0.0, glow: 0.0, way: VecDeque::new(), plates: Vec::new(), flare: (0.0, 0.0), charge: 0.0, charge_light: None, lights: Vec::new(), eye_light: None, tendrils: Vec::new(), shocked: Vec::new(), strokes: 0 }
     }
 
     /// A strike: a hard kick along `dir` (to `speed`), its head turned
@@ -240,6 +244,9 @@ const PULSE_FADES: f32 = 0.35;
 /// halo round it (cells across, how bright at its heart).
 const EYE_LIGHT: f32 = 0.35;
 const EYE_HALO: (f32, f32) = (9.0, 170.0);
+/// The ball of light in its maw: this big (cells, empty to full: times its
+/// scale), its light this bright full.
+const CHARGE: (f32, f32, f32) = (2.0, 9.0, 0.9);
 /// The wave runs down it this many times a second gliding, and this many
 /// more at a stroke's height.
 const WAVE_HZ: (f32, f32) = (0.6, 2.4);
@@ -436,6 +443,15 @@ fn follow(mut commands: Commands, time: Res<Time>, mut q: Query<(Entity, &mut Sw
             if let Ok((mut tf, mut light)) = lamps.get_mut(l) {
                 tf.translation = (eye - k.body.pos).extend(0.0);
                 let bright = EYE_LIGHT * (1.0 + flare_at(s.flare, 0.0));
+                light.color = [g.color.0 as f32 / 255.0 * bright, g.color.1 as f32 / 255.0 * bright, g.color.2 as f32 / 255.0 * bright];
+            }
+        }
+        // The ball of light gathering in its maw: a light there as it grows.
+        if let (Some(g), Some(maw)) = (&b.glow, anchor(anim, k, hug.0, "maw")) {
+            let l = *s.charge_light.get_or_insert_with(|| commands.spawn((Name::new("Swimmer's charge"), crate::light::LightSource { color: [0.0; 3], flicker: 0.0 }, Transform::default(), ChildOf(e))).id());
+            if let Ok((mut tf, mut light)) = lamps.get_mut(l) {
+                tf.translation = (maw - k.body.pos).extend(0.0);
+                let bright = CHARGE.2 * s.charge;
                 light.color = [g.color.0 as f32 / 255.0 * bright, g.color.1 as f32 / 255.0 * bright, g.color.2 as f32 / 255.0 * bright];
             }
         }
@@ -701,6 +717,34 @@ fn draw(
     let mut lights: Vec<(IVec2, [u8; 4])> = Vec::new();
     for (s, anim, k, hug) in &q {
         let Some(b) = anim.def.swim.as_ref().and_then(|sd| sd.body.as_ref()) else { continue };
+        // The ball of light gathering in its maw: a white-hot heart, its
+        // glow round it, flickering.
+        if let (Some(g), Some(maw)) = (&b.glow, anchor(anim, k, hug.0, "maw"))
+            && s.charge > 0.01
+        {
+            let (r, gg, bl) = g.color;
+            let flick = 1.0 + 0.12 * (s.glow * 23.0).sin();
+            let reach = (CHARGE.0 + (CHARGE.1 - CHARGE.0) * s.charge) * anim.def.scale * flick;
+            let lo = (maw - Vec2::splat(reach * 1.8)).floor().as_ivec2();
+            let span = (reach * 3.6) as i32 + 2;
+            for y in lo.y..=lo.y + span {
+                for x in lo.x..=lo.x + span {
+                    let d = Vec2::new(x as f32 + 0.5, y as f32 + 0.5).distance(maw) / reach;
+                    let c = if d < 0.45 {
+                        [255, 255, 255, 255]
+                    } else if d < 1.0 {
+                        let t = (d - 0.45) / 0.55;
+                        let mix = |a: u8, b: u8| (a as f32 + (b as f32 - a as f32) * t) as u8;
+                        [mix(255, r), mix(255, gg), mix(255, bl), 255]
+                    } else if d < 1.8 {
+                        [r, gg, bl, (150.0 * (1.0 - (d - 1.0) / 0.8).powi(2)) as u8]
+                    } else {
+                        continue;
+                    };
+                    lights.push((IVec2::new(x, y), c));
+                }
+            }
+        }
         // A halo round its eye, its glow's colour, fading out from it.
         if let (Some(g), Some(eye)) = (&b.glow, anchor(anim, k, hug.0, "eye")) {
             let (r, gg, bl) = g.color;

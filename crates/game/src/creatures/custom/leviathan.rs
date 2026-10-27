@@ -10,7 +10,9 @@
 //! - **Sweep**: it swims past beside you at a run: its body is the blow.
 //! - **Coil**: it circles you close, closer, its body round you.
 //! - **Abyssal bolts** (its favourite, out of reach): light runs up its
-//!   body from its tail to its head, and it looses a volley of slow orbs
+//!   body from its tail to its head and its jaws open on a ball of cold
+//!   light gathering in its maw, motes swirling into it; then it looses
+//!   out of the ball a volley of slow orbs (the ball shrinking with each)
 //!   that curve onto you and burst (a spell, `abyssal_bolt`: they hit
 //!   whatever they meet): a fan of them, a spiral all round it that curls
 //!   in, or a quick stream straight at you.
@@ -250,6 +252,10 @@ fn think(
         // there), where it looks.
         let (mut to, mut hurry) = (Vec2::ZERO, 0.0);
         sw.flare.0 *= 0.9;
+        // (The ball in its maw fades, unless it's gathering or loosing.)
+        if !matches!(doing, Doing::Gather(_) | Doing::Volley(..)) {
+            sw.charge *= 0.85;
+        }
         match doing {
             Doing::Circle => {
                 if let Some(tp) = tp {
@@ -382,6 +388,13 @@ fn think(
                     hurry = if to == Vec2::ZERO { 0.0 } else { 0.4 };
                 }
                 sw.flare = (1.0, 1.0 - (t / GATHER).min(1.0));
+                // The ball gathering in its maw, motes drawn into it.
+                sw.charge = (t / GATHER).min(1.0);
+                if (o.clock * 30.0) as u32 % 2 == 0 {
+                    let a = o.clock * 9.0;
+                    let from = maw + Vec2::from_angle(a) * (60.0 + 30.0 * (o.clock * 5.0).sin());
+                    sparks.emit(&emitter(vec![(235, 250, 255), (130, 210, 255), (40, 90, 190)], 20.0, (0.25, 0.45), 1.2), 1, from, (maw - from).normalize_or(Vec2::X), (maw - from) * 2.6);
+                }
                 next = if t + DT >= GATHER {
                     let more = if o.rage { 2 } else { 1 };
                     Doing::Volley(0.0, match o.pattern {
@@ -395,6 +408,13 @@ fn think(
             }
             Doing::Volley(t, left) => {
                 sw.flare = (1.0, 0.0);
+                // (The ball shrinking with each bolt out of it.)
+                let full = match o.pattern {
+                    0 => (if o.rage { o.volley.1 } else { o.volley.0 }) as f32,
+                    1 => (SPIRAL.1 * if o.rage { 2 } else { 1 }) as f32,
+                    _ => (STREAM.1 + if o.rage { 2 } else { 0 }) as f32,
+                };
+                sw.charge = 0.35 + 0.65 * left as f32 / full.max(1.0);
                 next = if left == 0 || tp.is_none() {
                     o.ready[VOLLEY_I] = VOLLEY_EVERY * quick;
                     Doing::Circle
@@ -408,7 +428,8 @@ fn think(
                             1 => (Vec2::from_angle(left as f32 * std::f32::consts::TAU / SPIRAL.1 as f32).rotate(at), SPIRAL.0),
                             _ => (at, STREAM.0),
                         };
-                        casts.write(crate::magic::CastRequest { caster: e, spell: i, from: maw + way * 14.0, toward: maw + way * 300.0, alt: false });
+                        // (Out of the ball in its maw.)
+                        casts.write(crate::magic::CastRequest { caster: e, spell: i, from: maw + way * 3.0, toward: maw + way * 300.0, alt: false });
                         sounds.write(crate::sound::PlaySound::at("cast", maw).pitch(0.35).volume(0.9));
                         Doing::Volley(every, left - 1)
                     } else {
