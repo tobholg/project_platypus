@@ -239,6 +239,10 @@ pub struct CreatureDef {
     /// A body that bends, drawn along its spine (a rat's: `spine.rs`).
     #[serde(default)]
     pub spine: Option<super::body::spine::SpineDef>,
+    /// It swims stroke by stroke, a body of plates and fins behind its head
+    /// (an eel, the leviathan: `swim.rs`).
+    #[serde(default)]
+    pub swim: Option<super::swim::SwimDef>,
     /// It gives off light (a firefly): its colour, how bright, and a pulse
     /// (seconds a swell; 0: steady).
     #[serde(default)]

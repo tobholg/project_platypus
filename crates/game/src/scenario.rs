@@ -225,6 +225,8 @@
 //!   the player reeled in, the bite, a miss
 //!
 //! Prints one line per second and a summary, then exits.
+//! `PLATYPUS_FILM=dir,from,every`: a picture every `every` seconds from
+//! `from` (`dir/0000.png`, ...): to watch something move.
 //! `PLATYPUS_SCREENSHOT=out.png` saves the window one second before the end
 //! (`PLATYPUS_OFFSCREEN=1`: what the camera draws, without the window: works
 //! with the screen locked).
@@ -248,6 +250,18 @@ mod ladder;
 
 pub struct ScenarioPlugin;
 
+/// `PLATYPUS_FILM=dir,from,every`: a picture every `every` seconds from
+/// `from`, into `dir` (made if it isn't there).
+fn film() -> Option<(String, f32, f32, u32)> {
+    let v = std::env::var("PLATYPUS_FILM").ok()?;
+    let mut it = v.split(',');
+    let dir = it.next()?.to_string();
+    let from = it.next().and_then(|t| t.parse().ok()).unwrap_or(1.0);
+    let every = it.next().and_then(|t| t.parse().ok()).unwrap_or(0.2);
+    std::fs::create_dir_all(&dir).ok()?;
+    Some((dir, from, every, 0))
+}
+
 #[derive(Resource)]
 struct Scenario {
     name: String,
@@ -259,6 +273,9 @@ struct Scenario {
     screenshot: Option<String>,
     /// Frames being captured (`PLATYPUS_FRAMES`): the path, which, how many.
     frames: Option<(String, u32, u32)>,
+    /// A film (`PLATYPUS_FILM=dir,from,every`): where, the next picture's
+    /// time, how often, how many so far.
+    film: Option<(String, f32, f32, u32)>,
 }
 
 type PlayerNotCamera = (With<LocalPlayer>, Without<MainCamera>);
@@ -285,7 +302,7 @@ impl Plugin for ScenarioPlugin {
         let Ok(name) = std::env::var("PLATYPUS_SCENARIO") else { return };
         // (`sneak` is played: an hour.)
         let duration = std::env::var("PLATYPUS_SCENARIO_SECS").ok().and_then(|s| s.parse().ok()).unwrap_or(if name == "sneak" { 3600.0 } else { 20.0 });
-        app.insert_resource(Scenario { name, elapsed: 0.0, duration, next_report: 2.0, next_drop: 1.0, reports: Vec::new(), screenshot: std::env::var("PLATYPUS_SCREENSHOT").ok(), frames: None })
+        app.insert_resource(Scenario { name, elapsed: 0.0, duration, next_report: 2.0, next_drop: 1.0, reports: Vec::new(), screenshot: std::env::var("PLATYPUS_SCREENSHOT").ok(), frames: None, film: film() })
             .add_systems(Update, run)
             .add_systems(PostUpdate, frame_cams.after(crate::camera::follow))
             // Inject input where real input arrives: after Bevy reads devices,
@@ -463,6 +480,19 @@ fn run(
             sim.world.loaded_count(),
             sim.world.bodies().len()
         );
+    }
+    // A film: a picture every so often from its start (`dir/0000.png`...).
+    let now = s.elapsed;
+    if let Some((dir, next, every, n)) = s.film.as_mut()
+        && now >= *next
+    {
+        let shot = match &offscreen {
+            Some(o) => Screenshot::image(o.0.clone()),
+            None => Screenshot::primary_window(),
+        };
+        commands.spawn(shot).observe(save_to_disk(format!("{dir}/{n:04}.png")));
+        *next += *every;
+        *n += 1;
     }
     if s.elapsed >= s.duration - 1.0
         && let Some(path) = s.screenshot.take()

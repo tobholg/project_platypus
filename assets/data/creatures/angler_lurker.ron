@@ -29,6 +29,8 @@
         fly_speed: 90,
         fly_accel: 300,
     ),
+    // (It swims stroke by stroke, swim.rs: a big head, no body behind it.)
+    swim: (stroke: 70, every: (0.25, 0.9), drag: 2.2, turn: (1.6, 3.6), carve: 3.0, tilt: 0.6),
     brain: (kind: "hunter", params: (aggro: 300, close: Range(near: 60, far: 140))),
     custom: (name: "gnasher", params: (lunges: 1, lure: 80, lure_range: (40, 190), bite: 0.8, glow: (170, 255, 220), aquatic: true)),
 )

@@ -178,6 +178,10 @@ pub struct MovementStats {
     /// move_y) × this, at `swim_accel`, weightless; 0: it swims as bodies do.
     pub swim_speed: f32,
     pub swim_accel: f32,
+    /// A stroking swimmer (an eel: its strokes its own, `swim.rs`): under
+    /// water weightless, only this drag on it (a share of its speed a
+    /// second), not `swim_drag`; 0: not one.
+    pub stroke_drag: f32,
     /// Rocket boots (0: none): holding jump in the air, once the jump's rise
     /// has slowed (and any air jumps are spent), thrust up for up to this
     /// many seconds, refilled on landing (Terraria's).
@@ -245,6 +249,7 @@ impl Default for MovementStats {
             cling: false,
             climb_walls: false,
             swim_speed: 0.0,
+            stroke_drag: 0.0,
             swim_accel: 600.0,
             swim_gravity: 0.35,
             swim_drag: 0.0005,
@@ -630,6 +635,15 @@ impl Locomotion {
                 self.rising_from_jump = false;
                 return ev;
             }
+        }
+
+        // A stroking swimmer under water: weightless, gliding (its strokes
+        // are its own).
+        if s.stroke_drag > 0.0 && self.contacts.submerged > 0.5 {
+            body.vel *= (-s.stroke_drag * dt).exp();
+            self.state = MoveState::Air;
+            self.rising_from_jump = false;
+            return ev;
         }
 
         // A swimmer under water: steered, weightless.

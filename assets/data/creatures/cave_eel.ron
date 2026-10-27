@@ -1,8 +1,9 @@
 // A cave eel: a moray of the flooded caverns (a gnasher's kin,
 // custom/gnasher.rs `den`, `aquatic`). It waits in a nook of the wall, its
-// head out, still, its body behind it (legs.rs `segments`); swim past near
-// it and it shoots out (its jaw gaping: the tell, short), snaps, and goes
-// back in. Its hurt is all teeth.
+// head out, still, its body behind it; swim past near it and it shoots out
+// (its jaw gaping: the tell, short), snaps, and hunts you a while before it
+// goes back in. It swims stroke by stroke (swim.rs), its body waving after
+// its head. Its hurt is all teeth.
 (
     name: "Cave eel",
     size: (16, 9),
@@ -16,12 +17,12 @@
     art: "cave_eel",
     eyes: (232, 222, 140),
     light: (color: (232, 222, 140), strength: 0.03),
-    legs: (view: Side, reach: 1, upper: 0.5, step: 0.2, lift: 0, ride: 0, stride: 2, tilt: 0,
-           color: (58, 66, 40), joint: (104, 114, 58), far: (30, 34, 20), outline: (12, 14, 6), thick: 2,
-           body: "cave_eel", eyes: (232, 222, 140),
-           each: [],
-           segments: (count: 14, spacing: 5, size: (9, 7), color: (54, 62, 36), lit: (96, 106, 56), belly: (140, 132, 86),
-                      reach: 1, lean: 0, wave: 0.16, tail: 10, taper: 0.4)),
+    swim: (stroke: 80, every: (0.2, 0.6), drag: 2.0, turn: (2.0, 4.5), carve: 3.5,
+           body: (count: 16, spacing: 5, size: (9, 7), swell: 0.15, taper: 0.35,
+                  color: (54, 62, 36), lit: (96, 106, 56), belly: (140, 132, 86), outline: (12, 14, 6),
+                  wave: (9.0, 3.5, 0.15, 0.3),
+                  fins: [(kind: Back, at: 0.35, size: (10, 3), color: (70, 80, 44)), (kind: Back, at: 0.6, size: (10, 3), color: (70, 80, 44)),
+                         (kind: Belly, at: 0.7, size: (8, 2), color: (70, 80, 44)), (kind: Tail, at: 1.0, size: (7, 4), color: (70, 80, 44))])),
     movement: (
         run_speed: 80,
         ground_accel: 600,

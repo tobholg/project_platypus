@@ -282,12 +282,12 @@ fn on(maw: Vec2, k: &Kinematics) -> bool {
 fn think(
     mut commands: Commands,
     sim: Res<SimWorld>,
-    mut q: Query<(Entity, &mut Gnasher, &mut Kinematics, &mut Controls, &mut Animator, &crate::creatures::Health)>,
+    mut q: Query<(Entity, &mut Gnasher, &mut Kinematics, &mut Controls, &mut Animator, &crate::creatures::Health, Option<&mut crate::creatures::swim::Swimmer>)>,
     hunted: Query<(Entity, &Kinematics, &Team), Without<Gnasher>>,
     (mut hits, mut sounds, mut trauma): (MessageWriter<crate::combat::Hit>, MessageWriter<crate::sound::PlaySound>, ResMut<crate::fx::Trauma>),
     (mut flares, mut sparks): (MessageWriter<crate::fx::Flare>, ResMut<crate::vfx::Sparks>),
 ) {
-    for (e, mut o, mut k, mut c, mut anim, health) in &mut q {
+    for (e, mut o, mut k, mut c, mut anim, health, mut swimmer) in &mut q {
         let (pos, half) = (k.body.pos, k.body.half);
         if !o.started {
             o.started = true;
@@ -543,6 +543,24 @@ fn think(
                 if let Doing::Draw(t) = next {
                     k.body.pos.x += ((o.clock * 70.0).sin() * 0.35) * (t / DRAW);
                 }
+            }
+            // (A swimmer strikes: a kick and a burst of strokes, its own
+            // after.)
+            Doing::Dart(t, false) if let Some(sw) = swimmer.as_mut() => {
+                if t == 0.0 {
+                    sw.strike(&mut k, o.aim, DART.0, DART.1);
+                }
+                c.0.move_x = o.aim.x;
+                c.0.move_y = o.aim.y;
+                c.0.aim = maw + o.aim * 60.0;
+            }
+            Doing::Lunge(t, false) if let Some(sw) = swimmer.as_mut() => {
+                if t == 0.0 {
+                    sw.strike(&mut k, o.aim, LUNGE.0, LUNGE.1);
+                }
+                c.0.move_x = o.aim.x;
+                c.0.move_y = o.aim.y;
+                c.0.aim = maw + o.aim * 60.0;
             }
             Doing::Dart(t, false) => {
                 k.body.vel = o.aim * DART.0 * (1.0 - t / DART.1 * 0.5);

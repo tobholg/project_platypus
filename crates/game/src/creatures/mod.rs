@@ -25,6 +25,7 @@ pub mod moves;
 pub mod nature;
 pub mod player;
 pub mod spawn;
+pub mod swim;
 
 use bevy::prelude::*;
 use platypus_physics::{Body, Grid, Intent, Locomotion, MovementStats, Occupancy, move_and_collide};
@@ -44,7 +45,7 @@ impl Plugin for CreaturesPlugin {
             .add_message::<Died>()
             .add_message::<Rocketed>()
             .add_plugins((def::CreaturePlugin, brain::BrainPlugin, spawn::SpawnPlugin, body::animation::AnimationPlugin, factions::FactionsPlugin))
-            .add_plugins((player::PlayerPlugin, brain::ai::AiPlugin, brain::critters::CrittersPlugin, brain::hunter::HunterPlugin, body::legs::LegsPlugin, body::spine::SpinePlugin, custom::CustomPlugin, brain::villager::VillagerPlugin, moves::MovesPlugin, brain::way::WayPlugin, body::sight::SightPlugin))
+            .add_plugins((player::PlayerPlugin, brain::ai::AiPlugin, brain::critters::CrittersPlugin, brain::hunter::HunterPlugin, body::legs::LegsPlugin, body::spine::SpinePlugin, swim::SwimPlugin, custom::CustomPlugin, brain::villager::VillagerPlugin, moves::MovesPlugin, brain::way::WayPlugin, body::sight::SightPlugin))
             .add_systems(FixedUpdate, (move_creatures, fall_damage, body::elements::expose, crate::combat::guard, body::hurt::notice, nature::regenerate, tally, crate::observe::observe, body::rise::crush, body::rise::collapse, body::rise::shatter, deaths, body::rise::stand).chain().in_set(TickSet::Bodies))
             .insert_resource(body::elements::Coatings::load())
             .init_resource::<PlayerDeaths>()
