@@ -91,8 +91,10 @@ const APART: f32 = 3.0;
 const WITH: f32 = 9.0;
 const NEAR: f32 = 16.0;
 const PULL: (f32, f32, f32) = (6.0, 1.6, 0.9);
-/// A fish heeds at most this many of those round it.
+/// A fish swims with and keeps with at most this many of those round it
+/// (it keeps its room from all of them); found by a grid this fine.
 const HEED: usize = 16;
+const GRID: f32 = 6.0;
 /// Speeds (cells/s): cruising (from, to), fleeing; flee from what's this
 /// near; look this far ahead for rock or air.
 const SPEED: (f32, f32) = (22.0, 40.0);
@@ -203,46 +205,63 @@ fn swim(time: Res<Time>, sim: Res<SimWorld>, mut shoals: ResMut<Shoals>, bodies:
         s.heading += (unit((t * 0.2) as u64 ^ s.light.to_bits()) - 0.5) * dt * 0.8;
         let cruise = Vec2::from_angle(s.heading) * s.speed;
         let snapshot: Vec<(Vec2, Vec2)> = s.fish.iter().map(|f| (f.pos, f.vel)).collect();
-        // (Neighbours by a grid `NEAR` across: a great shoal's fish look
-        // only at those round them, not at all two hundred.)
-        let cell = |p: Vec2| (p / NEAR).floor().as_ivec2();
+        // (Neighbours by a grid `GRID` across, nearest rings first: each
+        // fish keeps its room from every one close to it (so a great shoal
+        // spreads as wide as its fish need, not packing tighter), and swims
+        // with and keeps with only its nearest few.)
+        let cell = |p: Vec2| (p / GRID).floor().as_ivec2();
         let mut grid: std::collections::HashMap<IVec2, Vec<usize>> = std::collections::HashMap::new();
         for (j, &(p, _)) in snapshot.iter().enumerate() {
             grid.entry(cell(p)).or_default().push(j);
         }
+        let reach = (NEAR / GRID).ceil() as i32;
         for (i, f) in s.fish.iter_mut().enumerate() {
-            let (mut apart, mut along, mut mid, mut n) = (Vec2::ZERO, Vec2::ZERO, Vec2::ZERO, 0.0);
+            let (mut apart, mut along, mut mid, mut n, mut w) = (Vec2::ZERO, Vec2::ZERO, Vec2::ZERO, 0.0, 0.0);
             let c = cell(f.pos);
-            let round = (-1..=1).flat_map(|dy| (-1..=1).map(move |dx| c + IVec2::new(dx, dy)));
-            // (A fish heeds its nearest few, as a real one does: in a
-            // great shoal's thick, this many is plenty.)
             let mut heeded = 0;
-            for j in round.filter_map(|k| grid.get(&k)).flatten().copied() {
-                if j == i {
-                    continue;
-                }
-                if heeded >= HEED {
+            for ring in 0..=reach {
+                // (Its room's kept within the nearest ring; past that only
+                // till it's found its few.)
+                if ring >= 2 && heeded >= HEED {
                     break;
                 }
-                heeded += 1;
-                let (p, v) = snapshot[j];
-                let d = f.pos - p;
-                let l = d.length();
-                if l < APART {
-                    apart += d / l.max(0.3);
-                }
-                if l < WITH {
-                    along += v;
-                }
-                if l < NEAR {
-                    mid += p;
-                    n += 1.0;
+                for dy in -ring..=ring {
+                    for dx in -ring..=ring {
+                        if dx.abs().max(dy.abs()) != ring {
+                            continue;
+                        }
+                        let Some(here) = grid.get(&(c + IVec2::new(dx, dy))) else { continue };
+                        for &j in here {
+                            if j == i {
+                                continue;
+                            }
+                            let (p, v) = snapshot[j];
+                            let d = f.pos - p;
+                            let l = d.length();
+                            if l < APART {
+                                apart += d / l.max(0.3);
+                            } else if heeded >= HEED {
+                                continue;
+                            }
+                            if heeded < HEED && l < NEAR {
+                                heeded += 1;
+                                mid += p;
+                                n += 1.0;
+                                if l < WITH {
+                                    along += v;
+                                    w += 1.0;
+                                }
+                            }
+                        }
+                    }
                 }
             }
             let mut want = f.vel;
             if n > 0.0 {
                 want += (mid / n - f.pos) * PULL.2 * dt * 4.0;
-                want += (along / n.max(1.0) - f.vel) * PULL.1 * dt;
+                if w > 0.0 {
+                    want += (along / w - f.vel) * PULL.1 * dt;
+                }
             }
             want += apart * PULL.0 * dt * 4.0;
             want += (cruise - f.vel) * 0.6 * dt;
@@ -318,3 +337,4 @@ fn show(
         }
     }
 }
+
