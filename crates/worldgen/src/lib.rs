@@ -2581,7 +2581,8 @@ mod tests {
     /// Underground seas: 4-5 in a large world, 2-3 in the reference, 1-2 in
     /// a small one; each wide, three quarters water (over its middle, water
     /// under its level, much of it air over), its water lying on nothing
-    /// open (across it, down to its floor), in a stretch of its own.
+    /// open (across it, down to its floor), in a stretch of its own, tubes
+    /// and bays off it (some tubes climbing into dry air).
     #[test]
     fn underground_seas() {
         let m = mats();
@@ -2610,6 +2611,11 @@ mod tests {
                     }
                 }
                 assert!(leaks.is_empty(), "{preset:?}: the sea at x {}: water on or beside air at {:?}", s.x, &leaks[..leaks.len().min(6)]);
+                // Its branches: tubes and bays off its walls and floor, some
+                // climbing past its level.
+                let off: Vec<&caves::Tunnel> = g.plan.caves.tunnels.iter().filter(|t| t.joins.is_none() && ((t.points[0].0 - s.x) / s.rx).hypot((t.points[0].1 - s.y) / s.ry) < 1.05).collect();
+                let climbing = off.iter().filter(|t| t.points.last().is_some_and(|p| p.1 > s.table as f32)).count();
+                assert!(off.len() >= 6 && climbing > 0, "{preset:?}: the sea at x {}: {} branches, {climbing} climbing", s.x, off.len());
             }
         }
     }

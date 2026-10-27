@@ -415,6 +415,16 @@ const HALL_RY: (f32, f32) = (220.0, 400.0);
 const HALL_LAKE: f32 = 0.3;
 /// Kept this far (cells) over the caverns' floor and under their top.
 const HALL_ROOM: (f32, f32) = (90.0, 140.0);
+/// A sea's branches: a tube for every so many cells of its half-width, and
+/// as many bays; tubes this long (in a sea as tall as the greatest; shorter
+/// in a shallower one) and wide, bays this deep and wide; this share of the
+/// tubes climb past its level; kept this far from its stretch's dams and
+/// the caverns' floor and top.
+const SEA_TUBE_EVERY: f32 = 500.0;
+const SEA_TUBE: ((f32, f32), (f32, f32)) = ((300.0, 1_500.0), (MIN_TUNNEL + 1.0, 52.0));
+const SEA_BAY: ((f32, f32), (f32, f32)) = ((120.0, 320.0), (90.0, 170.0));
+const SEA_CLIMBS: f32 = 0.25;
+const SEA_EDGE: f32 = 160.0;
 
 impl Hall {
     /// Inside it?
@@ -717,6 +727,46 @@ impl Caves {
             let top = (x, surface(x as i32) as f32 + 6.0);
             let d = ((c.x - top.0).powi(2) + (c.y - top.1).powi(2)).sqrt();
             tunnels.push(wander(top, (c.x, c.y), 34.0, d, &noise, 30_000.0 + i as f64));
+        }
+
+        // Each sea's branches: tubes off its walls and floor winding out into
+        // the rock (some climbing past its level into dry air, an air
+        // pocket at their end), and sea caves: short wide bays in its
+        // walls. All in its stretch, short of the dams at its ends.
+        for (si, sea) in g.seas.iter().enumerate() {
+            let Some(st) = g.stretches.iter().find(|st| st.sea && st.table == sea.table) else { continue };
+            let (x0, x1) = (st.x0 as f32 + g.dam as f32 + SEA_EDGE, st.x1 as f32 - g.dam as f32 - SEA_EDGE);
+            let floor = (g.deep_top + g.floor_wave) as f32 + SEA_EDGE;
+            let table = sea.table as f32;
+            let size = (sea.ry / 2_000.0).clamp(0.3, 1.0);
+            let mut trng = Rng::seeded(&[seed, 0x70BE, si as u64]);
+            let n = ((sea.rx / SEA_TUBE_EVERY) as usize).max(3);
+            for k in 0..n * 2 {
+                let bay = k >= n;
+                let climbs = !bay && unit(&mut trng) < SEA_CLIMBS;
+                // (On its wall or floor, under its level (its water's up to
+                // half its half-height over its middle): a climbing one high
+                // on a wall.)
+                let lo = if climbs { 0.03 } else { -0.5 };
+                let a = std::f32::consts::PI * if unit(&mut trng) < 0.5 { range(&mut trng, (lo, 0.14)) } else { 1.0 - range(&mut trng, (lo, 0.14)) };
+                let (c, s) = (a.cos(), a.sin());
+                let at = (sea.x + sea.rx * c * 0.97, sea.y + sea.ry * s * 0.97);
+                let out = (c * sea.rx, s * sea.ry);
+                let turn = range(&mut trng, (-0.7, 0.7));
+                let l = (out.0 * out.0 + out.1 * out.1).sqrt().max(1.0);
+                let dir = ((out.0 * turn.cos() - out.1 * turn.sin()) / l, (out.0 * turn.sin() + out.1 * turn.cos()) / l);
+                let (len, width) = if bay { (range(&mut trng, SEA_BAY.0), range(&mut trng, SEA_BAY.1)) } else { (range(&mut trng, SEA_TUBE.0) * size, range(&mut trng, SEA_TUBE.1)) };
+                let mut end = (at.0 + dir.0 * len, at.1 + dir.1 * len);
+                if climbs {
+                    end.1 = table + range(&mut trng, (80.0, 350.0)) * size;
+                }
+                end = (end.0.clamp(x0, x1), end.1.clamp(floor, g.caverns_top as f32 - SEA_EDGE));
+                let d = ((end.0 - at.0).powi(2) + (end.1 - at.1).powi(2)).sqrt();
+                if d < 40.0 {
+                    continue;
+                }
+                tunnels.push(wander(at, end, width, d, &noise, 50_000.0 + (si * 1_000 + k) as f64));
+            }
         }
 
         // A pool stays below where any tunnel comes into its chamber, or it
