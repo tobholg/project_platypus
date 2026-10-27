@@ -205,8 +205,9 @@ pub struct Swimmer {
     /// A flare of its glow (its own code's tells): how bright (0..1), and
     /// where down it (a share, head to tail; below 0: all of it).
     pub flare: (f32, f32),
-    /// Its lights down its body.
+    /// Its lights down its body, and at its eye.
     lights: Vec<Entity>,
+    eye_light: Option<Entity>,
     /// Its tendrils: each link where it is and was (Verlet).
     pub tendrils: Vec<(Vec<Vec2>, Vec<Vec2>)>,
     /// What its tendrils have shocked lately (each a wait).
@@ -217,7 +218,7 @@ pub struct Swimmer {
 
 impl Swimmer {
     fn new(heading: f32) -> Swimmer {
-        Swimmer { heading, stroke_left: 0.0, pulse: 0.0, burst: 0.0, phase: 0.0, glow: 0.0, way: VecDeque::new(), plates: Vec::new(), flare: (0.0, 0.0), lights: Vec::new(), tendrils: Vec::new(), shocked: Vec::new(), strokes: 0 }
+        Swimmer { heading, stroke_left: 0.0, pulse: 0.0, burst: 0.0, phase: 0.0, glow: 0.0, way: VecDeque::new(), plates: Vec::new(), flare: (0.0, 0.0), lights: Vec::new(), eye_light: None, tendrils: Vec::new(), shocked: Vec::new(), strokes: 0 }
     }
 
     /// A strike: a hard kick along `dir` (to `speed`), its head turned
@@ -235,6 +236,10 @@ impl Swimmer {
 const DT: f32 = (1.0 / crate::world::TICK_HZ) as f32;
 /// Its swell from a stroke dies away this fast (seconds).
 const PULSE_FADES: f32 = 0.35;
+/// Its eye's light (with a body's glow and an `eye` in its art), and the
+/// halo round it (cells across, how bright at its heart).
+const EYE_LIGHT: f32 = 0.35;
+const EYE_HALO: (f32, f32) = (9.0, 170.0);
 /// The wave runs down it this many times a second gliding, and this many
 /// more at a stroke's height.
 const WAVE_HZ: (f32, f32) = (0.6, 2.4);
@@ -424,6 +429,15 @@ fn follow(mut commands: Commands, time: Res<Time>, mut q: Query<(Entity, &mut Sw
             let (end, dir) = s.plates[n - 1];
             let root = end - dir * b.size.0 * scale(b, 1.0) * 0.5;
             waft(&mut s, td, root, dir, dt);
+        }
+        // Its eye (its art's `eye`), lit: a light there, its glow's colour.
+        if let (Some(g), Some(eye)) = (&b.glow, anchor(anim, k, hug.0, "eye")) {
+            let l = *s.eye_light.get_or_insert_with(|| commands.spawn((Name::new("Swimmer's eye"), crate::light::LightSource { color: [0.0; 3], flicker: 0.0 }, Transform::default(), ChildOf(e))).id());
+            if let Ok((mut tf, mut light)) = lamps.get_mut(l) {
+                tf.translation = (eye - k.body.pos).extend(0.0);
+                let bright = EYE_LIGHT * (1.0 + flare_at(s.flare, 0.0));
+                light.color = [g.color.0 as f32 / 255.0 * bright, g.color.1 as f32 / 255.0 * bright, g.color.2 as f32 / 255.0 * bright];
+            }
         }
         // Its lights down it (its glow's colour, flaring with it).
         if let Some(g) = &b.glow {
@@ -678,15 +692,33 @@ fn draw(
     mut glow: ResMut<GlowCanvas>,
     mut images: ResMut<Assets<Image>>,
     camera: Query<(&GlobalTransform, &ChunkLoader), With<crate::camera::MainCamera>>,
-    q: Query<(&Swimmer, &Animator)>,
+    q: Query<(&Swimmer, &Animator, &Kinematics, &Hug)>,
     mut sprites: CanvasSprites,
 ) {
     let Ok((cam, loader)) = camera.single() else { return };
     let (eye, half) = (cam.translation().truncate(), loader.half_extent);
     let mut cells: Vec<(IVec2, [u8; 4])> = Vec::new();
     let mut lights: Vec<(IVec2, [u8; 4])> = Vec::new();
-    for (s, anim) in &q {
+    for (s, anim, k, hug) in &q {
         let Some(b) = anim.def.swim.as_ref().and_then(|sd| sd.body.as_ref()) else { continue };
+        // A halo round its eye, its glow's colour, fading out from it.
+        if let (Some(g), Some(eye)) = (&b.glow, anchor(anim, k, hug.0, "eye")) {
+            let (r, gg, bl) = g.color;
+            let reach = EYE_HALO.0 * anim.def.scale;
+            let flare = 1.0 + flare_at(s.flare, 0.0);
+            let lo = (eye - Vec2::splat(reach)).floor().as_ivec2();
+            for y in lo.y..=lo.y + (reach * 2.0) as i32 + 1 {
+                for x in lo.x..=lo.x + (reach * 2.0) as i32 + 1 {
+                    let d = Vec2::new(x as f32 + 0.5, y as f32 + 0.5).distance(eye) / reach;
+                    if d < 1.0 {
+                        let a = (EYE_HALO.1 * (1.0 - d).powi(2) * flare).min(255.0) as u8;
+                        if a > 8 {
+                            lights.push((IVec2::new(x, y), [r, gg, bl, a]));
+                        }
+                    }
+                }
+            }
+        }
         let n = s.plates.len();
         if n == 0 || !s.plates.iter().any(|(p, _)| (*p - eye).abs().cmple(half + 60.0).all()) {
             continue;

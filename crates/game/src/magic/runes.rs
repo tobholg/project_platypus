@@ -207,6 +207,12 @@ pub enum Modifier {
     /// Slows in the air: this share of its speed lost a second (a breath's
     /// shards, billowing out and dying).
     Drag(f32),
+    /// At home in the water: a liquid neither slows it nor burns it out
+    /// (the leviathan's bolts).
+    Waterborne,
+    /// Never strikes its caster, however long it flies or wherever it's
+    /// turned (a creature's own, round its own great body: never a wand's).
+    Spares,
 }
 
 fn full_pace() -> (f32, f32) {
@@ -346,6 +352,16 @@ impl Cast {
 
     /// How fast it turns toward what it's after (degrees a second), if it
     /// homes.
+    /// Whether a liquid leaves it be (`Waterborne`).
+    pub fn waterborne(&self) -> bool {
+        self.modifiers.iter().any(|m| matches!(m, Modifier::Waterborne))
+    }
+
+    /// Whether it never strikes its caster (`Spares`).
+    pub fn spares(&self) -> bool {
+        self.modifiers.iter().any(|m| matches!(m, Modifier::Spares))
+    }
+
     pub fn homing(&self) -> Option<f32> {
         self.modifiers.iter().find_map(|m| if let Modifier::Homing(r) = m { Some(*r) } else { None })
     }

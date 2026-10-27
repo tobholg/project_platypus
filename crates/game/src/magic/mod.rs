@@ -1025,8 +1025,8 @@ fn fly(
                     _ => {}
                 }
                 // Through a liquid each cell slows it (a bolt dies within
-                // ~20 cells).
-                if s.wet {
+                // ~20 cells), unless it's at home there.
+                if s.wet && !s.cast.waterborne() {
                     s.vel *= WET_STEP;
                 }
                 s.pos = next;
@@ -1044,7 +1044,8 @@ fn fly(
                     ((next - k.body.pos).abs() - k.body.half).max_element() < 1.5 || parts.get(b).is_ok_and(|p| p.touch(next, 1.0).is_some()) || pictures.get(b).is_ok_and(|a| crate::creatures::body::animation::on_picture(a, k, next))
                 };
                 let ours = |b: Entity| b != caster && teams.get(b).ok().zip(side).is_some_and(|(t, me)| t.allied(me));
-                if let Some((hit, ..)) = bodies.iter().find(|(b, k, ..)| (*b != caster || age > SELF_SAFE) && !ours(*b) && inside(*b, k)) {
+                let spares = s.cast.spares();
+                if let Some((hit, ..)) = bodies.iter().find(|(b, k, ..)| (*b != caster || (age > SELF_SAFE && !spares)) && !ours(*b) && inside(*b, k)) {
                     end = Some((Some(hit), Vec2::ZERO));
                     break;
                 }
@@ -1054,8 +1055,9 @@ fn fly(
                     trail.push((s.pos, material.to_string(), burning));
                 }
             }
-            // In a liquid: burning out fast, fizzling when slow.
-            if s.wet {
+            // In a liquid: burning out fast, fizzling when slow (unless it's
+            // at home there).
+            if s.wet && !s.cast.waterborne() {
                 s.age += dt * WET_AGE;
                 if end.is_none() && s.vel.length() < FIZZLE {
                     end = Some((None, Vec2::ZERO));
