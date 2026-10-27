@@ -149,8 +149,11 @@ const CELLS_PER_DEGREE_UP: f64 = 90.0;
 /// Above the peaks the air warms again, 1 °C per this many cells (large
 /// world): the sky islands are mild while the summits are the coldest place.
 const INVERSION: f64 = 27.0;
-/// °C warmer at the bottom of the world than at sea level.
+/// °C warmer at the bottom of the world than at sea level, and at the
+/// caverns' floor (mild: their flooded basins never scald, under a desert
+/// either, whose +18 comes on top; the deep heats the rest of the way).
 const WARMER_AT_BOTTOM: i32 = 85;
+const WARMER_AT_CAVERNS_FLOOR: i32 = 18;
 /// Broadleaf trees grow where the ground is at least this warm (°C);
 /// conifers down to `CONIFER_LINE`, snowy where it freezes.
 const TREE_LINE: i32 = 4;
@@ -469,7 +472,9 @@ impl WorldPlan {
             sea_level,
             surface_temp: SURFACE_TEMP,
             cells_per_degree_up: (CELLS_PER_DEGREE_UP * sh).max(1.0) as i32,
-            cells_per_degree_down: (sea_level / WARMER_AT_BOTTOM).max(1),
+            cells_per_degree_mild: ((sea_level - band_floors[4]) / WARMER_AT_CAVERNS_FLOOR).max(1),
+            mild_to: band_floors[4],
+            cells_per_degree_down: (band_floors[4] / (WARMER_AT_BOTTOM - WARMER_AT_CAVERNS_FLOOR)).max(1),
             columns,
             column_width,
             warm_above: band_floors[0],

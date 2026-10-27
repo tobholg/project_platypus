@@ -1,7 +1,8 @@
 //! Ambient temperature. Cells store heat *relative* to this, so a cell at
 //! ambient has heat 0 and costs nothing. Colder with altitude (snowy peaks
-//! stay frozen), warmer with depth, and warmer or colder across the world
-//! (a hot desert, a frozen tundra).
+//! stay frozen), warmer with depth (gently down to the caverns' floor, so
+//! their water's mild; fast through the deep under it), and warmer or
+//! colder across the world (a hot desert, a frozen tundra).
 
 use crate::CHUNK;
 
@@ -23,7 +24,10 @@ pub struct Climate {
     pub surface_temp: i32,
     /// Cells of climb per 1 °C colder above sea level.
     pub cells_per_degree_up: i32,
-    /// Cells of descent per 1 °C warmer below sea level.
+    /// Cells of descent per 1 °C warmer below sea level, down to
+    /// `mild_to`; then per 1 °C warmer below that (the deep heats fast).
+    pub cells_per_degree_mild: i32,
+    pub mild_to: i32,
     pub cells_per_degree_down: i32,
     /// °C added across the world's width, one entry per `column_width`
     /// cells (a whole number of chunks, so a chunk has one entry: see
@@ -50,6 +54,8 @@ impl Default for Climate {
             sea_level: 0,
             surface_temp: 15,
             cells_per_degree_up: i32::MAX,
+            cells_per_degree_mild: i32::MAX,
+            mild_to: i32::MIN,
             cells_per_degree_down: i32::MAX,
             columns: [0; CLIMATE_COLUMNS],
             column_width: 1 << 16,
@@ -91,8 +97,10 @@ impl Climate {
                 .min(self.surface_temp)
         } else if y >= self.sea_level {
             self.surface_temp - (y - self.sea_level) / self.cells_per_degree_up.max(1)
+        } else if y >= self.mild_to {
+            self.surface_temp + (self.sea_level - y) / self.cells_per_degree_mild.max(1)
         } else {
-            self.surface_temp + (self.sea_level - y) / self.cells_per_degree_down.max(1)
+            self.surface_temp + (self.sea_level - self.mild_to) / self.cells_per_degree_mild.max(1) + (self.mild_to - y) / self.cells_per_degree_down.max(1)
         };
         height + column
     }

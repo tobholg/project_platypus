@@ -2577,6 +2577,25 @@ mod tests {
         }
     }
 
+    /// The caverns are mild: their water scalds nowhere, under the hottest
+    /// desert down to their lowest (wandering) floor; under them the deep
+    /// heats fast (its lower half is scalding), the bottom as hot as ever.
+    #[test]
+    fn the_caverns_are_mild_and_the_deep_hot() {
+        use platypus_sim::hazard::HARMFUL_HEAT;
+        for preset in [Preset::Small, Preset::Medium, Preset::Large] {
+            let p = WorldPlan::new(1, preset);
+            let c = &p.climate;
+            let lowest = p.band_span(Band::Caverns).0 - p.floor_wave();
+            let hottest = (0..p.width).step_by(97).map(|x| c.ambient(x, lowest)).max().unwrap();
+            assert!(hottest < HARMFUL_HEAT - 3, "{preset:?}: the caverns' floor at {hottest}°C somewhere");
+            let (lo, hi) = p.band_span(Band::Deep);
+            let mid = p.width / 2;
+            assert!(c.ambient(mid, (lo + hi) / 2 - (hi - lo) / 4) > HARMFUL_HEAT, "{preset:?}: the lower deep at {}°C", c.ambient(mid, (lo + hi) / 2 - (hi - lo) / 4));
+            assert!((c.ambient(mid, 0) - c.ambient(mid, p.sea_level) - 85).abs() <= 2, "{preset:?}: the bottom {}°C over sea level's", c.ambient(mid, 0) - c.ambient(mid, p.sea_level));
+        }
+    }
+
     /// The flooded caverns hold their water: nowhere does it sit on air or
     /// beside it (under the caverns' floor the deep is dry; a chasm runs
     /// through dry), so nothing pours on load and the lakes lie still.
