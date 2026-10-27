@@ -1,7 +1,7 @@
 //! Shoals: glowfish schooling in the open water under the ground (the
 //! flooded caverns, the great halls' lakes). Cheap: a fish is a point that
 //! steers, drawn as a few pixels, not a creature with a brain; a shoal is
-//! a few dozen of them (now and then a great one of a couple of hundred)
+//! a hundred or so of them (now and then a great one of several hundred)
 //! and a faint light at its middle.
 //!
 //! Each fish keeps a little room from its neighbours, swims as they do and
@@ -12,7 +12,8 @@
 //! glints runs through it, as sardines' does.
 //!
 //! Shoals come and go round the player: one turns up in open water out of
-//! sight (`RING`) now and then, up to `MOST` about, and goes when it's far.
+//! sight (past the edge of the view, `BEYOND`) now and then, up to `MOST`
+//! about, and goes when it's far and out of sight.
 
 use bevy::prelude::*;
 use platypus_sim::CellPos;
@@ -68,14 +69,15 @@ pub struct Shoals {
     next: f32,
 }
 
-/// Shoals about the player at most; one turns up this far off (cells,
-/// from, to), and goes past this far.
+/// Shoals about the player at most; one turns up past the view's edge
+/// (cells, from, to past it: in the chunks loaded round it), and goes this
+/// much further off, unseen.
 const MOST: usize = 3;
-const RING: (f32, f32) = (180.0, 420.0);
-const GONE: f32 = 900.0;
-/// Fish a shoal (from, to: most near the fewest, one in four over a
+const BEYOND: (f32, f32) = (24.0, 96.0);
+const GONE: f32 = 500.0;
+/// Fish a shoal (from, to: most near the fewest, one in four over three
 /// hundred); how often one may turn up (s).
-const FISH: (usize, usize) = (22, 200);
+const FISH: (usize, usize) = (66, 600);
 const EVERY: f32 = 2.5;
 /// Open water round a spot for a shoal to turn up there: this many cells
 /// either way all water (for a shoal of `TYPICAL`; more for more), and
@@ -114,16 +116,20 @@ fn unit(seed: u64) -> f32 {
 
 /// Shoals turn up in open water round the player, out of sight, and go when
 /// they're far (or their water's gone).
-fn come_and_go(mut commands: Commands, time: Res<Time>, sim: Res<SimWorld>, mut shoals: ResMut<Shoals>, player: Query<&Kinematics, With<LocalPlayer>>) {
+fn come_and_go(mut commands: Commands, time: Res<Time>, sim: Res<SimWorld>, mut shoals: ResMut<Shoals>, player: Query<&Kinematics, With<LocalPlayer>>, camera: Query<(&GlobalTransform, &crate::world::ChunkLoader), With<crate::camera::MainCamera>>) {
     let Ok(me) = player.single() else { return };
     let me = me.body.pos;
+    // (The view: its middle and half-size, cells.)
+    let (eye, half) = camera.single().map_or((me, Vec2::new(250.0, 150.0)), |(t, l)| (t.translation().truncate(), l.half_extent));
+    let seen = |p: Vec2, margin: f32| (p - eye).abs().cmple(half + margin).all();
     if !sim.generator.wild() {
         return;
     }
     let id = sim.materials().id("water");
     shoals.shoals.retain(|s| {
         let mid = s.fish.iter().map(|f| f.pos).sum::<Vec2>() / s.fish.len().max(1) as f32;
-        let keep = mid.distance(me) < GONE && s.fish.iter().any(|f| water(&sim, id, f.pos));
+        // (Gone only far past the view, never in sight.)
+        let keep = seen(mid, BEYOND.1 + GONE) && s.fish.iter().any(|f| water(&sim, id, f.pos));
         if !keep {
             commands.entity(s.light).despawn();
         }
@@ -138,10 +144,16 @@ fn come_and_go(mut commands: Commands, time: Res<Time>, sim: Res<SimWorld>, mut 
     // A spot in the ring round the player, all water round it.
     for k in 0..8u64 {
         let a = unit(tick ^ (k << 32) ^ 0x5401) * std::f32::consts::TAU;
-        // (`PLATYPUS_SHOALS_NEAR=1`: close by, in sight: to look at them.)
-        let ring = if std::env::var("PLATYPUS_SHOALS_NEAR").is_ok() { (45.0, 60.0) } else { RING };
-        let r = ring.0 + (ring.1 - ring.0) * unit(tick ^ (k << 32) ^ 0x5402);
-        let at = me + Vec2::from_angle(a) * r;
+        // (Past the view's edge that way; `PLATYPUS_SHOALS_NEAR=1`: close
+        // by, in sight, to look at them.)
+        let near = std::env::var("PLATYPUS_SHOALS_NEAR").is_ok();
+        let dir = Vec2::from_angle(a);
+        let edge = (half.x / dir.x.abs().max(1e-3)).min(half.y / dir.y.abs().max(1e-3));
+        let r = if near { 45.0 + 15.0 * unit(tick ^ (k << 32) ^ 0x5402) } else { edge + BEYOND.0 + (BEYOND.1 - BEYOND.0) * unit(tick ^ (k << 32) ^ 0x5402) };
+        let at = if near { me } else { eye } + dir * r;
+        if !near && seen(at, BEYOND.0 * 0.5) {
+            continue;
+        }
         // (A great shoal wants a great water: where there isn't one, fewer.)
         // (`PLATYPUS_SHOALS_FISH=N`: that many, to look at a great one.)
         let mut n = std::env::var("PLATYPUS_SHOALS_FISH").ok().and_then(|v| v.parse().ok()).unwrap_or(FISH.0 + (unit(tick ^ 0x5403).powi(3) * (FISH.1 - FISH.0) as f32) as usize);
