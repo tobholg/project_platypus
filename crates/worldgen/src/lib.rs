@@ -2542,7 +2542,7 @@ mod tests {
     }
 
     /// The great halls: a few in every large world, each a lake under a
-    /// vault of air (the water table cutting it a third of the way up), its
+    /// vault of air (the water table cutting it two thirds of the way up), its
     /// roof studded with glowworms.
     #[test]
     fn great_halls_hold_a_lake_under_a_vault_of_glowworms() {
@@ -2554,7 +2554,7 @@ mod tests {
             let table = g.plan.water_table(h.x as i32);
             let (bed, roof) = (h.y - h.ry, h.y + h.ry);
             let share = (table as f32 - bed) / (roof - bed);
-            assert!((0.2..0.4).contains(&share), "the lake fills {share:.2} of the hall at x {}", h.x);
+            assert!((0.57..0.77).contains(&share), "the lake fills {share:.2} of the hall at x {}", h.x);
             // Across its middle: water under the table, air over it,
             // glowworms in its roof.
             let (mut wet, mut dry, mut worms) = (0, 0, 0);

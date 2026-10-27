@@ -393,8 +393,8 @@ impl Sea {
 }
 
 /// A great lake hall: a huge chamber in the caverns, set where the water
-/// table cuts it a third of the way up, so its lake fills the bottom and
-/// a vast vault of air stands over it (the tunnels into it share the
+/// table cuts it two thirds of the way up, so its lake fills most of it
+/// and a vault of air stands over it (the tunnels into it share the
 /// table, so its water's level with theirs and nothing pours). A domed
 /// roof, a flatter bed, ragged walls; the roof studded with glowworms
 /// (lib.rs). Its size is all it needs.
@@ -412,7 +412,7 @@ const HALLS: f64 = 2.0;
 /// (Times the world's `grand`: a great hall's the greatest of its kind.)
 const HALL_RX: (f32, f32) = (480.0, 780.0);
 const HALL_RY: (f32, f32) = (220.0, 400.0);
-const HALL_LAKE: f32 = 0.3;
+const HALL_LAKE: f32 = 0.67;
 /// Kept this far (cells) over the caverns' floor and under their top.
 const HALL_ROOM: (f32, f32) = (90.0, 140.0);
 /// A sea's branches: a tube for every so many cells of its half-width, and
@@ -566,7 +566,7 @@ impl Caves {
         }
 
         // Great lake halls, each inside one stretch of the water table (one
-        // level across its lake), cut by it a third of the way up, room
+        // level across its lake), cut by it two thirds of the way up, room
         // left over the caverns' floor and under their top; apart, away
         // from the start valley.
         let mut halls: Vec<Hall> = Vec::new();
