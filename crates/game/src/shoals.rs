@@ -88,13 +88,21 @@ const TYPICAL: f32 = 33.0;
 /// Boids: keep this far from each other (cells), swim with those this near,
 /// keep with those this near; how hard each pulls (a share a second).
 const APART: f32 = 3.0;
+/// The room a fish keeps, not the same everywhere: it swells and shrinks
+/// across the shoal and over time (dense knots and looser patches drifting
+/// through it: this much either way, this big across, this fast), the
+/// whole shoal breathing in and out (this much, this often), each fish a
+/// little its own (this much).
+const RIPPLE: (f32, f32, f32) = (0.45, 34.0, 0.6);
+const BREATHE: (f32, f32) = (0.18, 0.35);
+const OWN_ROOM: f32 = 0.2;
 const WITH: f32 = 9.0;
 const NEAR: f32 = 16.0;
 const PULL: (f32, f32, f32) = (6.0, 1.6, 0.9);
 /// A fish swims with and keeps with at most this many of those round it
 /// (it keeps its room from all of them); found by a grid this fine.
 const HEED: usize = 16;
-const GRID: f32 = 6.0;
+const GRID: f32 = 7.0;
 /// Speeds (cells/s): cruising (from, to), fleeing; flee from what's this
 /// near; look this far ahead for rock or air.
 const SPEED: (f32, f32) = (22.0, 40.0);
@@ -215,8 +223,14 @@ fn swim(time: Res<Time>, sim: Res<SimWorld>, mut shoals: ResMut<Shoals>, bodies:
             grid.entry(cell(p)).or_default().push(j);
         }
         let reach = (NEAR / GRID).ceil() as i32;
+        let breath = 1.0 + BREATHE.0 * (t * BREATHE.1 * std::f32::consts::TAU + s.heading * 3.0).sin();
         for (i, f) in s.fish.iter_mut().enumerate() {
             let (mut apart, mut along, mut mid, mut n, mut w) = (Vec2::ZERO, Vec2::ZERO, Vec2::ZERO, 0.0, 0.0);
+            // (Its room here and now.)
+            let (q, k) = (f.pos / RIPPLE.1, t * RIPPLE.2);
+            let ripple = ((q.x + k).sin() + (q.y * 1.3 - k * 0.7 + (q.x * 0.6).sin()).sin()) * 0.5;
+            let own = 1.0 + OWN_ROOM * ((f.phase * 7.3).fract() - 0.5) * 2.0;
+            let room = APART * (1.0 + RIPPLE.0 * ripple) * breath * own;
             let c = cell(f.pos);
             let mut heeded = 0;
             for ring in 0..=reach {
@@ -238,8 +252,10 @@ fn swim(time: Res<Time>, sim: Res<SimWorld>, mut shoals: ResMut<Shoals>, bodies:
                             let (p, v) = snapshot[j];
                             let d = f.pos - p;
                             let l = d.length();
-                            if l < APART {
-                                apart += d / l.max(0.3);
+                            if l < room {
+                                // (Softer the nearer it's to its room: no
+                                // lattice of fish all just so far apart.)
+                                apart += d / l.max(0.3) * (1.0 - l / room) * 2.0;
                             } else if heeded >= HEED {
                                 continue;
                             }
