@@ -16,7 +16,7 @@
 //! with a dim web between and lit tips, swaying with it; spots and lines
 //! of light along its flanks pulsing in waves down it; tendrils trailing
 //! from its tail (`TendrilDef`), wafting on the water, crackling with
-//! lightning if they're charged: touching one, anything alive is shocked
+//! lightning if they're charged: near one, anything alive is shocked
 //! (not itself). Its plates take blows (`Parts`). Drawn on two canvases:
 //! its body lit as the world is, its glow over the light (as glowfish
 //! are).
@@ -246,6 +246,10 @@ impl Swimmer {
 const DT: f32 = (1.0 / crate::world::TICK_HZ) as f32;
 /// Its swell from a stroke dies away this fast (seconds).
 const PULSE_FADES: f32 = 0.35;
+/// Charged tendrils' lightning leaps this far (cells) to what's alive near
+/// them (touching or not), at most once this often a body.
+const LEAP: f32 = 46.0;
+const SHOCK_EVERY: f32 = 0.9;
 /// Lightning on charged tendrils: new arcs this many times a second, this
 /// many crawling along each tendril at once.
 const ARC_HZ: f32 = 18.0;
@@ -621,8 +625,9 @@ fn waft(s: &mut Swimmer, td: &TendrilDef, root: Vec2, dir: Vec2, dt: f32) {
     }
 }
 
-/// Charged tendrils shock what's alive and touching them (never their
-/// own): a storm hit, a jolt, a crackle.
+/// Charged tendrils shock what's alive and touching them or near them (the
+/// lightning leaps the gap: `LEAP`), never their own: a storm hit, a jolt,
+/// a bolt from the tendril into it.
 #[allow(clippy::type_complexity)]
 #[allow(clippy::too_many_arguments)]
 fn shock(
@@ -653,8 +658,10 @@ fn shock(
             if who == e || h.hp <= 0.0 || s.shocked.iter().any(|w| w.0 == who) {
                 continue;
             }
-            let reach = k.body.half.length() + td.width;
-            let touch = s.tendrils.iter().flat_map(|(pts, _)| pts.iter().skip(1)).find(|p| p.distance(k.body.pos) < reach).copied();
+            // (Touching them, or near enough that the lightning leaps the
+            // gap to it.)
+            let reach = k.body.half.length() + td.width + LEAP;
+            let touch = s.tendrils.iter().flat_map(|(pts, _)| pts.iter().skip(1)).min_by(|a, b| a.distance(k.body.pos).total_cmp(&b.distance(k.body.pos))).filter(|p| p.distance(k.body.pos) < reach).copied();
             if let Some(at) = touch {
                 let away = (k.body.pos - at).normalize_or(Vec2::Y);
                 hits.write(crate::combat::Hit { by: Some(e), target: who, damage, harm: super::Harm::Storm, knock: away * 220.0, stun, at, dir: away, weight: 0.6, crit: false });
@@ -670,7 +677,7 @@ fn shock(
                     .collect();
                 let zap = platypus_sim::Zap { from: CellPos::from_world(at.x, at.y), to: CellPos::from_world(k.body.pos.x, k.body.pos.y), path, charged: Vec::new() };
                 crate::fx::spawn_bolt(&mut commands, &mut images, &zap);
-                s.shocked.push((who, 0.7));
+                s.shocked.push((who, SHOCK_EVERY));
             }
         }
     }
