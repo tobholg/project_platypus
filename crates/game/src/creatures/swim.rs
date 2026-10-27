@@ -463,11 +463,12 @@ fn waft(s: &mut Swimmer, td: &TendrilDef, root: Vec2, dir: Vec2, dt: f32) {
     let across = dir.perp();
     let t = s.glow;
     for (k, (pts, prev)) in s.tendrils.iter_mut().enumerate() {
-        // (Their roots fanned across its tail's end.)
-        let spread = (k as f32 - (td.count as f32 - 1.0) * 0.5) * td.width * 1.2;
-        let at = root + across * spread;
+        // (All from the one point at its tail's tip, a tassel, each off
+        // at its own angle.)
+        let at = root;
         if pts[0].distance(at) > 400.0 {
-            *pts = (0..td.links).map(|i| at - dir * td.gap * i as f32).collect();
+            let way = Vec2::from_angle((k as f32 - (td.count as f32 - 1.0) * 0.5) * 0.25).rotate(-dir);
+            *pts = (0..td.links).map(|i| at + way * td.gap * i as f32).collect();
             *prev = pts.clone();
         }
         // (Each its own beat; they fan apart toward their tips.)
