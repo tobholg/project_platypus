@@ -1463,6 +1463,9 @@ mod tests {
         put_on(&items, dev, &mut inv, &mut eq, false);
         assert_eq!(inv.slots[0].as_ref().map(|s| s.item), items.id("mithril_pickaxe"));
         assert_eq!(inv.slots[1].as_ref().map(|s| s.item), items.id("mithril_longsword"));
+        // (And a repulsor ward to try, in the pack.)
+        let ward = items.id("repulsor_ward");
+        assert!(ward.is_some() && inv.slots.iter().flatten().any(|s| Some(s.item) == ward), "the dev kit carries a repulsor ward");
     }
 
     /// Healroot dug with a pick: picked, one for every 24 cells of it (a
