@@ -30,6 +30,8 @@
     flashlight: (color: (230, 238, 255), strength: 1.8, range: 360, angle: 46),
     flashlight_small: (color: (240, 236, 220), strength: 1.1, range: 195, angle: 30),
     headlamp: (color: (250, 240, 210), strength: 0.9, range: 170, angle: 22),
+    // A diving helmet's lamp: wider and brighter, for the dark water.
+    dive_lamp: (color: (225, 240, 255), strength: 1.5, range: 230, angle: 46),
     // A beam's spill: a dim wide cone round the hot spot (share of its
     // light, degrees, cells), and a glow at the lamp all round (share): so
     // what's right by you shows, whichever side.

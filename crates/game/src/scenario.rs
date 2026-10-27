@@ -16701,6 +16701,7 @@ fn dive_script(
     others: Query<(&crate::creatures::Creature, &Kinematics, &crate::creatures::Health), Without<LocalPlayer>>,
     mut put: Local<bool>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut cursor: ResMut<CursorOverride>,
 ) {
     if s.name != "dive" {
         return;
@@ -16730,7 +16731,7 @@ fn dive_script(
             }
             // (`PLATYPUS_HELMET=1`: in a diving helmet; `PLATYPUS_FLIPPERS=1`:
             // flippers.)
-            for (var, item) in [("PLATYPUS_HELMET", "diving_helmet"), ("PLATYPUS_FLIPPERS", "flippers")] {
+            for (var, item) in [("PLATYPUS_HELMET", "diving_helmet"), ("PLATYPUS_FLIPPERS", "flippers"), ("PLATYPUS_MINING", "mining_helmet")] {
                 if std::env::var(var).is_ok()
                     && let Some(id) = items.id(item)
                 {
@@ -16761,6 +16762,11 @@ fn dive_script(
         for key in [KeyCode::KeyD, KeyCode::Space] {
             if swim { keys.press(key) } else { keys.release(key) }
         }
+    }
+    // (`PLATYPUS_DIVE_AIM=deg`: the cursor that way off the player, for a
+    // lamp's beam.)
+    if let Ok(deg) = std::env::var("PLATYPUS_DIVE_AIM").map(|v| v.parse::<f32>().unwrap_or(0.0)) {
+        cursor.0 = Some(k.body.pos + Vec2::from_angle(deg.to_radians()) * 120.0);
     }
     // (`PLATYPUS_DIVE_WITH=kind`: one of those in the pool too, 1.5 s.)
     if !*put && t > 1.5

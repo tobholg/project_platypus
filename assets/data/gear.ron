@@ -326,8 +326,8 @@
             about: "Yellow rubber fins: your strokes under water half as strong again. Off the drowned, now and then.",
             gear: (slot: Feet, weight: Light, stats: { SwimSpeed: 50 },
             look: (recolor: [(colors: { 'B': (222, 182, 34), 'C': (168, 132, 20), 'U': (250, 226, 110), 'o': (120, 92, 12) })]))),
-        (id: "diving_helmet", name: "Diving helmet", color: (196, 150, 60), light: Headlamp,
-            about: "A brass dome with a glass porthole, a little air of its own and a lamp over the glass: four minutes under water on a breath, a beam where you look.",
+        (id: "diving_helmet", name: "Diving helmet", color: (196, 150, 60), light: DiveLamp,
+            about: "A brass dome with a glass porthole, a little air of its own and a broad lamp over the glass: four minutes under water on a breath, a wide bright beam where you look.",
             gear: (slot: Head, weight: Heavy, stats: { Armor: 3, Breath: 1233 },
             look: (palette: { 'b': (112, 78, 28), 'B': (196, 150, 60), 'h': (240, 208, 124), 'g': (84, 60, 24), 'G': (96, 156, 176), 'w': (220, 246, 255), 'r': (236, 196, 108), 'c': (82, 70, 56) }, over: [(parts: ["head", "blink"], at: (-1, -2), rows: [
                 ".....bbbbb.....",

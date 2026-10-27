@@ -88,8 +88,10 @@ pub struct LightSettings {
     pub torch: LampCfg,
     /// A lantern held: steady, all round.
     pub lamp: LampCfg,
-    /// A mining helmet's lamp.
+    /// A mining helmet's lamp; a diving helmet's (wider, brighter: for the
+    /// dark water).
     pub headlamp: BeamCfg,
+    pub dive_lamp: BeamCfg,
     pub spill: SpillCfg,
     pub glowstick: StickCfg,
     pub fire: torch::FireLook,
@@ -182,8 +184,10 @@ pub struct LightToggles {
     /// What the player holds for light in its off hand (besides its faint
     /// lantern): what it wears there (`from_gear`), or what a scenario set.
     pub carry: Carry,
-    /// A mining helmet's lamp on its head.
+    /// A lamp on its head (a mining helmet's), and whether it's a diving
+    /// helmet's (wider, brighter).
     pub headlamp: bool,
+    pub dive_lamp: bool,
 }
 
 /// What's held in the off hand, for light.
@@ -215,12 +219,14 @@ pub enum LightKind {
     SafetyLamp,
     /// On the head (a mining helmet): a narrow beam where you look.
     Headlamp,
+    /// On the head (a diving helmet): a wide bright beam where you look.
+    DiveLamp,
 }
 
 impl LightKind {
     /// Held in the off hand (not worn on the head).
     pub fn held(self) -> bool {
-        self != LightKind::Headlamp
+        !matches!(self, LightKind::Headlamp | LightKind::DiveLamp)
     }
 
     pub fn carry(self) -> Carry {
@@ -230,7 +236,7 @@ impl LightKind {
             LightKind::Flashlight => Carry::BigBeam,
             LightKind::Lantern => Carry::Lantern,
             LightKind::SafetyLamp => Carry::SafetyLamp,
-            LightKind::Headlamp => Carry::Nothing,
+            LightKind::Headlamp | LightKind::DiveLamp => Carry::Nothing,
         }
     }
 }
@@ -241,10 +247,12 @@ fn from_gear(items: Option<Res<crate::hands::items::Items>>, mut toggles: ResMut
     let (Some(items), Ok(eq)) = (items, worn.single()) else { return };
     let light = |i: usize| eq.worn[i].and_then(|s| items.def(s.item).light);
     let carry = light(crate::gear::OFF_HAND).filter(|l| l.held()).map_or(Carry::Nothing, LightKind::carry);
-    let headlamp = light(0) == Some(LightKind::Headlamp);
-    if toggles.carry != carry || toggles.headlamp != headlamp {
+    let dive_lamp = light(0) == Some(LightKind::DiveLamp);
+    let headlamp = light(0) == Some(LightKind::Headlamp) || dive_lamp;
+    if toggles.carry != carry || toggles.headlamp != headlamp || toggles.dive_lamp != dive_lamp {
         toggles.carry = carry;
         toggles.headlamp = headlamp;
+        toggles.dive_lamp = dive_lamp;
     }
 }
 
@@ -378,7 +386,7 @@ impl Plugin for LightPlugin {
             .insert_resource(settings)
             .insert_resource(SettingsWatch(Watched::new(path)))
             // PLATYPUS_NOLIGHT=1 starts with lighting off (F9 toggles).
-            .insert_resource(LightToggles { enabled: std::env::var("PLATYPUS_NOLIGHT").is_err(), carry: Carry::Nothing, headlamp: false })
+            .insert_resource(LightToggles { enabled: std::env::var("PLATYPUS_NOLIGHT").is_err(), carry: Carry::Nothing, headlamp: false, dive_lamp: false })
             .init_resource::<Cones>()
             .init_resource::<switch::Switch>()
             .add_systems(Update, (from_gear, shine, (switch::switch, switch::quench).chain().before(torch::hold), torch::snuff))
@@ -924,7 +932,7 @@ fn compute_light(
             // with none.)
             let from = drawn + hand.and_then(|h| h.brow).map_or(Vec2::new(k.loco.facing * k.body.half.x * 0.6, k.body.half.y * 0.8), |b| b.truncate());
             let dir = (aim - from).normalize_or(Vec2::X);
-            lamp(&mut g, from, dir, settings.headlamp, switched.head.electric());
+            lamp(&mut g, from, dir, if toggles.dive_lamp { settings.dive_lamp } else { settings.headlamp }, switched.head.electric());
         }
     }
     // Flashlights put down or thrown: their beams (and a glow at the lens).

@@ -31,7 +31,7 @@ const DT: f32 = (1.0 / TICK_HZ) as f32;
 
 /// What can come out of the hand this way (by the light it gives).
 pub fn throwable(kind: Option<LightKind>) -> Option<LightKind> {
-    kind.filter(|k| *k != LightKind::Headlamp)
+    kind.filter(|k| k.held())
 }
 
 /// How long the button's held before it's a throw (s): a tap puts it down.
