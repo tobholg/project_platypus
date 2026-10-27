@@ -21,6 +21,9 @@
 //!
 //! - An angler lurker's (`aquatic`): all of it in the water (the flooded
 //!   caverns'): it never leaves it, turning back at its surface and edges.
+//! - A cave eel's (`den`): it waits in a nook of the wall, its head out,
+//!   still; what swims past near it, it shoots out at (the lunge, its tell
+//!   short) and goes back in.
 //!
 //! Its hurt is all teeth: pierce.
 
@@ -50,6 +53,14 @@ pub struct Gnasher {
     pub glow: (u8, u8, u8),
     /// It lives in the water and never leaves it (an angler lurker).
     pub aquatic: bool,
+    /// It waits in a nook of the wall near where it came (a cave eel's),
+    /// going for what comes near (within `DEN_REACH`), back in after.
+    pub den: bool,
+    /// Its tendrils' lengths (links): a cave eel's barbels are short.
+    pub trail: Vec<usize>,
+    /// Where it waits (`den`), and the way it looks out from there.
+    #[serde(skip)]
+    home: Option<(Vec2, Vec2)>,
     #[serde(skip)]
     doing: Doing,
     /// Lunges left before it's spent.
@@ -82,6 +93,9 @@ impl Default for Gnasher {
             bite: 1.0,
             glow: (130, 255, 228),
             aquatic: false,
+            den: false,
+            trail: vec![8, 10, 7],
+            home: None,
             doing: Doing::Hover,
             left: 0,
             scale: 1.0,
@@ -176,6 +190,16 @@ const LURE_EVERY: f32 = 7.0;
 /// (rad/s), how far off (cells), and how much that swells and shrinks.
 const ORBIT: (f32, f32, f32) = (0.7, 105.0, 25.0);
 
+/// Waiting in its nook (`den`): what's this near it goes for (cells); its
+/// lunge's tell this much shorter (it's been watching); finding the nook,
+/// a wall this far either side at most, from this far under to over it.
+const DEN_REACH: f32 = 130.0;
+const DEN_TELL: f32 = 0.3;
+/// Back in its nook after a lunge, it waits this long before the next.
+const DEN_REST: f32 = 3.5;
+const DEN_LOOK: i32 = 160;
+const DEN_ROWS: (i32, i32) = (-30, 90);
+
 /// Where it goes for: their chest (so its body, hung under its maw, clears
 /// the ground on the way).
 const CHEST: f32 = 6.0;
@@ -199,6 +223,37 @@ fn keep_wet(sim: Res<SimWorld>, mut q: Query<(&Gnasher, &mut Kinematics)>) {
     }
 }
 
+/// A cave eel's nook (`den`): the nearest place, either side of it, in the
+/// water hard by a wall (its body just clear of it, water over and under
+/// its head); and the way it looks out from there.
+fn den(sim: &SimWorld, pos: Vec2, half: Vec2) -> Option<(Vec2, Vec2)> {
+    let at = |x: i32, y: i32| sim.world.get(platypus_sim::CellPos::new(x, y)).map(|c| (c.is_air(), sim.world.materials().phys(c.material)));
+    let wet = |x: i32, y: i32| at(x, y).is_some_and(|(air, ph)| !air && ph.kind == platypus_sim::Kind::Liquid);
+    let rock = |x: i32, y: i32| at(x, y).is_some_and(|(air, ph)| !air && ph.kind == platypus_sim::Kind::Static);
+    let (x0, y0) = (pos.x as i32, pos.y as i32);
+    let (hx, hy) = (half.x.ceil() as i32 + 2, half.y.ceil() as i32 + 1);
+    let mut best: Option<(i32, Vec2, Vec2)> = None;
+    for dy in (DEN_ROWS.0..=DEN_ROWS.1).step_by(4) {
+        let y = y0 + dy;
+        for dir in [-1, 1] {
+            // Out along the row, through the water, to the wall.
+            let Some(n) = (0..DEN_LOOK).take_while(|&n| !rock(x0 + dir * n, y)).last().map(|n| n + 1) else { continue };
+            if n >= DEN_LOOK {
+                continue;
+            }
+            let x = x0 + dir * (n - hx);
+            if !(wet(x, y) && wet(x, y + hy) && wet(x, y - hy) && wet(x - dir * hx, y)) {
+                continue;
+            }
+            let far = n.abs() + dy.abs();
+            if best.is_none_or(|(f, ..)| far < f) {
+                best = Some((far, Vec2::new(x as f32 + 0.5, y as f32 + 0.5), Vec2::new(-dir as f32, 0.0)));
+            }
+        }
+    }
+    best.map(|(_, at, out)| (at, out))
+}
+
 fn on(maw: Vec2, k: &Kinematics) -> bool {
     ((maw - k.body.pos).abs() - k.body.half).max(Vec2::ZERO).length() <= 5.0
 }
@@ -220,7 +275,10 @@ fn think(
             o.ready = [1.0, 2.5, 4.0];
             o.aim = Vec2::X;
             let link = 2.6 * o.scale;
-            o.tendrils = vec![Links::new(8, link), Links::new(10, link), Links::new(7, link)];
+            o.tendrils = o.trail.iter().map(|&n| Links::new(n, link)).collect();
+            if o.den {
+                o.home = den(&sim, pos, half);
+            }
         }
         o.clock += DT;
         for r in o.ready.iter_mut() {
@@ -228,6 +286,8 @@ fn think(
         }
         let maw = frame_anchor(&anim, &k, "maw", "").unwrap_or(pos);
         let target = hunted.iter().filter(|(_, _, t)| t.hunted()).filter(|(_, tk, _)| tk.body.pos.distance(pos) < AGGRO).min_by(|a, b| a.1.body.pos.distance(pos).total_cmp(&b.1.body.pos.distance(pos)));
+        // (Waiting in its nook: only what comes near it.)
+        let target = target.filter(|(_, tk, _)| o.home.is_none_or(|(at, _)| tk.body.pos.distance(at) < DEN_REACH) || !matches!(o.doing, Doing::Hover));
         let tp = target.map(|(_, tk, _)| tk.body.pos + Vec2::Y * CHEST);
         // Bites what its maw's on (once a dart, once a lunge).
         let hard = o.bite;
@@ -255,7 +315,7 @@ fn think(
                         o.aim = (tp - maw).normalize_or(Vec2::X);
                         o.left = o.lunges.max(1);
                         sounds.write(crate::sound::PlaySound::at("groan", maw).pitch(1.6).volume(0.8));
-                        next = Doing::Draw(0.0);
+                        next = Doing::Draw(if o.home.is_some() { DEN_TELL } else { 0.0 });
                     }
                 }
             }
@@ -363,8 +423,8 @@ fn think(
             }
             Doing::Spent(t) => {
                 next = if t + DT >= SPENT {
-                    o.ready[LUNGE_I] = LUNGE_EVERY;
-                    o.ready[SNAP_I] = o.ready[SNAP_I].max(0.6);
+                    o.ready[LUNGE_I] = if o.home.is_some() { DEN_REST } else { LUNGE_EVERY };
+                    o.ready[SNAP_I] = o.ready[SNAP_I].max(if o.home.is_some() { DEN_REST * 0.5 } else { 0.6 });
                     Doing::Hover
                 } else {
                     Doing::Spent(t + DT)
@@ -398,6 +458,16 @@ fn think(
         match next {
             // (Facing its prey, backing off or not: its mouth to them; down,
             // beside them.)
+            // (In its nook, or back to it: still there, looking out.)
+            Doing::Hover if let Some((at, out)) = o.home => {
+                let to = at - pos;
+                c.0.move_x = (to.x * 0.06).clamp(-1.0, 1.0);
+                c.0.move_y = (to.y * 0.06).clamp(-1.0, 1.0);
+                if to.length() < 3.0 {
+                    k.body.vel *= 0.8;
+                }
+                c.0.aim = tp.unwrap_or(maw + out * 60.0);
+            }
             Doing::Hover => {
                 if let Some(tp) = tp {
                     c.0.aim = tp;

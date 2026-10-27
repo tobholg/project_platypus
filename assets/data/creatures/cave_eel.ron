@@ -1,0 +1,39 @@
+// A cave eel: a moray of the flooded caverns (a gnasher's kin,
+// custom/gnasher.rs `den`, `aquatic`). It waits in a nook of the wall, its
+// head out, still, its body behind it (legs.rs `segments`); swim past near
+// it and it shoots out (its jaw gaping: the tell, short), snaps, and goes
+// back in. Its hurt is all teeth.
+(
+    name: "Cave eel",
+    size: (16, 9),
+    health: 70,
+    heft: 1.4,
+    poise: 14,
+    team: Enemy,
+    touchless: true,
+    kind: "beast",
+    blood: "blood",
+    art: "cave_eel",
+    eyes: (232, 222, 140),
+    light: (color: (232, 222, 140), strength: 0.03),
+    legs: (view: Side, reach: 1, upper: 0.5, step: 0.2, lift: 0, ride: 0, stride: 2, tilt: 0,
+           color: (58, 66, 40), joint: (104, 114, 58), far: (30, 34, 20), outline: (12, 14, 6), thick: 2,
+           body: "cave_eel", eyes: (232, 222, 140),
+           each: [],
+           segments: (count: 14, spacing: 5, size: (9, 7), color: (54, 62, 36), lit: (96, 106, 56), belly: (140, 132, 86),
+                      reach: 1, lean: 0, wave: 0.16, tail: 10, taper: 0.4)),
+    movement: (
+        run_speed: 80,
+        ground_accel: 600,
+        ground_decel: 800,
+        air_accel: 320,
+        jump_height: 20,
+        air_jumps: 0,
+        step_height: 6,
+        dash_speed: 0,
+        fly_speed: 110,
+        fly_accel: 420,
+    ),
+    brain: (kind: "hunter", params: (aggro: 200, close: Range(near: 40, far: 120))),
+    custom: (name: "gnasher", params: (lunges: 1, lure: 0, bite: 0.5, glow: (232, 222, 140), aquatic: true, den: true, trail: [2, 3, 2])),
+)

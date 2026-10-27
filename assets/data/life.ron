@@ -108,6 +108,8 @@
     (kind: "drowned", place: Flooded, bands: ["caverns"], most: 3, rate: 0.1),
     // An angler lurker hangs in the flooded caverns' dark, its lure glowing.
     (kind: "angler_lurker", place: Flooded, bands: ["caverns"], most: 1, rate: 0.03),
+    // Cave eels wait in the nooks of the flooded caverns' walls.
+    (kind: "cave_eel", place: Flooded, bands: ["caverns"], most: 2, rate: 0.06),
     // The leviathan: one, rare, in the great halls' open lakes.
     (kind: "leviathan", place: Flooded, bands: ["caverns"], most: 1, rate: 0.01, open: 90),
     (kind: "glutton", place: Cave, bands: ["caverns", "deep"], most: 1, rate: 0.04),
