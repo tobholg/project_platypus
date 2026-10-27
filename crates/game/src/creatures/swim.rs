@@ -12,10 +12,14 @@
 //! Its body (`BodyDef`): plates along the way its head went, a wave
 //! running down them from head to tail, swelling with each stroke and
 //! dying away in the glide (the dance of it); fins on them (along its
-//! back and belly, at its sides, its tail's fan) swaying with it; spots
-//! and lines of light along its flanks pulsing in waves down it. Its plates
-//! take blows (`Parts`). Drawn on two canvases: its body lit as the world
-//! is, its glow over the light (as glowfish are).
+//! back and belly, at its sides, its tail's fan), each a fan of bony rays
+//! with a dim web between and lit tips, swaying with it; spots and lines
+//! of light along its flanks pulsing in waves down it; tendrils trailing
+//! from its tail (`TendrilDef`), wafting on the water, crackling with
+//! lightning if they're charged: touching one, anything alive is shocked
+//! (not itself). Its plates take blows (`Parts`). Drawn on two canvases:
+//! its body lit as the world is, its glow over the light (as glowfish
+//! are).
 
 use std::collections::VecDeque;
 use std::f32::consts::TAU;
@@ -37,6 +41,7 @@ impl Plugin for SwimPlugin {
         app.init_resource::<BodyCanvas>()
             .init_resource::<GlowCanvas>()
             .add_systems(FixedUpdate, (grow, strokes).chain().after(super::custom::CustomSet::Think).in_set(TickSet::Intent))
+            .add_systems(FixedUpdate, shock.in_set(TickSet::Bodies).after(super::move_creatures))
             .add_systems(Update, (follow.before(super::body::animation::animate), draw.after(follow)));
     }
 }
@@ -106,6 +111,27 @@ pub struct BodyDef {
     pub fins: Vec<FinDef>,
     #[serde(default)]
     pub glow: Option<GlowDef>,
+    #[serde(default)]
+    pub tendrils: Option<TendrilDef>,
+}
+
+/// Tendrils from its tail: so many, each so many links this far apart
+/// (cells), this wide at the root (tapering), glowing this colour; charged,
+/// they crackle and shock what touches them (`zap`: damage, stun).
+#[derive(Clone, Debug, Deserialize)]
+pub struct TendrilDef {
+    pub count: usize,
+    pub links: usize,
+    pub gap: f32,
+    #[serde(default = "tendril_width")]
+    pub width: f32,
+    pub color: (u8, u8, u8),
+    #[serde(default)]
+    pub zap: Option<(f32, f32)>,
+}
+
+fn tendril_width() -> f32 {
+    2.0
 }
 
 fn taper() -> f32 {
@@ -181,13 +207,17 @@ pub struct Swimmer {
     pub flare: (f32, f32),
     /// Its lights down its body.
     lights: Vec<Entity>,
+    /// Its tendrils: each link where it is and was (Verlet).
+    pub tendrils: Vec<(Vec<Vec2>, Vec<Vec2>)>,
+    /// What its tendrils have shocked lately (each a wait).
+    shocked: Vec<(Entity, f32)>,
     /// Its stroke count, for jitter.
     strokes: u32,
 }
 
 impl Swimmer {
     fn new(heading: f32) -> Swimmer {
-        Swimmer { heading, stroke_left: 0.0, pulse: 0.0, burst: 0.0, phase: 0.0, glow: 0.0, way: VecDeque::new(), plates: Vec::new(), flare: (0.0, 0.0), lights: Vec::new(), strokes: 0 }
+        Swimmer { heading, stroke_left: 0.0, pulse: 0.0, burst: 0.0, phase: 0.0, glow: 0.0, way: VecDeque::new(), plates: Vec::new(), flare: (0.0, 0.0), lights: Vec::new(), tendrils: Vec::new(), shocked: Vec::new(), strokes: 0 }
     }
 
     /// A strike: a hard kick along `dir` (to `speed`), its head turned
@@ -389,6 +419,12 @@ fn follow(mut commands: Commands, time: Res<Time>, mut q: Query<(Entity, &mut Sw
             }
         }
         s.plates = plates;
+        // Its tendrils, trailing from its tail.
+        if let Some(td) = &b.tendrils {
+            let (end, dir) = s.plates[n - 1];
+            let root = end - dir * b.size.0 * scale(b, 1.0) * 0.5;
+            waft(&mut s, td, root, dir, dt);
+        }
         // Its lights down it (its glow's colour, flaring with it).
         if let Some(g) = &b.glow {
             if s.lights.len() != g.lights {
@@ -409,6 +445,108 @@ fn follow(mut commands: Commands, time: Res<Time>, mut q: Query<(Entity, &mut Sw
             }
         }
     }
+}
+
+/// Its tendrils' links, from its tail's end: trailing on the water (a
+/// Verlet chain, damped), wafting across their way (each its own beat).
+fn waft(s: &mut Swimmer, td: &TendrilDef, root: Vec2, dir: Vec2, dt: f32) {
+    // (Each its own: a little longer or shorter than the rest.)
+    let own = |k: usize| (platypus_sim::rng::hash(&[k as u64, 0x7E4D]) % 1000) as f32 / 1000.0;
+    let gap = |k: usize| td.gap * (0.7 + 0.6 * own(k));
+    if s.tendrils.len() != td.count {
+        s.tendrils = (0..td.count).map(|k| {
+            let pts: Vec<Vec2> = (0..td.links).map(|i| root - dir * gap(k) * i as f32).collect();
+            (pts.clone(), pts)
+        }).collect();
+    }
+    let keep = (-dt * 2.5).exp();
+    let across = dir.perp();
+    let t = s.glow;
+    for (k, (pts, prev)) in s.tendrils.iter_mut().enumerate() {
+        // (Their roots fanned across its tail's end.)
+        let spread = (k as f32 - (td.count as f32 - 1.0) * 0.5) * td.width * 1.2;
+        let at = root + across * spread;
+        if pts[0].distance(at) > 400.0 {
+            *pts = (0..td.links).map(|i| at - dir * td.gap * i as f32).collect();
+            *prev = pts.clone();
+        }
+        // (Each its own beat; they fan apart toward their tips.)
+        let (beat, hz) = (own(k) * TAU, 1.4 + 1.6 * own(k + 17));
+        let fan = (k as f32 - (td.count as f32 - 1.0) * 0.5) / td.count.max(1) as f32;
+        let gap = gap(k);
+        for i in 1..pts.len() {
+            let v = (pts[i] - prev[i]) * keep;
+            prev[i] = pts[i];
+            let far = i as f32 / pts.len() as f32;
+            let sway = across * ((t * hz + beat + i as f32 * 0.3).sin() * 90.0 + fan * 140.0) * far;
+            // (Drawn out behind its tail, as by a current: at rest they
+            // hang back, not curling up in knots.)
+            let trail = -dir * 160.0;
+            pts[i] += v + (sway + trail + Vec2::NEG_Y * 8.0) * dt * dt;
+        }
+        for _ in 0..4 {
+            pts[0] = at;
+            for i in 1..pts.len() {
+                let d = pts[i] - pts[i - 1];
+                let len = d.length().max(1e-4);
+                let fix = d * (1.0 - gap / len);
+                if i == 1 {
+                    pts[i] -= fix;
+                } else {
+                    pts[i - 1] += fix * 0.5;
+                    pts[i] -= fix * 0.5;
+                }
+            }
+        }
+        pts[0] = at;
+    }
+}
+
+/// Charged tendrils shock what's alive and touching them (never their
+/// own): a storm hit, a jolt, a crackle.
+#[allow(clippy::type_complexity)]
+fn shock(
+    mut swimmers: Query<(Entity, &mut Swimmer, &Animator)>,
+    bodies: Query<(Entity, &Kinematics, &super::Health)>,
+    mut hits: MessageWriter<crate::combat::Hit>,
+    mut sounds: MessageWriter<crate::sound::PlaySound>,
+    mut sparks: ResMut<crate::vfx::Sparks>,
+) {
+    for (e, mut s, anim) in &mut swimmers {
+        let Some(td) = anim.def.swim.as_ref().and_then(|sd| sd.body.as_ref()).and_then(|b| b.tendrils.as_ref()) else { continue };
+        let Some((damage, stun)) = td.zap else { continue };
+        for w in s.shocked.iter_mut() {
+            w.1 -= DT;
+        }
+        s.shocked.retain(|w| w.1 > 0.0);
+        // (Crackling now and then along them.)
+        let n = s.tendrils.len();
+        if n > 0 && platypus_sim::rng::hash(&[e.to_bits(), (s.glow * 60.0) as u64]) % 4 == 0 {
+            let (pts, _) = &s.tendrils[(s.glow * 37.0) as usize % n];
+            if let Some(&at) = pts.get((s.glow * 91.0) as usize % pts.len().max(1)) {
+                sparks.emit(&crackle(td.color), 2, at, Vec2::Y, Vec2::ZERO);
+            }
+        }
+        for (who, k, h) in &bodies {
+            if who == e || h.hp <= 0.0 || s.shocked.iter().any(|w| w.0 == who) {
+                continue;
+            }
+            let reach = k.body.half.length() + td.width;
+            let touch = s.tendrils.iter().flat_map(|(pts, _)| pts.iter().skip(1)).find(|p| p.distance(k.body.pos) < reach).copied();
+            if let Some(at) = touch {
+                let away = (k.body.pos - at).normalize_or(Vec2::Y);
+                hits.write(crate::combat::Hit { by: Some(e), target: who, damage, harm: super::Harm::Storm, knock: away * 220.0, stun, at, dir: away, weight: 0.6, crit: false });
+                sounds.write(crate::sound::PlaySound::at("zap", at).pitch(1.3).volume(0.9));
+                sparks.emit(&crackle(td.color), 14, at, away, Vec2::ZERO);
+                s.shocked.push((who, 0.7));
+            }
+        }
+    }
+}
+
+/// Lightning's crackle off a charged tendril: white-hot, jumping about.
+fn crackle((r, g, b): (u8, u8, u8)) -> crate::magic::runes::Emitter {
+    crate::magic::runes::Emitter { count: 1.0, life: (0.05, 0.18), colors: vec![(255, 255, 255), (r, g, b), (r / 3, g / 3, b / 2)], speed: 60.0, spread: 3.14, gravity: 0.0, drag: 6.0, size: 1.0, jitter: 90.0, glow: true }
 }
 
 /// How much of a flare is at `t` down its body (0..1).
@@ -445,6 +583,15 @@ const MEMBRANE: u8 = 110;
 
 fn faint((r, g, b): (u8, u8, u8)) -> [u8; 4] {
     [r, g, b, MEMBRANE]
+}
+
+/// A fin's web between its rays: its colour, see-through; its rays paler.
+fn web((r, g, b): (u8, u8, u8)) -> [u8; 4] {
+    [r, g, b, 170]
+}
+
+fn ray((r, g, b): (u8, u8, u8)) -> [u8; 4] {
+    [r.saturating_add(50), g.saturating_add(60), b.saturating_add(60), 255]
 }
 
 fn dark((r, g, b): (u8, u8, u8)) -> (u8, u8, u8) {
@@ -487,6 +634,33 @@ fn capsule(a: Vec2, b: Vec2, r: f32, outline: bool, line: [u8; 4], fill: [u8; 4]
     }
 }
 
+/// A fin of rays: bony spines from its base (`a` to `b`) out along `out`
+/// (leaning back along `back`), tallest in the middle, a web between them
+/// (`web`, see-through), each tip lit (`tip`, over the light).
+#[allow(clippy::too_many_arguments)]
+fn rays(a: Vec2, b: Vec2, out: Vec2, back: Vec2, tall: f32, lean: f32, ray: [u8; 4], web: [u8; 4], tip: Option<[u8; 4]>, cells: &mut Vec<(IVec2, [u8; 4])>, lights: &mut Vec<(IVec2, [u8; 4])>) {
+    let k = ((a.distance(b) / 4.0).round() as usize).clamp(3, 9);
+    let spine = |i: usize| {
+        let t = (i as f32 + 0.5) / k as f32;
+        let base = a + (b - a) * t;
+        let h = tall * (std::f32::consts::PI * t).sin().powf(0.6) * (0.8 + 0.2 * ((i * 7) % 3) as f32 / 2.0);
+        (base, base + out * h + back * h * lean)
+    };
+    for i in 0..k - 1 {
+        let ((b0, t0), (b1, t1)) = (spine(i), spine(i + 1));
+        fin(t0, t1, b0, web, cells);
+        fin(b0, b1, t1, web, cells);
+    }
+    for i in 0..k {
+        let (base, end) = spine(i);
+        stroke(base, end, 0.8, 0.4, ray, cells);
+        if let Some(g) = tip {
+            stroke(end, end, 0.9, 0.9, g, lights);
+            stroke(end - (end - base) * 0.25, end, 0.4, 0.4, [g[0], g[1], g[2], 150], lights);
+        }
+    }
+}
+
 /// A fin: a fan of strokes from its tip to each point along its base.
 fn fin(a: Vec2, b: Vec2, tip: Vec2, c: [u8; 4], out: &mut Vec<(IVec2, [u8; 4])>) {
     let n = (a.distance(b) * 1.5).ceil().max(2.0) as usize;
@@ -525,22 +699,17 @@ fn draw(
         };
         let at_share = |t: f32| ((t * (n - 1) as f32).round() as usize).min(n - 1);
         let fins = |kind: FinKind| b.fins.iter().filter(move |f| f.kind == kind);
-        // Fins behind the body: back, belly, the far side's.
+        // Fins behind the body: back, belly (fans of rays).
         for f in fins(FinKind::Back).chain(fins(FinKind::Belly)) {
             let j = at_share(f.at);
             let (at, dir) = s.plates[j];
             let sc = scale(b, f.at);
             let u = up(dir) * if f.kind == FinKind::Back { 1.0 } else { -1.0 };
             let r = b.size.1 * sc * 0.5;
-            let lean = (s.phase - TAU * j as f32 / b.wave.0.max(1.0)).sin() * 0.25;
-            let (a0, a1) = (at + dir * f.size.0 * 0.5 + u * r * 0.6, at - dir * f.size.0 * 0.5 + u * r * 0.6);
-            let tip = at - dir * f.size.0 * (0.35 + lean) + u * (r + f.size.1 * sc);
-            fin(a0, a1, tip, rgb(f.color), &mut cells);
-            if let Some(g) = f.glow {
-                fin(a0, a1, tip, faint(g), &mut lights);
-                stroke(a0, tip, 0.5, 0.5, rgb(g), &mut lights);
-                stroke(tip, a1, 0.5, 0.5, rgb(g), &mut lights);
-            }
+            let lean = 0.45 + (s.phase - TAU * j as f32 / b.wave.0.max(1.0)).sin() * 0.15;
+            let (a0, a1) = (at + dir * f.size.0 * 0.5 + u * r * 0.7, at - dir * f.size.0 * 0.5 + u * r * 0.7);
+            let (rc, wc) = (ray(f.color), web(f.color));
+            rays(a0, a1, u, -dir, f.size.1 * sc, lean, rc, wc, f.glow.map(rgb), &mut cells, &mut lights);
         }
         if let Some(f) = fins(FinKind::Tail).next() {
             // Its tail's fan: from the end of it out to two tips, swept
@@ -588,19 +757,29 @@ fn draw(
                 }
             }
         }
-        // Its side fins, in front.
+        // Its side fins, in front: fanned back and down, flapping with its
+        // strokes.
         for f in fins(FinKind::Side) {
             let j = at_share(f.at);
             let (at, dir) = s.plates[j];
             let u = up(dir);
-            let flap = 0.4 + 0.6 * s.pulse;
-            let tip = at - dir * f.size.0 - u * f.size.1 * flap;
-            let (a0, a1) = (at + dir * f.size.0 * 0.25, at - dir * f.size.0 * 0.15);
-            fin(a0, a1, tip, rgb(f.color), &mut cells);
-            if let Some(g) = f.glow {
-                fin(a0, a1, tip, faint(g), &mut lights);
-                stroke(a0, tip, 0.5, 0.5, rgb(g), &mut lights);
-                stroke(at, tip, 0.5, 0.5, rgb(g), &mut lights);
+            let flap = 0.5 + 0.5 * s.pulse;
+            let out = (-u * flap - dir * 0.9).normalize_or(-dir);
+            let (a0, a1) = (at + dir * f.size.0 * 0.2, at - dir * f.size.0 * 0.15);
+            rays(a0, a1, out, -dir, f.size.0, 0.2, ray(f.color), web(f.color), f.glow.map(rgb), &mut cells, &mut lights);
+        }
+        // Its tendrils: lit, flickering if they're charged.
+        if let Some(td) = &b.tendrils {
+            let (r, g, bl) = td.color;
+            for (k, (pts, _)) in s.tendrils.iter().enumerate() {
+                let m = pts.len();
+                for i in 1..m {
+                    let t = i as f32 / m as f32;
+                    let w = td.width * (1.0 - t * 0.8);
+                    let flick = if td.zap.is_some() { 0.55 + 0.45 * ((s.glow * 40.0 + (i * 13 + k * 7) as f32).sin() > 0.3) as u8 as f32 } else { 1.0 };
+                    let c = [r, g, bl, (255.0 * flick * (1.0 - t * 0.5)) as u8];
+                    stroke(pts[i - 1], pts[i], w * 0.5, w * 0.45, c, &mut lights);
+                }
             }
         }
     }

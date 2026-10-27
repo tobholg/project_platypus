@@ -9,9 +9,13 @@
 //!   kick and a burst of strokes along that line, a bite at the end.
 //! - **Sweep**: it swims past beside you at a run: its body is the blow.
 //! - **Coil**: it circles you close, closer, its body round you.
-//! - **Abyssal bolts**: light runs up its body from its tail to its head,
-//!   and it looses a volley of slow orbs that curve onto you and burst (a
-//!   spell, `abyssal_bolt`: they hit whatever they meet).
+//! - **Abyssal bolts** (its favourite, out of reach): light runs up its
+//!   body from its tail to its head, and it looses a volley of slow orbs
+//!   that curve onto you and burst (a spell, `abyssal_bolt`: they hit
+//!   whatever they meet): a fan of them, a spiral all round it that curls
+//!   in, or a quick stream straight at you.
+//! - **Its tail**: a sheaf of charged tendrils (`swim.rs`): touch them and
+//!   they shock you.
 //! - **Pressure pulse**: crowded, it flashes all over and a ring of force
 //!   runs out through the water from its head, knocking everything in the
 //!   water away and stunning it (not itself).
@@ -60,6 +64,9 @@ pub struct Leviathan {
     pulsed: Vec<Entity>,
     #[serde(skip)]
     rage: bool,
+    /// The volley's pattern: a fan, a spiral, a stream.
+    #[serde(skip)]
+    pattern: u8,
     #[serde(skip)]
     started: bool,
 }
@@ -79,6 +86,7 @@ impl Default for Leviathan {
             pulse: None,
             pulsed: Vec::new(),
             rage: false,
+            pattern: 0,
             started: false,
         }
     }
@@ -166,12 +174,17 @@ const COIL_EVERY: f32 = 11.0;
 /// Its body's blows (damage, knock, stun), at most once a body this often.
 const BODY_HIT: (f32, f32, f32) = (18.0, 440.0, 0.25);
 const BODY_EVERY: f32 = 0.6;
-/// The volley: at what's this near to this far; its glow's run up it; a
-/// bolt this often; its wait.
-const VOLLEY_RANGE: (f32, f32) = (280.0, 1_000.0);
-const GATHER: f32 = 1.3;
+/// The volley: at what's this near to this far (picked this share of the
+/// times it's ready, before anything else); its glow's run up it; a
+/// fan's bolts this often, a spiral's (so many, all round), a stream's
+/// (so many); its wait.
+const VOLLEY_RANGE: (f32, f32) = (200.0, 1_100.0);
+const VOLLEY_FIRST: f32 = 0.55;
+const GATHER: f32 = 1.1;
 const BOLT_EVERY: f32 = 0.28;
-const VOLLEY_EVERY: f32 = 8.0;
+const SPIRAL: (f32, u32) = (0.11, 10);
+const STREAM: (f32, u32) = (0.13, 6);
+const VOLLEY_EVERY: f32 = 5.0;
 /// The pulse: at what's this near its head; its tell; the ring out to this
 /// far at this speed; what it does (damage, knock, stun); its wait.
 const PULSE_NEAR: f32 = 190.0;
@@ -268,7 +281,10 @@ fn think(
                     if ready(VOLLEY_I) && (VOLLEY_RANGE.0..VOLLEY_RANGE.1).contains(&dist) {
                         can.push(VOLLEY_I);
                     }
-                    if let Some(&pick) = can.get((roll * can.len() as f32) as usize) {
+                    // (Its magic first, more often than not, when it can.)
+                    let first = can.contains(&VOLLEY_I) && (platypus_sim::rng::hash(&[e.to_bits(), (o.clock * 3.0) as u64, 0xB01]) % 100) as f32 / 100.0 < VOLLEY_FIRST;
+                    let pick = if first { Some(&VOLLEY_I) } else { can.get((roll * can.len() as f32) as usize) };
+                    if let Some(&pick) = pick {
                         next = match pick {
                             PULSE_I => Doing::Charge(0.0),
                             UNDERTOW_I => Doing::Undertow(0.0),
@@ -278,7 +294,10 @@ fn think(
                                 o.side = if roll < 0.5 { 1.0 } else { -1.0 };
                                 Doing::Sweep(0.0)
                             }
-                            _ => Doing::Gather(0.0),
+                            _ => {
+                                o.pattern = (platypus_sim::rng::hash(&[e.to_bits(), (o.clock * 7.0) as u64, 0xB02]) % 3) as u8;
+                                Doing::Gather(0.0)
+                            }
                         };
                         let groan = if matches!(next, Doing::Charge(_) | Doing::Undertow(_)) { 0.5 } else { 0.8 };
                         sounds.write(crate::sound::PlaySound::at("leviathan_groan", maw).pitch(groan).volume(1.0));
@@ -364,7 +383,12 @@ fn think(
                 }
                 sw.flare = (1.0, 1.0 - (t / GATHER).min(1.0));
                 next = if t + DT >= GATHER {
-                    Doing::Volley(0.0, if o.rage { o.volley.1 } else { o.volley.0 })
+                    let more = if o.rage { 2 } else { 1 };
+                    Doing::Volley(0.0, match o.pattern {
+                        0 => if o.rage { o.volley.1 } else { o.volley.0 },
+                        1 => SPIRAL.1 * more,
+                        _ => STREAM.1 + 2 * (more - 1),
+                    })
                 } else {
                     Doing::Gather(t + DT)
                 };
@@ -376,13 +400,20 @@ fn think(
                     Doing::Circle
                 } else if t <= 0.0 {
                     if let (Some(tp), Some(i)) = (tp, book.spells.iter().position(|s| s.id == "abyssal_bolt")) {
-                        // (Fanned a little, one after another.)
-                        let fan = (left as f32 - 2.0) * 0.18;
-                        let way = Vec2::from_angle(fan).rotate((tp - maw).normalize_or(Vec2::X));
+                        let at = (tp - maw).normalize_or(Vec2::X);
+                        // A fan, one after another; a spiral all round it
+                        // (they curl in onto you); a stream straight at you.
+                        let (way, every) = match o.pattern {
+                            0 => (Vec2::from_angle((left as f32 - 2.0) * 0.18).rotate(at), BOLT_EVERY),
+                            1 => (Vec2::from_angle(left as f32 * std::f32::consts::TAU / SPIRAL.1 as f32).rotate(at), SPIRAL.0),
+                            _ => (at, STREAM.0),
+                        };
                         casts.write(crate::magic::CastRequest { caster: e, spell: i, from: maw + way * 14.0, toward: maw + way * 300.0, alt: false });
                         sounds.write(crate::sound::PlaySound::at("cast", maw).pitch(0.35).volume(0.9));
+                        Doing::Volley(every, left - 1)
+                    } else {
+                        Doing::Volley(BOLT_EVERY, left - 1)
                     }
-                    Doing::Volley(BOLT_EVERY, left - 1)
                 } else {
                     Doing::Volley(t - DT, left)
                 };

@@ -1,8 +1,8 @@
 // The leviathan: a sea serpent of the underground seas (custom/leviathan.rs),
 // near a thousand cells long: deep abyssal blue, pale along its back and its
-// throat, a frill of fins down its back, fins at its sides and a great tail
-// fan, all edged in cold blue light, spots of it down its flanks pulsing in
-// waves (swim.rs). It swims stroke by stroke, slow to turn, in great arcs.
+// throat, a frill of ray fins down its back and fins at its sides, their tips
+// lit cold blue, spots of it down its flanks pulsing in waves; a sheaf of
+// charged tendrils off its tail that shock what touches them (swim.rs). It swims stroke by stroke, slow to turn, in great arcs.
 // You hear it before you see it: a groan through the water. Rare.
 (
     name: "Leviathan",
@@ -24,24 +24,27 @@
     swim: (stroke: 150, every: (0.3, 1.2), drag: 1.1, turn: (0.9, 1.9), carve: 1.6, burst: (1.0, 0.7), tilt: 1.2,
            body: (count: 80, spacing: 18, size: (30, 28), swell: 0.12, taper: 0.22,
                   color: (18, 38, 92), lit: (60, 110, 190), belly: (120, 160, 205), outline: (4, 8, 22),
-                  wave: (14.0, 12.0, 0.1, 0.3),
+                  // (No wave down it: its arcs are its swimming.)
+                  wave: (14.0, 0.0, 0.0, 0.0),
                   fins: [
                       (kind: Side, at: 0.06, size: (36, 22), color: (30, 64, 140), glow: Some((140, 210, 255))),
                       (kind: Side, at: 0.45, size: (26, 15), color: (30, 64, 140), glow: Some((140, 210, 255))),
-                      (kind: Back, at: 0.08, size: (26, 14), color: (40, 84, 160), glow: Some((150, 215, 255))),
-                      (kind: Back, at: 0.16, size: (24, 13), color: (40, 84, 160), glow: Some((150, 215, 255))),
-                      (kind: Back, at: 0.24, size: (24, 12), color: (40, 84, 160), glow: Some((150, 215, 255))),
-                      (kind: Back, at: 0.32, size: (22, 11), color: (40, 84, 160), glow: Some((150, 215, 255))),
-                      (kind: Back, at: 0.4, size: (22, 10), color: (40, 84, 160), glow: Some((150, 215, 255))),
-                      (kind: Back, at: 0.5, size: (20, 9), color: (40, 84, 160), glow: Some((150, 215, 255))),
-                      (kind: Back, at: 0.6, size: (18, 8), color: (40, 84, 160), glow: Some((150, 215, 255))),
-                      (kind: Back, at: 0.7, size: (16, 7), color: (40, 84, 160), glow: Some((150, 215, 255))),
-                      (kind: Back, at: 0.8, size: (14, 6), color: (40, 84, 160), glow: Some((150, 215, 255))),
-                      (kind: Belly, at: 0.55, size: (20, 8), color: (30, 64, 140), glow: Some((140, 210, 255))),
-                      (kind: Belly, at: 0.72, size: (18, 7), color: (30, 64, 140), glow: Some((140, 210, 255))),
-                      (kind: Tail, at: 1.0, size: (44, 26), color: (40, 84, 160), glow: Some((150, 215, 255))),
+                      (kind: Back, at: 0.08, size: (28, 24), color: (40, 84, 160), glow: Some((150, 215, 255))),
+                      (kind: Back, at: 0.16, size: (26, 22), color: (40, 84, 160), glow: Some((150, 215, 255))),
+                      (kind: Back, at: 0.24, size: (26, 21), color: (40, 84, 160), glow: Some((150, 215, 255))),
+                      (kind: Back, at: 0.32, size: (24, 19), color: (40, 84, 160), glow: Some((150, 215, 255))),
+                      (kind: Back, at: 0.4, size: (24, 18), color: (40, 84, 160), glow: Some((150, 215, 255))),
+                      (kind: Back, at: 0.5, size: (22, 16), color: (40, 84, 160), glow: Some((150, 215, 255))),
+                      (kind: Back, at: 0.6, size: (20, 14), color: (40, 84, 160), glow: Some((150, 215, 255))),
+                      (kind: Back, at: 0.7, size: (18, 12), color: (40, 84, 160), glow: Some((150, 215, 255))),
+                      (kind: Back, at: 0.8, size: (16, 10), color: (40, 84, 160), glow: Some((150, 215, 255))),
+                      (kind: Belly, at: 0.55, size: (22, 14), color: (30, 64, 140), glow: Some((140, 210, 255))),
+                      (kind: Belly, at: 0.72, size: (20, 12), color: (30, 64, 140), glow: Some((140, 210, 255))),
                   ],
-                  glow: (color: (120, 205, 255), every: 2, pulse: 0.7, line: true, lights: 6, strength: 0.25))),
+                  glow: (color: (120, 205, 255), every: 2, pulse: 0.7, line: true, lights: 6, strength: 0.25),
+                  // Its tail: a sheaf of charged tendrils, crackling; touch
+                  // one and it shocks you.
+                  tendrils: (count: 6, links: 26, gap: 5, width: 3, color: (160, 225, 255), zap: Some((14, 0.35))))),
     movement: (
         run_speed: 90,
         ground_accel: 600,
