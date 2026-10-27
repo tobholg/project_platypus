@@ -23,7 +23,9 @@
 //!   caverns'): it never leaves it, turning back at its surface and edges.
 //! - A cave eel's (`den`): it waits in a nook of the wall, its head out,
 //!   still; what swims past near it, it shoots out at (the lunge, its tell
-//!   short) and goes back in.
+//!   short). Then it hunts: out of its nook after you, snapping and
+//!   lunging, till you've been gone a few seconds or led it far from home
+//!   (`LEASH`); only then back in. Hurt, it hunts what hurt it.
 //!
 //! Its hurt is all teeth: pierce.
 
@@ -58,9 +60,16 @@ pub struct Gnasher {
     pub den: bool,
     /// Its tendrils' lengths (links): a cave eel's barbels are short.
     pub trail: Vec<usize>,
-    /// Where it waits (`den`), and the way it looks out from there.
+    /// Where it waits (`den`), and the way it looks out from there; out of
+    /// it hunting, how long nothing's been in reach, and its health last.
     #[serde(skip)]
     home: Option<(Vec2, Vec2)>,
+    #[serde(skip)]
+    hunting: bool,
+    #[serde(skip)]
+    lost: f32,
+    #[serde(skip)]
+    last_hp: f32,
     #[serde(skip)]
     doing: Doing,
     /// Lunges left before it's spent.
@@ -96,6 +105,9 @@ impl Default for Gnasher {
             den: false,
             trail: vec![8, 10, 7],
             home: None,
+            hunting: false,
+            lost: 0.0,
+            last_hp: f32::MAX,
             doing: Doing::Hover,
             left: 0,
             scale: 1.0,
@@ -199,6 +211,14 @@ const DEN_TELL: f32 = 0.3;
 const DEN_REST: f32 = 3.5;
 const DEN_LOOK: i32 = 160;
 const DEN_ROWS: (i32, i32) = (-30, 90);
+/// Hunting out of its nook: begun by what comes this near it (or near its
+/// nook, or hurts it); what's further than this from its nook it lets go;
+/// back in once nothing's been in reach this long. Hunting, it lunges
+/// again this soon.
+const HUNT_NEAR: f32 = 200.0;
+const LEASH: f32 = 520.0;
+const HUNT_LOSE: f32 = 4.0;
+const HUNT_EVERY: f32 = 1.8;
 
 /// Where it goes for: their chest (so its body, hung under its maw, clears
 /// the ground on the way).
@@ -262,12 +282,12 @@ fn on(maw: Vec2, k: &Kinematics) -> bool {
 fn think(
     mut commands: Commands,
     sim: Res<SimWorld>,
-    mut q: Query<(Entity, &mut Gnasher, &mut Kinematics, &mut Controls, &mut Animator)>,
+    mut q: Query<(Entity, &mut Gnasher, &mut Kinematics, &mut Controls, &mut Animator, &crate::creatures::Health)>,
     hunted: Query<(Entity, &Kinematics, &Team), Without<Gnasher>>,
     (mut hits, mut sounds, mut trauma): (MessageWriter<crate::combat::Hit>, MessageWriter<crate::sound::PlaySound>, ResMut<crate::fx::Trauma>),
     (mut flares, mut sparks): (MessageWriter<crate::fx::Flare>, ResMut<crate::vfx::Sparks>),
 ) {
-    for (e, mut o, mut k, mut c, mut anim) in &mut q {
+    for (e, mut o, mut k, mut c, mut anim, health) in &mut q {
         let (pos, half) = (k.body.pos, k.body.half);
         if !o.started {
             o.started = true;
@@ -286,8 +306,27 @@ fn think(
         }
         let maw = frame_anchor(&anim, &k, "maw", "").unwrap_or(pos);
         let target = hunted.iter().filter(|(_, _, t)| t.hunted()).filter(|(_, tk, _)| tk.body.pos.distance(pos) < AGGRO).min_by(|a, b| a.1.body.pos.distance(pos).total_cmp(&b.1.body.pos.distance(pos)));
-        // (Waiting in its nook: only what comes near it.)
-        let target = target.filter(|(_, tk, _)| o.home.is_none_or(|(at, _)| tk.body.pos.distance(at) < DEN_REACH) || !matches!(o.doing, Doing::Hover));
+        // (Waiting in its nook: only what comes near it, or near the nook,
+        // or hurts it; then it hunts, out after it, till it's gone a while
+        // or led it far from home.)
+        if let Some((at, _)) = o.home {
+            let hurt = health.hp < o.last_hp - 0.01;
+            let near = target.is_some_and(|(_, tk, _)| tk.body.pos.distance(at) < DEN_REACH || tk.body.pos.distance(pos) < HUNT_NEAR);
+            if near || (hurt && target.is_some()) {
+                o.hunting = true;
+                o.lost = 0.0;
+            } else if o.hunting {
+                let held = target.is_some_and(|(_, tk, _)| tk.body.pos.distance(at) < LEASH);
+                o.lost = if held { 0.0 } else { o.lost + DT };
+                o.hunting = o.lost < HUNT_LOSE;
+            }
+        }
+        o.last_hp = health.hp;
+        let target = target.filter(|(_, tk, _)| match o.home {
+            None => true,
+            Some((at, _)) if o.hunting => tk.body.pos.distance(at) < LEASH,
+            Some((at, _)) => tk.body.pos.distance(at) < DEN_REACH || !matches!(o.doing, Doing::Hover),
+        });
         let tp = target.map(|(_, tk, _)| tk.body.pos + Vec2::Y * CHEST);
         // Bites what its maw's on (once a dart, once a lunge).
         let hard = o.bite;
@@ -423,8 +462,9 @@ fn think(
             }
             Doing::Spent(t) => {
                 next = if t + DT >= SPENT {
-                    o.ready[LUNGE_I] = if o.home.is_some() { DEN_REST } else { LUNGE_EVERY };
-                    o.ready[SNAP_I] = o.ready[SNAP_I].max(if o.home.is_some() { DEN_REST * 0.5 } else { 0.6 });
+                    let resting = o.home.is_some() && !o.hunting;
+                    o.ready[LUNGE_I] = if resting { DEN_REST } else if o.hunting { HUNT_EVERY } else { LUNGE_EVERY };
+                    o.ready[SNAP_I] = o.ready[SNAP_I].max(if resting { DEN_REST * 0.5 } else { 0.6 });
                     Doing::Hover
                 } else {
                     Doing::Spent(t + DT)
@@ -459,7 +499,7 @@ fn think(
             // (Facing its prey, backing off or not: its mouth to them; down,
             // beside them.)
             // (In its nook, or back to it: still there, looking out.)
-            Doing::Hover if let Some((at, out)) = o.home => {
+            Doing::Hover if !o.hunting && let Some((at, out)) = o.home => {
                 let to = at - pos;
                 c.0.move_x = (to.x * 0.06).clamp(-1.0, 1.0);
                 c.0.move_y = (to.y * 0.06).clamp(-1.0, 1.0);
