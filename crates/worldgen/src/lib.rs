@@ -242,6 +242,11 @@ const SILK_ONE_IN: u64 = 9;
 /// under it).
 const SEAL: i32 = 12;
 const SEAL_FADE: f64 = 0.08;
+/// Great flooded chambers: the huge chambers' noise this many times as big
+/// (times the world's `grand`), only where it's this much over their
+/// threshold (rarer), fading out over this far either side of the water
+/// table (cells).
+const GREAT_CHAMBER: (f64, f64, f64) = (1.2, 0.12, 300.0);
 /// Flooded caves keep this much rock (cells) between them and a chasm.
 const CHASM_LINING: i32 = 8;
 
@@ -408,6 +413,10 @@ pub struct TerrainGen {
     overhang: Fbm<Perlin>,
     /// Cavern chambers; stalactites and pillars; the underworld's vault.
     caverns: Fbm<Perlin>,
+    /// The world's `Scale::grand` (the great flooded chambers' size), and
+    /// their noise (the chambers', an octave less: cheaper, as smooth).
+    grand: f64,
+    great: Fbm<Perlin>,
     drips: Perlin,
     vault: Fbm<Perlin>,
     /// Ores and gems, and the noise they lie in.
@@ -445,6 +454,7 @@ impl TerrainGen {
 
     pub fn from_plan(plan: Arc<WorldPlan>, mats: &MaterialTable) -> Self {
         let seed = plan.seed;
+        let grand = plan::Scale::of(plan.width, plan.height).grand();
         let s = |salt: u64| (hash(&[seed, salt]) & 0xFFFF_FFFF) as u32;
         let ids = Ids {
             air: MaterialId::AIR,
@@ -538,6 +548,8 @@ impl TerrainGen {
             meadow: Perlin::new(s(8)),
             overhang: Fbm::<Perlin>::new(s(9)).set_octaves(2).set_frequency(1.0 / 90.0),
             caverns: Fbm::<Perlin>::new(s(15)).set_octaves(3).set_frequency(1.0 / 900.0),
+            grand,
+            great: Fbm::<Perlin>::new(s(15)).set_octaves(2).set_frequency(1.0 / 900.0),
             drips: Perlin::new(s(16)),
             vault: Fbm::<Perlin>::new(s(17)).set_octaves(3).set_frequency(1.0 / 600.0),
             pockets: Perlin::new(s(5)),
@@ -661,8 +673,9 @@ impl TerrainGen {
             m != self.ids.air && m != self.ids.water && m != self.ids.lava && m != self.ids.oil && m != self.ids.acid
         };
         // (A little bump of floor under its corners is fine; a chamber a
-        // tunnel's cut through, its floor's further down.)
-        [0.45, 0.3, 0.15, 0.0, -0.15, -0.3, -0.45].iter().find_map(|f| {
+        // tunnel's cut through, its floor's further down. Out toward its
+        // walls last: one where wide tunnels meet keeps its floor there.)
+        [0.45, 0.3, 0.15, 0.0, -0.15, -0.3, -0.45, 0.6, -0.6, 0.75, -0.75, 0.9, -0.9].iter().find_map(|f| {
             let x = (c.x + side * c.rx * f) as i32;
             (((c.y - c.ry) as i32 - CHEST_DROP)..c.y as i32).find(|&y| solid(x, y - 1) && (0..CHEST_SIZE.1).all(|dy| !solid(x, y + dy)) && (3..CHEST_SIZE.1).all(|dy| !solid(x - CHEST_SIZE.0 / 2, y + dy) && !solid(x + CHEST_SIZE.0 / 2, y + dy))).map(|y| CellPos::new(x, y))
         })
@@ -1074,7 +1087,7 @@ impl TerrainGen {
                 caves::Shroom::Glow => (i.mushroom_glow, None),
             };
         }
-        let wall = if depth > 24 { self.rock(x, y, self.plan.band_at(y)) } else if depth > 9 { i.dirt } else { i.air };
+        let wall = if depth > 24 { self.rock(x, y, self.plan.rock_band(x, y)) } else if depth > 9 { i.dirt } else { i.air };
         (wall, None)
     }
 
@@ -1155,7 +1168,7 @@ impl TerrainGen {
             return i.air;
         }
 
-        let band = plan.band_at(y);
+        let band = plan.rock_band(x, y);
         if band == Band::Underworld {
             return self.underworld(x, y);
         }
@@ -1472,11 +1485,13 @@ impl TerrainGen {
         let i = &self.ids;
         let o = pos.origin();
         let (mx, my) = ((o.x + CHUNK / 2) as f32, (o.y + CHUNK / 2) as f32);
-        let Some(hall) = self.plan.caves.halls.iter().find(|h| (mx - h.x).abs() < h.rx * 1.3 + CHUNK as f32 && my > h.y - CHUNK as f32 && my < h.y + h.ry * 1.3 + CHUNK as f32) else { return };
+        // (The nearest, should two reach this far.)
+        let Some(hall) = self.plan.caves.halls.iter().filter(|h| (mx - h.x).abs() < h.rx * 1.3 + CHUNK as f32 && my > h.y - CHUNK as f32 && my < h.y + h.ry * 1.3 + CHUNK as f32).min_by(|a, b| (mx - a.x).abs().total_cmp(&(mx - b.x).abs())) else { return };
         // (Read from the chunk as it was, written as it's dressed.)
         let before: Vec<MaterialId> = cells.iter().map(|c| c.material).collect();
         let at = |lx: i32, ly: i32| if (0..CHUNK).contains(&lx) && (0..CHUNK).contains(&ly) { before[(ly * CHUNK + lx) as usize] } else { self.material_at(o.x + lx, o.y + ly) };
-        let rock = |m: MaterialId| m == i.stone || m == i.slate || m == i.basalt || m == i.obsidian;
+        // (A hall in the toxic caves is lined with their crust: worms in it too.)
+        let rock = |m: MaterialId| m == i.stone || m == i.slate || m == i.basalt || m == i.obsidian || m == i.toxic_crust;
         let seed = self.plan.seed;
         for lx in 0..CHUNK {
             let x = o.x + lx;
@@ -1512,7 +1527,7 @@ impl TerrainGen {
         let i = &self.ids;
         let o = pos.origin();
         let plan = &*self.plan;
-        if plan.band_at(o.y + CHUNK / 2) != Band::Caverns || o.y > plan.water_table(o.x) {
+        if plan.rock_band(o.x + CHUNK / 2, o.y + CHUNK / 2) != Band::Caverns || o.y > plan.water_table(o.x) {
             return;
         }
         let before: Vec<MaterialId> = cells.iter().map(|c| c.material).collect();
@@ -1714,7 +1729,7 @@ impl TerrainGen {
         [(r, 0), (-r, 0), (0, r), (0, -r)].into_iter().any(|(dx, dy)| {
             let (nx, ny) = (x + dx, y + dy);
             let depth = self.plan.surface_at(nx) - ny;
-            let band = self.plan.band_at(ny);
+            let band = self.plan.rock_band(nx, ny);
             depth <= 0 || (band != Band::Underworld && (self.plan.chasm_at(nx, ny) || self.cavity(nx, ny, depth, band).is_some()))
         })
     }
@@ -1975,16 +1990,20 @@ impl TerrainGen {
     }
 
     /// The bedrock of a band: stone, then slate in the deep (with obsidian
-    /// seams), basalt in the underworld; borders dither over ~150 cells.
+    /// seams), basalt in the underworld; borders dither over ~150 cells
+    /// (the caverns' over a few hundred more, along their wandering floor:
+    /// tongues of slate up into the stone and of stone down).
     fn rock(&self, x: i32, y: i32, band: Band) -> MaterialId {
         let i = &self.ids;
         let (xf, yf) = (x as f64, y as f64);
-        let (deep_lo, deep_hi) = self.plan.band_span(Band::Deep);
+        let deep_lo = self.plan.band_span(Band::Deep).0;
         let jitter = (self.strata.get([xf / 45.0, yf / 45.0]) * 90.0) as i32;
         if band == Band::Underworld || y + jitter < deep_lo {
             return i.basalt;
         }
-        if y + jitter <= deep_hi {
+        let floor = if self.plan.near_floor(y, 600) { self.plan.caverns_floor(x) } else { self.plan.band_span(Band::Caverns).0 };
+        let tongues = if (y - floor).abs() < 600 { (self.strata.get([xf / 260.0, yf / 140.0 + 31.0]) * 260.0) as i32 } else { 0 };
+        if y + jitter + tongues < floor {
             if self.strata.get([xf / 105.0, yf / 105.0]) > 0.5 {
                 return i.obsidian;
             }
@@ -2003,8 +2022,7 @@ impl TerrainGen {
         // floor that no cave crosses (the deep under it is dry; water over
         // air would pour down it, and keep the whole lake moving), and rock
         // between flooded caves and a chasm's walls.
-        let floor = plan.band_span(Band::Caverns).0;
-        if (y - floor).abs() <= SEAL {
+        if plan.near_floor(y, SEAL) && (y - plan.caverns_floor(x)).abs() <= SEAL {
             // (An acid pool's acid-proof lining stays itself, and its acid
             // there is lining too: acid on bare rock would eat through.)
             return match plan.caves.at(x, y) {
@@ -2012,13 +2030,19 @@ impl TerrainGen {
                 _ => None,
             };
         }
-        if band == Band::Caverns && y < plan.water_table(x) && (-CHASM_LINING..=CHASM_LINING).step_by(4).any(|dx| plan.chasm_at(x + dx, y)) {
+        // (And a dam of rock between two stretches of the water table: no
+        // water beside the other's air, or over its level.)
+        if band == Band::Caverns && plan.dam_at(x, y) {
+            return None;
+        }
+        let flooded = band == Band::Caverns && y < plan.water_table(x);
+        if flooded && (-CHASM_LINING..=CHASM_LINING).step_by(4).any(|dx| plan.chasm_at(x + dx, y)) {
             return None;
         }
         if let Some(open) = plan.caves.at(x, y) {
             // One water table for every cave in the caverns: where the
             // tunnels meet the flooded chambers, the water's already level.
-            let air = if band == Band::Caverns && y < plan.water_table(x) { i.water } else { i.air };
+            let air = if flooded { i.water } else { i.air };
             match open {
                 caves::Open::Air => return Some(air),
                 caves::Open::Pool(caves::Pool::Water) => return Some(if plan.climate.ambient(x, y) <= 0 { i.ice } else { i.water }),
@@ -2060,7 +2084,7 @@ impl TerrainGen {
         let depth = plan.surface_at(x) - y;
         depth > 0
             && !matches!(plan.caves.at(x, y), Some(caves::Open::Air | caves::Open::Pool(_) | caves::Open::Gas))
-            && self.cavern(x, y, depth, plan.band_at(y)).is_none()
+            && self.cavern(x, y, depth, plan.rock_band(x, y)).is_none()
     }
 
     /// The caverns' and the deep's huge chambers (noise), and what fills
@@ -2086,8 +2110,9 @@ impl TerrainGen {
         // (And closing toward the caverns' floor, opening again under it:
         // the slab of rock between them stays whole, so the flooded
         // chambers above have bottoms.)
-        let (floor, top) = plan.band_span(Band::Caverns);
-        let span = SEAL_FADE * (top - floor) as f64;
+        let (lo, top) = plan.band_span(Band::Caverns);
+        let span = SEAL_FADE * (top - lo) as f64;
+        let floor = if plan.near_floor(y, span as i32 + 8) { plan.caverns_floor(x) } else { lo };
         let fade = |y: f64| {
             if band == Band::Caverns {
                 ((top as f64 - y) / 450.0).min((y - (floor + SEAL) as f64) / span).clamp(0.0, 1.0)
@@ -2095,7 +2120,18 @@ impl TerrainGen {
                 (((floor - SEAL) as f64 - y) / span).clamp(0.0, 1.0)
             }
         };
-        let base = |y: f64| self.caverns.get([xf / 1.6, y]) * fade(y);
+        // (Under the water table, now and then a great flooded chamber:
+        // the same noise, `GREAT_CHAMBER` times as big and rarer, fading
+        // out a little over the table, so most hold a lake to their roof
+        // and some an air pocket over it.)
+        let table = plan.water_table(x) as f64;
+        let great = GREAT_CHAMBER.0 * self.grand;
+        let base = |y: f64| {
+            let plain = self.caverns.get([xf / 1.6, y]);
+            let wet = if band == Band::Caverns { ((table + GREAT_CHAMBER.2 - y) / (2.0 * GREAT_CHAMBER.2)).clamp(0.0, 1.0) } else { 0.0 };
+            let big = if wet > 0.0 { (self.great.get([xf / (1.6 * great) + 5_000.0, y / great + 7_000.0]) - GREAT_CHAMBER.1) * wet } else { -1.0 };
+            plain.max(big) * fade(y)
+        };
         if base(yf) <= 0.22 {
             return None;
         }
@@ -2518,8 +2554,8 @@ mod tests {
             let (bed, roof) = (h.y - h.ry, h.y + h.ry);
             let share = (table as f32 - bed) / (roof - bed);
             assert!((0.2..0.4).contains(&share), "the lake fills {share:.2} of the hall at x {}", h.x);
-            // Across its middle: water under the table, air over it (the
-            // pillars aside), glowworms in its roof.
+            // Across its middle: water under the table, air over it,
+            // glowworms in its roof.
             let (mut wet, mut dry, mut worms) = (0, 0, 0);
             for x in ((h.x - h.rx * 0.5) as i32..(h.x + h.rx * 0.5) as i32).step_by(7) {
                 match g.sample(x, table - 15).0 {
@@ -2553,18 +2589,33 @@ mod tests {
             let width = g.plan.width;
             let (water, air) = (g.ids.water, g.ids.air);
             let mut leaks = Vec::new();
+            let mut look = |x: i32, y: i32| {
+                if g.sample(x, y).0 != water {
+                    return;
+                }
+                let open = |dx: i32, dy: i32| g.sample(x + dx, y + dy).0 == air;
+                if open(0, -1) || open(-1, 0) || open(1, 0) {
+                    leaks.push((x, y));
+                }
+            };
+            // Inside a stretch of the water table, down to the wandering floor.
             for k in 0..16 {
                 let x0 = width * k / 16 + 300;
                 let table = g.plan.water_table(x0);
                 for x in x0..x0 + 160 {
-                    for y in floor - 30..table {
-                        if g.sample(x, y).0 != water {
-                            continue;
-                        }
-                        let open = |dx: i32, dy: i32| g.sample(x + dx, y + dy).0 == air;
-                        if open(0, -1) || open(-1, 0) || open(1, 0) {
-                            leaks.push((x, y));
-                        }
+                    for y in g.plan.caverns_floor(x) - 30..table {
+                        look(x, y);
+                    }
+                }
+            }
+            // Across the dam between two stretches: from under the lower
+            // table to the higher (where one side's flooded, the other not).
+            for k in (1..width / plan::WATER_TABLE_SPAN).step_by(5) {
+                let line = k * plan::WATER_TABLE_SPAN;
+                let (a, b) = (g.plan.water_table(line - 1), g.plan.water_table(line));
+                for x in (line - 700..line + 700).step_by(2) {
+                    for y in a.min(b).max(g.plan.caverns_floor(x)) - 100..a.max(b) {
+                        look(x, y);
                     }
                 }
             }
@@ -3268,8 +3319,9 @@ mod tests {
         let h = g.heal(&c, &fresh).unwrap();
         assert!(h.edits.is_empty(), "the same scar when asked again ({} edits)", h.edits.len());
         let later = Healing { scorched: Some(3.0), ..fresh };
-        // (Tall grass grows back a row a pass: its height's worth.)
-        for _ in 0..18 {
+        // (Tall grass grows back a row a pass: its height's worth, the
+        // tallest's.)
+        for _ in 0..GRASS_MOST {
             let h = g.heal(&c, &later).unwrap();
             apply(&mut c, h);
         }
@@ -3872,4 +3924,6 @@ mod tests {
         assert!(floating * 20 <= heaped, "guano on something, not in the air: {floating} of {heaped}");
     }
 }
+
+
 

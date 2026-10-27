@@ -7,7 +7,7 @@ fn main() {
     let a: Vec<i32> = std::env::args().skip(1).map(|s| s.parse().unwrap()).collect();
     let (x0, y0, r) = (a[0], a[1], *a.get(2).unwrap_or(&20));
     let mats = MaterialTable::from_ron(include_str!("../../../assets/data/materials.ron")).unwrap();
-    let g = TerrainGen::new(1, Preset::Large, &mats);
+    let g = TerrainGen::new(std::env::var("SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(1), Preset::Large, &mats);
     let mut letters: HashMap<MaterialId, char> = HashMap::new();
     let pool: Vec<char> = "#abcdefghijklmnopqrstuvwxyz0123456789".chars().collect();
     let mut chunks = HashMap::new();

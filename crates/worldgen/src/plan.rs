@@ -117,6 +117,14 @@ impl Scale {
         let (w, h) = (width as f64 / REF_WIDTH, height as f64 / REF_HEIGHT);
         Scale { size: (w.min(1.0), h.min(1.0)), count: w }
     }
+
+    /// The greatest of a kind (a great lake, a great hall, the biggest
+    /// flooded chambers) is this many times its plain size: more in a
+    /// bigger world (1.5 in `small`, 2 in the reference, 2.5 in `large`).
+    /// (Sizes don't grow past the reference's; the greatest do.)
+    pub fn grand(&self) -> f64 {
+        (2.0 + 0.25 * self.count.log2()).clamp(1.25, 3.0)
+    }
 }
 
 /// Sea level and the floors of the bands (`Band::ALL` order) for a world
@@ -188,8 +196,17 @@ const CRYPT_SPACING: f64 = 2_100.0;
 /// Castles on the summits (large world).
 const CASTLES: f64 = 3.0;
 const CHASM_WIDTH: (f64, f64) = (165.0, 360.0);
-/// Columns sharing one cavern water table.
-const WATER_TABLE_SPAN: i32 = 3_072;
+/// Columns sharing one cavern water table (wide enough for a great hall).
+pub(crate) const WATER_TABLE_SPAN: i32 = 6_144;
+/// Between two stretches of the water table, a dam of rock from the
+/// caverns' floor to over the higher table (and this far over it): this
+/// thick either side of the line at least, and up to this much more, its
+/// faces wandering (going up, over this many cells).
+const DAM: (i32, i32, i32) = (40, 520, 40);
+const DAM_WANDER: f64 = 700.0;
+/// The caverns' floor (the line between them and the deep) rises and
+/// falls this share of the caverns' height, over this many columns.
+const FLOOR_WAVE: (f64, f64) = (0.06, 5_200.0);
 /// Height of a mountain's cliff bands (large world).
 const TERRACE: f64 = 105.0;
 /// The steepest the planned ground gets (cells up per cell across): no
@@ -485,20 +502,28 @@ impl WorldPlan {
         // Big lake bowls in the gentler land (rain would fill them anyway).
         let land = |x: i32| matches!(biomes[x as usize], Biome::Plains | Biome::Forest | Biome::Swamp);
         let mut bowls: Vec<(i32, i32)> = Vec::new();
+        let mut greats: Vec<(i32, i32)> = Vec::new();
         for _ in 0..(LAKE_BOWLS * cw).round().max(1.0) as usize {
+            // (One in three a great lake's, wider and deeper: the first sure
+            // to be.)
+            let great = bowls.is_empty() || hash(&[seed, 0x6EA7, bowls.len() as u64]) % 3 == 0;
+            let grand = scale.grand();
             for _try in 0..100 {
-                let half = (range(&mut rng, (600.0, 1_200.0)) * sw.max(0.4)) as i32;
+                let half = (range(&mut rng, (600.0, 1_200.0)) * sw.max(0.4) * if great { grand } else { 1.0 }) as i32;
                 let cx = ocean_w + half + (unit(&mut rng) * (width - 2 * (ocean_w + half)) as f64) as i32;
                 let clear = (cx - mid).abs() > half + (900.0 * sw) as i32 && bowls.iter().all(|&(bx, bh)| (cx - bx).abs() > half + bh + 300);
                 if !clear || !land(cx - half) || !land(cx + half) {
                     continue;
                 }
-                let depth = range(&mut rng, (135.0, 270.0)) * sh.max(0.4);
+                let depth = range(&mut rng, (135.0, 270.0)) * sh.max(0.4) * if great { grand } else { 1.0 };
                 for x in cx - half..=cx + half {
                     let k = 1.0 - ((x - cx) as f64 / half as f64).powi(2);
                     surface[x as usize] -= depth * k.max(0.0).powf(1.5);
                 }
                 bowls.push((cx, half));
+                if great {
+                    greats.push((cx, half));
+                }
                 break;
             }
         }
@@ -573,7 +598,7 @@ impl WorldPlan {
         // roll left, so it isn't a table), easing back into the land beyond.
         let plain = start_plain(&mut surface, mid, sw);
 
-        let water = water_levels(&surface, &biomes, &rugged, &bowls, sea_level, ocean_w, sh, sw, seed, (plain.0, plain.1));
+        let water = water_levels(&surface, &biomes, &rugged, (&bowls, &greats, scale.grand()), sea_level, ocean_w, sh, sw, seed, (plain.0, plain.1));
         let spires = plan_spires(seed, &surface, &biomes, &water, mid, ocean_w, sw, sh);
         for (r, &w) in rugged.iter_mut().zip(&water) {
             if w > 0 {
@@ -631,6 +656,8 @@ impl WorldPlan {
                 water: &water,
                 caverns_top: band_floors[3],
                 deep_top: band_floors[4],
+                floor_wave: (FLOOR_WAVE.0 * (band_floors[3] - band_floors[4]) as f64) as i32,
+                dam: DAM.0 + DAM.1,
                 spawn_x: mid,
                 start: start.span(),
                 scale,
@@ -749,6 +776,62 @@ impl WorldPlan {
     /// Is a cell inside a chasm?
     pub fn chasm_at(&self, x: i32, y: i32) -> bool {
         self.chasms.iter().any(|c| c.open(x, y))
+    }
+
+    /// How far the caverns' floor wanders, at most (cells, up or down).
+    pub fn floor_wave(&self) -> i32 {
+        let (lo, hi) = self.band_span(Band::Caverns);
+        (FLOOR_WAVE.0 * (hi - lo) as f64) as i32
+    }
+
+    /// The caverns' floor under a column: the line between them and the
+    /// deep, rising and falling (so it's no ruler's line across the world):
+    /// the rock changes there, the flooded basins have their bottom there.
+    pub fn caverns_floor(&self, x: i32) -> i32 {
+        let t = x as f64 / FLOOR_WAVE.1;
+        let wave = 0.7 * wave(self.seed ^ 0xF100, t) + 0.3 * wave(self.seed ^ 0xF101, t * 3.1);
+        self.band_floors[4] + (wave * self.floor_wave() as f64) as i32
+    }
+
+    /// Could the caverns' floor be within `margin` of this height?
+    pub fn near_floor(&self, y: i32, margin: i32) -> bool {
+        (y - self.band_floors[4]).abs() <= self.floor_wave() + margin
+    }
+
+    /// The band a cell's rock and caves are of: `band_at`, but with the
+    /// caverns' wandering floor (`caverns_floor`) between them and the deep.
+    /// (Spawns and loot go by `band_at`'s level lines.)
+    pub fn rock_band(&self, x: i32, y: i32) -> Band {
+        let band = self.band_at(y);
+        if matches!(band, Band::Caverns | Band::Deep) && (y - self.band_floors[4]).abs() <= self.floor_wave() + 1 {
+            return if y >= self.caverns_floor(x) { Band::Caverns } else { Band::Deep };
+        }
+        band
+    }
+
+    /// Flooded: a cave here in the caverns is under their water table.
+    pub fn flooded(&self, x: i32, y: i32) -> bool {
+        y < self.water_table(x) && self.rock_band(x, y) == Band::Caverns
+    }
+
+    /// In the dam of rock between two stretches of the water table (so
+    /// neither's water stands beside the other's air, or above its level).
+    pub fn dam_at(&self, x: i32, y: i32) -> bool {
+        let k = (x + WATER_TABLE_SPAN / 2) / WATER_TABLE_SPAN;
+        let line = k * WATER_TABLE_SPAN;
+        let d = x - line;
+        if k <= 0 || line >= self.width || d.abs() > DAM.0 + DAM.1 {
+            return false;
+        }
+        let n = self.water_tables.len();
+        let (a, b) = (self.water_tables[(k as usize - 1) % n], self.water_tables[k as usize % n]);
+        if y >= a.max(b) + DAM.2 || y < self.band_floors[5] {
+            return false;
+        }
+        // (Each face its own wander, both off the line: the line's always
+        // inside it.)
+        let face = |salt: u64| DAM.0 + ((0.5 + 0.5 * wave(hash(&[self.seed, salt, k as u64]), y as f64 / DAM_WANDER)) * DAM.1 as f64) as i32;
+        if d < 0 { -d <= face(0xDA0) } else { d <= face(0xDA1) }
     }
 
     /// Cavern chambers below this height are flooded.
@@ -971,6 +1054,16 @@ fn sunken(surface: &[i32], water: &[i32], biomes: &[Biome], sh: f64) -> Vec<Stru
     out
 }
 
+/// A smooth wave through -1..1 along `t` (one bump a unit or so): value
+/// noise, eased between hashed knots.
+fn wave(seed: u64, t: f64) -> f64 {
+    let k = t.floor();
+    let knot = |i: f64| (hash(&[seed, i as i64 as u64]) % 20_001) as f64 / 10_000.0 - 1.0;
+    let f = t - k;
+    let f = f * f * (3.0 - 2.0 * f);
+    knot(k) + (knot(k + 1.0) - knot(k)) * f
+}
+
 fn smoothstep(a: f64, b: f64, x: f64) -> f64 {
     let t = ((x - a) / (b - a)).clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
@@ -1010,7 +1103,7 @@ fn start_plain(surface: &mut [i32], mid: i32, sw: f64) -> (i32, i32, i32) {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn water_levels(surface: &[i32], biomes: &[Biome], rugged: &[f32], bowls: &[(i32, i32)], sea_level: i32, ocean_w: i32, sh: f64, sw: f64, seed: u64, plain: (i32, i32)) -> Vec<i32> {
+fn water_levels(surface: &[i32], biomes: &[Biome], rugged: &[f32], (bowls, greats, grand): (&[(i32, i32)], &[(i32, i32)], f64), sea_level: i32, ocean_w: i32, sh: f64, sw: f64, seed: u64, plain: (i32, i32)) -> Vec<i32> {
     let n = surface.len();
     let mut water = vec![0; n];
     // Oceans: from each edge until the beach.
@@ -1024,6 +1117,35 @@ fn water_levels(surface: &[i32], biomes: &[Biome], rugged: &[f32], bowls: &[(i32
     let left = window_max(surface, reach, false);
     let right = window_max(surface, reach, true);
     let hold: Vec<i32> = (0..n).map(|x| left[x].min(right[x])).collect();
+    // The great lakes first: each bowl filled to the lower of its rims
+    // (looked for past its own banks, however wide it is: wider than the
+    // reach), up to the land at its edges, deeper than the biome's lakes
+    // by `grand`.
+    for &(cx, half) in greats {
+        let (cx, half) = (cx as usize, half as usize);
+        let pad = half / 3;
+        let (l0, r1) = (cx.saturating_sub(half + pad).max(a), (cx + half + pad).min(b - 1));
+        let rim = surface[l0..=cx].iter().max().copied().unwrap_or(0).min(surface[cx..=r1].iter().max().copied().unwrap_or(0));
+        let floor = surface[l0..=r1].iter().min().copied().unwrap_or(rim);
+        let deepest = (l0..=r1).map(|i| biomes[i].lake_depth()).fold(0.0, f64::max) * sh.max(0.3) * grand;
+        // (No higher than the land at the bowl's own edges: the lake fills
+        // the bowl, not a film over the flats round it.)
+        let edges = surface[cx.saturating_sub(half).max(a)].min(surface[(cx + half).min(b - 1)]);
+        let lvl = rim.min(edges).min(floor + deepest as i32);
+        if surface[cx] >= lvl {
+            continue;
+        }
+        let (mut i, mut j) = (cx, cx);
+        while i > a && surface[i - 1] < lvl {
+            i -= 1;
+        }
+        while j + 1 < b && surface[j + 1] < lvl {
+            j += 1;
+        }
+        for w in &mut water[i..=j] {
+            *w = lvl;
+        }
+    }
     // Each run of columns under their rims is a lake: flat at the lowest rim
     // over it (so it's held everywhere), capped at the biome's depth.
     let mut x = a;
@@ -1039,6 +1161,9 @@ fn water_levels(surface: &[i32], biomes: &[Biome], rugged: &[f32], bowls: &[(i32
         let run = start..x;
         if run.clone().any(|i| rugged[i] > 0.2) {
             continue; // not in the notches between crags
+        }
+        if run.clone().any(|i| water[i] > 0) {
+            continue; // a great lake's
         }
         if run.start <= plain.1 as usize && run.end >= plain.0 as usize {
             continue; // the start's plain is dry

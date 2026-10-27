@@ -339,6 +339,10 @@ pub struct Ground<'a> {
     /// The top of the caverns and of the deep (the layers change there).
     pub caverns_top: i32,
     pub deep_top: i32,
+    /// How far the caverns' floor wanders up or down from `deep_top`, and
+    /// how far from a stretch of the water table's end its dam reaches.
+    pub floor_wave: i32,
+    pub dam: i32,
     /// Keep mouths away from here (the spawn).
     pub spawn_x: i32,
     /// The start valley (from x, to x): its shallow caverns are put first.
@@ -355,21 +359,20 @@ pub struct Ground<'a> {
 /// table cuts it a third of the way up, so its lake fills the bottom and
 /// a vast vault of air stands over it (the tunnels into it share the
 /// table, so its water's level with theirs and nothing pours). A domed
-/// roof, a flatter bed, ragged walls; rock pillars from bed to roof,
-/// waisted in the middle; the roof studded with glowworms (lib.rs).
+/// roof, a flatter bed, ragged walls; the roof studded with glowworms
+/// (lib.rs). Its size is all it needs.
 #[derive(Clone, Debug)]
 pub struct Hall {
     pub x: f32,
     pub y: f32,
     pub rx: f32,
     pub ry: f32,
-    /// Pillars: where across, how wide at bed and roof (cells).
-    pub pillars: Vec<(f32, f32)>,
 }
 
 /// Great halls: so many a reference world's width, this big (half-width,
 /// half-height: cells), their lake this share of their height up.
 const HALLS: f64 = 2.0;
+/// (Times the world's `grand`: a great hall's the greatest of its kind.)
 const HALL_RX: (f32, f32) = (480.0, 780.0);
 const HALL_RY: (f32, f32) = (220.0, 400.0);
 const HALL_LAKE: f32 = 0.3;
@@ -377,22 +380,16 @@ const HALL_LAKE: f32 = 0.3;
 const HALL_ROOM: (f32, f32) = (90.0, 140.0);
 
 impl Hall {
-    /// Inside it (open), in one of its pillars (rock), or not in it.
-    fn at(&self, x: f32, y: f32, rim: &Perlin) -> Option<bool> {
+    /// Inside it?
+    fn holds(&self, x: f32, y: f32, rim: &Perlin) -> bool {
         let (dx, dy) = ((x - self.x) / self.rx, (y - self.y) / self.ry);
         if dx.abs() > 1.25 || dy.abs() > 1.25 {
-            return None;
+            return false;
         }
         // A flatter bed (rounder going down), a dome over; ragged walls.
         let r = if dy < 0.0 { (dx.abs().powi(3) + dy.abs().powi(3)).cbrt() } else { (dx * dx + dy * dy).sqrt() };
         let ragged = 1.0 + 0.07 * rim.get([x as f64 / 95.0, y as f64 / 95.0]) as f32 + 0.03 * rim.get([x as f64 / 23.0, y as f64 / 23.0 + 50.0]) as f32;
-        if r >= ragged {
-            return None;
-        }
-        // (Waisted toward the middle of its height: an hourglass of rock.)
-        let waist = 1.0 - 0.45 * (1.0 - dy.abs()).max(0.0).powi(2);
-        let wobble = 1.0 + 0.15 * rim.get([x as f64 / 31.0 + 9.0, y as f64 / 41.0]) as f32;
-        Some(!self.pillars.iter().any(|&(px, pw)| (x - px).abs() < pw * waist * wobble))
+        r < ragged
     }
 }
 
@@ -528,14 +525,16 @@ impl Caves {
         let mut halls: Vec<Hall> = Vec::new();
         let mut hrng = Rng::seeded(&[seed, 0x4A11]);
         let want = ((HALLS * g.scale.count).round() as usize).max(1);
+        let grand = g.scale.grand() as f32;
         for _ in 0..want * 40 {
             if halls.len() >= want {
                 break;
             }
             let span = (unit(&mut hrng) * g.water_tables.len() as f32) as usize % g.water_tables.len().max(1);
             let table = g.water_tables[span] as f32;
-            let rx = range(&mut hrng, HALL_RX) * sw.max(0.3);
-            let (s0, s1) = ((span as i32 * g.table_span) as f32 + rx + 120.0, ((span as i32 + 1) * g.table_span).min(g.width) as f32 - rx - 120.0);
+            let rx = range(&mut hrng, HALL_RX) * sw.max(0.3) * grand;
+            let edge = rx + 120.0 + g.dam as f32;
+            let (s0, s1) = ((span as i32 * g.table_span) as f32 + edge, ((span as i32 + 1) * g.table_span).min(g.width) as f32 - edge);
             if s1 <= s0 {
                 continue;
             }
@@ -546,19 +545,17 @@ impl Caves {
             // (As tall as it can be, up to its pick: its bed over the
             // caverns' floor, its roof under their top.)
             let lake = 2.0 * HALL_LAKE;
-            let most = ((table - g.deep_top as f32 - HALL_ROOM.0) / lake).min((g.caverns_top as f32 - HALL_ROOM.1 - table) / (2.0 - lake));
-            let ry = (range(&mut hrng, HALL_RY) * sh.max(0.3)).min(most);
-            if ry < HALL_RY.0 * 0.6 * sh.max(0.3) {
+            let most = ((table - (g.deep_top + g.floor_wave) as f32 - HALL_ROOM.0) / lake).min((g.caverns_top as f32 - HALL_ROOM.1 - table) / (2.0 - lake));
+            let ry = (range(&mut hrng, HALL_RY) * sh.max(0.3) * grand).min(most);
+            if ry < HALL_RY.0 * 0.6 * sh.max(0.3) * grand {
                 continue;
             }
             // (Its bed `lake` of its half-height under the table.)
             let y = table + ry - lake * ry;
-            if halls.iter().any(|h| (h.x - x).abs() < h.rx + rx + 400.0) {
+            if halls.iter().any(|h| (h.x - x).abs() < (h.rx + rx) * 1.3 + 400.0) {
                 continue;
             }
-            let n = 2 + (hrng.next_u32() % 3) as usize;
-            let pillars = (0..n).map(|k| (x - rx * 0.7 + rx * 1.4 * (k as f32 + 0.25 + 0.5 * unit(&mut hrng)) / n as f32, 14.0 + 22.0 * unit(&mut hrng))).collect();
-            halls.push(Hall { x, y, rx, ry, pillars });
+            halls.push(Hall { x, y, rx, ry });
         }
 
         // Links: each chamber to its nearest few; a spanning tree of them
@@ -1062,10 +1059,9 @@ impl Caves {
 
     /// What the caves put at a cell, if they reach it.
     pub fn at(&self, x: i32, y: i32) -> Option<Open> {
-        // (A great hall's open space, its pillars rock, whatever else is
-        // planned there.)
-        if let Some(open) = self.halls.iter().find_map(|h| h.at(x as f32, y as f32, &self.rim)) {
-            return open.then_some(Open::Air);
+        // (A great hall's open space, whatever else is planned there.)
+        if self.halls.iter().any(|h| h.holds(x as f32, y as f32, &self.rim)) {
+            return Some(Open::Air);
         }
         let (cx, cy) = (x.div_euclid(CHUNK), y.div_euclid(CHUNK));
         let Some((chambers, segments)) = self.bins.get(&(cx, cy)) else {
