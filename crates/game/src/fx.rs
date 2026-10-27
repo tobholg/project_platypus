@@ -17,6 +17,12 @@ pub struct Explosion {
     pub power: f32,
 }
 
+/// Blasts that flash their own colour, not fire's (a spell's of cold light):
+/// where, the colour, how long it's waited (a blast the sim reports at that
+/// spot within a moment takes it).
+#[derive(Resource, Default)]
+pub struct FlashTints(pub Vec<(Vec2, [f32; 3], f32)>);
+
 /// A flare of light, a moment (`light`: what lights up, no blast): a
 /// glutton's eruption.
 #[derive(Message, Clone, Debug)]
@@ -79,6 +85,7 @@ impl Plugin for FxPlugin {
             .add_message::<Lightning>()
             .add_message::<Zapped>()
             .init_resource::<SkyFlash>()
+            .init_resource::<FlashTints>()
             .init_resource::<Trauma>()
             .init_resource::<ShakeOffset>()
             .add_systems(Startup, setup)
@@ -90,23 +97,35 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
     commands.insert_resource(FlashAssets { mesh: meshes.add(Circle::new(1.0)) });
 }
 
+#[allow(clippy::too_many_arguments)]
 fn on_explosion(
     mut commands: Commands,
+    time: Res<Time>,
+    mut tints: ResMut<FlashTints>,
     mut blasts: MessageReader<Explosion>,
     mut trauma: ResMut<Trauma>,
     assets: Res<FlashAssets>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     cam: Single<&Transform, With<MainCamera>>,
 ) {
+    // (Tints no blast came for go.)
+    let dt = time.delta_secs();
+    tints.0.retain_mut(|t| {
+        t.2 += dt;
+        t.2 < 0.5
+    });
     for e in blasts.read() {
         // Closer and bigger shakes harder; far-off blasts are a rumble.
         let dist = cam.translation.truncate().distance(e.at);
         let near = (1.0 - dist / (e.radius * 14.0)).clamp(0.0, 1.0);
         trauma.0 = (trauma.0 + near * (e.radius / 39.0).min(1.5) * 0.75).min(1.0);
+        // (Its own colour, paled, if a spell said so; else fire's.)
+        let tint = tints.0.iter().position(|(at, ..)| at.distance(e.at) < 6.0).map(|i| tints.0.swap_remove(i).1);
+        let color = tint.map_or(Color::srgba(1.0, 0.92, 0.7, 0.9), |[r, g, b]| Color::srgba(0.4 + r * 0.6, 0.4 + g * 0.6, 0.4 + b * 0.6, 0.85));
         commands.spawn((
             Flash { age: 0.0, radius: e.radius },
             Mesh2d(assets.mesh.clone()),
-            MeshMaterial2d(materials.add(ColorMaterial::from_color(Color::srgba(1.0, 0.92, 0.7, 0.9)))),
+            MeshMaterial2d(materials.add(ColorMaterial::from_color(color))),
             Transform::from_translation(e.at.extend(16.0)).with_scale(Vec3::splat(e.radius * 0.6)),
         ));
     }

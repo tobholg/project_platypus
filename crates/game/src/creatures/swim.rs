@@ -32,6 +32,7 @@ use super::body::legs::stroke;
 use super::body::parts::{Part, PartKind, Parts};
 use super::{Controls, Kinematics};
 use crate::canvas::{Canvas, CanvasSprites};
+use platypus_sim::CellPos;
 use crate::world::{ChunkLoader, TickSet};
 
 pub struct SwimPlugin;
@@ -40,7 +41,7 @@ impl Plugin for SwimPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<BodyCanvas>()
             .init_resource::<GlowCanvas>()
-            .add_systems(FixedUpdate, (grow, strokes).chain().after(super::custom::CustomSet::Think).in_set(TickSet::Intent))
+            .add_systems(FixedUpdate, (grow, turn_back, strokes, burrow).chain().after(super::custom::CustomSet::Think).in_set(TickSet::Intent))
             .add_systems(FixedUpdate, shock.in_set(TickSet::Bodies).after(super::move_creatures))
             .add_systems(Update, (follow.before(super::body::animation::animate), draw.after(follow)));
     }
@@ -69,6 +70,11 @@ pub struct SwimDef {
     /// round fish's hardly, an eel's all the way.
     #[serde(default = "upright")]
     pub tilt: f32,
+    /// It burrows (a leviathan): into rock it swims on through it as through
+    /// water, its head tearing out a tunnel this many cells round (times
+    /// its scale); 0: rock stops it.
+    #[serde(default)]
+    pub burrow: f32,
     #[serde(default)]
     pub body: Option<BodyDef>,
 }
@@ -240,6 +246,10 @@ impl Swimmer {
 const DT: f32 = (1.0 / crate::world::TICK_HZ) as f32;
 /// Its swell from a stroke dies away this fast (seconds).
 const PULSE_FADES: f32 = 0.35;
+/// Lightning on charged tendrils: new arcs this many times a second, this
+/// many crawling along each tendril at once.
+const ARC_HZ: f32 = 18.0;
+const ARCS: u64 = 2;
 /// Its eye's light (with a body's glow and an `eye` in its art), and the
 /// halo round it (cells across, how bright at its heart).
 const EYE_LIGHT: f32 = 0.35;
@@ -269,13 +279,17 @@ fn grow(mut commands: Commands, q: Query<(Entity, &Animator, &Kinematics), Witho
 
 /// Stroke by stroke where its controls say, as keenly as they say; its
 /// head the way it swims (still, turned to what it aims at).
-fn strokes(mut q: Query<(&mut Swimmer, &mut Controls, &mut Kinematics, &Animator)>) {
-    for (mut s, mut c, mut k, anim) in &mut q {
+fn strokes(mut q: Query<(&mut Swimmer, &mut Controls, &mut Kinematics, &Animator, Has<super::Phasing>)>) {
+    for (mut s, mut c, mut k, anim, phasing) in &mut q {
         let Some(sd) = anim.def.swim.as_ref() else { continue };
         s.pulse *= (-DT / PULSE_FADES).exp();
         s.burst -= DT;
         s.stroke_left -= DT;
-        if k.loco.contacts.submerged < 0.5 {
+        // (Burrowing through rock it swims as in water: the rock's drag its
+        // own, its movement left be: `burrow`.)
+        if phasing {
+            k.body.vel *= (-sd.drag * DT).exp();
+        } else if k.loco.contacts.submerged < 0.5 {
             continue;
         }
         let want = Vec2::new(c.0.move_x, c.0.move_y);
@@ -327,6 +341,80 @@ fn tilt(s: &Swimmer, k: &Kinematics) -> f32 {
 pub fn anchor(anim: &Animator, k: &Kinematics, turn: f32, name: &str) -> Option<Vec2> {
     super::custom::frame_anchor(anim, k, name, "").map(|g| k.body.pos + Vec2::from_angle(turn).rotate(g - k.body.pos))
 }
+
+/// A burrower at the edge of the loaded ground: turned back this tick.
+#[derive(Component)]
+struct TurnBack;
+
+/// A burrower turned back from unloaded ground: its way reversed, its head
+/// round.
+fn turn_back(mut commands: Commands, mut q: Query<(Entity, &mut Swimmer, &mut Kinematics), With<TurnBack>>) {
+    for (e, mut s, mut k) in &mut q {
+        k.body.vel = -k.body.vel * 0.6;
+        s.heading += std::f32::consts::PI;
+        commands.entity(e).remove::<TurnBack>();
+    }
+}
+
+/// A burrower in rock swims through it (`Phasing`: its movement left be),
+/// its head tearing out a tunnel (not the world's floor: bedrock), rubble
+/// flying; out in the open again, it moves as ever.
+fn burrow(
+    mut commands: Commands,
+    mut sim: ResMut<crate::world::SimWorld>,
+    q: Query<(Entity, &Swimmer, &Kinematics, &Animator, &Hug, Has<super::Phasing>)>,
+    mut sparks: ResMut<crate::vfx::Sparks>,
+) {
+    let bedrock = sim.materials().id("bedrock");
+    for (e, s, k, anim, hug, phasing) in &q {
+        let Some(sd) = anim.def.swim.as_ref().filter(|sd| sd.burrow > 0.0) else { continue };
+        let r = sd.burrow * anim.def.scale;
+        let ahead = Vec2::from_angle(s.heading);
+        let head = anchor(anim, k, hug.0, "maw").unwrap_or(k.body.pos + ahead * k.body.half.x);
+        let solid = |p: Vec2| sim.world.is_solid(CellPos::from_world(p.x, p.y));
+        // (Ground not loaded ahead, it turns back: there it'd be held still.)
+        let far = head + ahead * (r + 40.0);
+        if !sim.world.is_loaded(CellPos::from_world(far.x, far.y).chunk()) {
+            commands.entity(e).insert(TurnBack);
+        }
+        // In rock (its box, or just ahead of its head): through it.
+        let (pos, half) = (k.body.pos, k.body.half);
+        let boxed = [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0), (0.0, 0.0), (1.0, 0.0), (-1.0, 0.0)].iter().any(|&(x, y)| solid(pos + half * Vec2::new(x, y)));
+        // (Rock close round it, as down a tunnel it's torn: it swims on
+        // down it, not sinking to its floor.)
+        let round = half.length() + r;
+        let walled = (0..8).filter(|i| solid(pos + Vec2::from_angle(*i as f32 * std::f32::consts::FRAC_PI_4) * round)).count() >= 3;
+        let in_rock = boxed || walled || solid(head + ahead * r);
+        if in_rock && !phasing {
+            commands.entity(e).insert(super::Phasing);
+        } else if !in_rock && phasing {
+            commands.entity(e).remove::<super::Phasing>();
+        }
+        if !in_rock {
+            continue;
+        }
+        // Its head tears out the rock round it.
+        let c = head + ahead * r * 0.5;
+        let lo = (c - Vec2::splat(r)).floor().as_ivec2();
+        let mut torn = 0;
+        for y in lo.y..=lo.y + (r * 2.0) as i32 + 1 {
+            for x in lo.x..=lo.x + (r * 2.0) as i32 + 1 {
+                let p = CellPos::new(x, y);
+                if Vec2::new(x as f32 + 0.5, y as f32 + 0.5).distance(c) > r || !sim.world.is_solid(p) || sim.world.get(p).is_some_and(|cell| Some(cell.material) == bedrock) {
+                    continue;
+                }
+                sim.world.set(p, platypus_sim::Cell::AIR);
+                torn += 1;
+            }
+        }
+        if torn > 0 && (s.glow * 20.0) as u32 % 3 == 0 {
+            sparks.emit(&RUBBLE, 4, c, ahead, k.body.vel * 0.3);
+        }
+    }
+}
+
+/// Rock torn out by a burrower's head: grey grit flying.
+static RUBBLE: std::sync::LazyLock<crate::magic::runes::Emitter> = std::sync::LazyLock::new(|| crate::magic::runes::Emitter { count: 1.0, life: (0.3, 0.8), colors: vec![(150, 146, 140), (100, 98, 96), (60, 58, 58)], speed: 70.0, spread: 1.4, gravity: 60.0, drag: 3.0, size: 1.2, jitter: 0.0, glow: false });
 
 /// Where its body joins its head: its art's `grip`, else its middle.
 fn neck(anim: &Animator, k: &Kinematics, turn: f32) -> Vec2 {
@@ -536,7 +624,10 @@ fn waft(s: &mut Swimmer, td: &TendrilDef, root: Vec2, dir: Vec2, dt: f32) {
 /// Charged tendrils shock what's alive and touching them (never their
 /// own): a storm hit, a jolt, a crackle.
 #[allow(clippy::type_complexity)]
+#[allow(clippy::too_many_arguments)]
 fn shock(
+    mut commands: Commands,
+    mut images: ResMut<Assets<Image>>,
     mut swimmers: Query<(Entity, &mut Swimmer, &Animator)>,
     bodies: Query<(Entity, &Kinematics, &super::Health)>,
     mut hits: MessageWriter<crate::combat::Hit>,
@@ -569,9 +660,60 @@ fn shock(
                 hits.write(crate::combat::Hit { by: Some(e), target: who, damage, harm: super::Harm::Storm, knock: away * 220.0, stun, at, dir: away, weight: 0.6, crit: false });
                 sounds.write(crate::sound::PlaySound::at("zap", at).pitch(1.3).volume(0.9));
                 sparks.emit(&crackle(td.color), 14, at, away, Vec2::ZERO);
+                // (A bolt of it, from the tendril into them: as a wand's.)
+                let path: Vec<CellPos> = jag(at, k.body.pos, who.to_bits() ^ (s.glow * 100.0) as u64, 5.0, 3)
+                    .windows(2)
+                    .flat_map(|w| {
+                        let n = w[0].distance(w[1]).ceil().max(1.0) as i32;
+                        (0..=n).map(move |i| { let p = w[0].lerp(w[1], i as f32 / n as f32); CellPos::from_world(p.x, p.y) })
+                    })
+                    .collect();
+                let zap = platypus_sim::Zap { from: CellPos::from_world(at.x, at.y), to: CellPos::from_world(k.body.pos.x, k.body.pos.y), path, charged: Vec::new() };
+                crate::fx::spawn_bolt(&mut commands, &mut images, &zap);
                 s.shocked.push((who, 0.7));
             }
         }
+    }
+}
+
+/// A jagged run of lightning from `a` to `b` (its middle knocked aside,
+/// then each half's, and so on: `depth` times), `amp` cells at most.
+fn jag(a: Vec2, b: Vec2, seed: u64, amp: f32, depth: u32) -> Vec<Vec2> {
+    let mut pts = vec![a, b];
+    let mut amp = amp;
+    for d in 0..depth {
+        let mut next = Vec::with_capacity(pts.len() * 2);
+        for (i, w) in pts.windows(2).enumerate() {
+            let (p, q) = (w[0], w[1]);
+            let r = (platypus_sim::rng::hash(&[seed, d as u64, i as u64]) % 2001) as f32 / 1000.0 - 1.0;
+            let mid = (p + q) * 0.5 + (q - p).perp().normalize_or_zero() * r * amp;
+            next.push(p);
+            next.push(mid);
+        }
+        next.push(*pts.last().expect("two at least"));
+        pts = next;
+        amp *= 0.55;
+    }
+    pts
+}
+
+/// Lightning drawn as a wand's is (`fx::zap_image`): a white-hot line a
+/// cell wide, a pale blue glow either side.
+fn arc(pts: &[Vec2], lights: &mut Vec<(IVec2, [u8; 4])>) {
+    let mut cells = Vec::new();
+    for w in pts.windows(2) {
+        let n = w[0].distance(w[1]).ceil().max(1.0) as i32;
+        for i in 0..=n {
+            cells.push(w[0].lerp(w[1], i as f32 / n as f32).floor().as_ivec2());
+        }
+    }
+    for &c in &cells {
+        for d in [IVec2::X, IVec2::NEG_X, IVec2::Y, IVec2::NEG_Y] {
+            lights.push((c + d, [150, 170, 255, 110]));
+        }
+    }
+    for &c in &cells {
+        lights.push((c, [250, 250, 255, 255]));
     }
 }
 
@@ -856,6 +998,37 @@ fn draw(
                     let flick = if td.zap.is_some() { 0.55 + 0.45 * ((s.glow * 40.0 + (i * 13 + k * 7) as f32).sin() > 0.3) as u8 as f32 } else { 1.0 };
                     let c = [r, g, bl, (255.0 * flick * (1.0 - t * 0.5)) as u8];
                     stroke(pts[i - 1], pts[i], w * 0.5, w * 0.45, c, &mut lights);
+                }
+            }
+            // Lightning living on them (charged): short jagged arcs crawling
+            // along each, now and then leaping to the next or forking out
+            // into the water, new ones every flicker.
+            if td.zap.is_some() {
+                let beat = (s.glow * ARC_HZ) as u64;
+                let n = s.tendrils.len();
+                for (k, (pts, _)) in s.tendrils.iter().enumerate() {
+                    let m = pts.len();
+                    if m < 4 {
+                        continue;
+                    }
+                    let roll = |salt: u64| platypus_sim::rng::hash(&[beat, k as u64, salt]);
+                    for a in 0..ARCS {
+                        let from = (roll(a) % (m as u64 - 3)) as usize;
+                        let to = (from + 2 + (roll(a + 10) % 5) as usize).min(m - 1);
+                        arc(&jag(pts[from], pts[to], roll(a + 20), 3.5, 3), &mut lights);
+                    }
+                    if n > 1 && roll(30) % 3 == 0 {
+                        let other = &s.tendrils[(k + 1) % n].0;
+                        let i = (roll(31) % m as u64) as usize;
+                        if let Some(&q) = other.get(i) {
+                            arc(&jag(pts[i], q, roll(32), 4.0, 3), &mut lights);
+                        }
+                    }
+                    if roll(40) % 5 == 0 {
+                        let i = (roll(41) % m as u64) as usize;
+                        let out = Vec2::from_angle((roll(42) % 628) as f32 / 100.0) * (8.0 + (roll(43) % 12) as f32);
+                        arc(&jag(pts[i], pts[i] + out, roll(44), 3.0, 3), &mut lights);
+                    }
                 }
             }
         }

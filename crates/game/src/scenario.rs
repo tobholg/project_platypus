@@ -3952,7 +3952,7 @@ fn lakes_script(
     mut state: Local<(Vec<(CellPos, usize)>, usize, f32, u32, f32)>,
     mut sample: Local<f32>,
     mut put: Local<bool>,
-    leviathans: Query<(&crate::creatures::custom::leviathan::Leviathan, &Kinematics, &crate::creatures::Health), Without<LocalPlayer>>,
+    leviathans: Query<(&crate::creatures::custom::leviathan::Leviathan, &Kinematics, &crate::creatures::Health, Has<crate::creatures::Phasing>), Without<LocalPlayer>>,
 ) {
     if s.name != "lakes" {
         return;
@@ -4051,8 +4051,8 @@ fn lakes_script(
         let m = &metrics.last;
         let phases: Vec<String> = platypus_sim::PHASES.iter().zip(m.phases).map(|(n, d)| format!("{n} {:.1}", d.as_secs_f32() * 1000.0)).collect();
         info!("lakes: t {t:.0} tick {:.2} ms: {} chunks awake, {} cells visited; {}", metrics.tick_time.as_secs_f32() * 1000.0, m.active_chunks, m.visited_cells, phases.join(", "));
-        for (l, lk, lh) in &leviathans {
-            info!("lakes: the leviathan {} at {:+.0},{:+.0} from the player, {:.0} cells/s, {:.0} hp (submerged {:.2}, grounded {}, {:?}, vel {:.0},{:.0})", l.doing(), lk.body.pos.x - k.body.pos.x, lk.body.pos.y - k.body.pos.y, lk.body.vel.length(), lh.hp, lk.loco.contacts.submerged, lk.loco.grounded(), lk.loco.state, lk.body.vel.x, lk.body.vel.y);
+        for (l, lk, lh, burrowing) in &leviathans {
+            info!("lakes: the leviathan {} at {:+.0},{:+.0} from the player, {:.0} cells/s, {:.0} hp (submerged {:.2}, burrowing {burrowing})", l.doing(), lk.body.pos.x - k.body.pos.x, lk.body.pos.y - k.body.pos.y, lk.body.vel.length(), lh.hp, lk.loco.contacts.submerged);
         }
         // Round the lake's middle: its water, how much of it is off the
         // ambient heat, how much still sloshing (not at rest).

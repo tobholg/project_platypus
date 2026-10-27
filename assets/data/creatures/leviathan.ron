@@ -3,7 +3,8 @@
 // throat, a frill of ray fins down its back and fins at its sides, their tips
 // lit cold blue, spots of it down its flanks pulsing in waves; a sheaf of
 // charged tendrils off its tail that shock what touches them (swim.rs). It swims stroke by stroke, slow to turn, in great arcs.
-// You hear it before you see it: a groan through the water. Rare.
+// It burrows through rock as through water, tearing a tunnel. You hear it
+// before you see it: a groan through the water. Rare.
 (
     name: "Leviathan",
     size: (56, 28),
@@ -21,8 +22,9 @@
     eyes: (150, 215, 255),
     light: (color: (110, 180, 255), strength: 0.45),
     voice: Some(("leviathan_groan", (6.0, 12.0))),
-    swim: (stroke: 150, every: (0.3, 1.2), drag: 1.1, turn: (0.9, 1.9), carve: 1.6, burst: (1.0, 0.7), tilt: 1.2,
-           body: (count: 80, spacing: 18, size: (30, 28), swell: 0.12, taper: 0.22,
+    // (It burrows: through rock as through water, its head tearing a tunnel.)
+    swim: (stroke: 150, every: (0.3, 1.2), drag: 1.1, turn: (0.9, 1.9), carve: 1.6, burst: (1.0, 0.7), tilt: 1.2, burrow: 18,
+           body: (count: 56, spacing: 18, size: (30, 28), swell: 0.12, taper: 0.22,
                   color: (18, 38, 92), lit: (60, 110, 190), belly: (120, 160, 205), outline: (4, 8, 22),
                   // (No wave down it: its arcs are its swimming.)
                   wave: (14.0, 0.0, 0.0, 0.0),

@@ -915,6 +915,7 @@ fn fly(
     teams: Query<&crate::creatures::Team>,
     drinkers: Res<Drinkers>,
     pictures: Query<&crate::creatures::body::animation::Animator>,
+    mut tints: ResMut<crate::fx::FlashTints>,
 ) {
     let mut booms = Vec::new();
     let mut landed = Vec::new();
@@ -1113,6 +1114,11 @@ fn fly(
             for b in &cast.bursts {
                 sparks.emit(b, b.count as usize, at, off, Vec2::ZERO);
             }
+        }
+        // (A blast not of fire flashes its own colour: `fx::FlashTints`.)
+        if !cast.fiery() && cast.payloads.iter().any(|p| matches!(p, Payload::Blast { .. })) {
+            let (r, g, b) = cast.color;
+            tints.0.push((at, [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0], 0.0));
         }
         if land(&mut commands, world, &coatings, &mut bodies, &cast, at, hit, dir, doused, false, &mut booms, &drinkers) {
             continue;

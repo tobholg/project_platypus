@@ -223,7 +223,21 @@ fn think(
     let water = sim.materials().id("water");
     let wet = |p: Vec2| sim.world.get(platypus_sim::CellPos::from_world(p.x, p.y)).is_some_and(|c| Some(c.material) == water);
     // (Where it swims for: under the water, not up in the air over it.)
-    let under = |p: Vec2| (0..60).map(|i| p - Vec2::Y * (i as f32 * 8.0)).find(|q| wet(*q) && wet(*q + Vec2::Y * 40.0)).unwrap_or(p);
+    // (Down from there to water, not through the rock under it: not to
+    // some flooded cave under the sea's floor.)
+    let solid = |p: Vec2| sim.world.is_solid(platypus_sim::CellPos::from_world(p.x, p.y));
+    let under = |p: Vec2| {
+        for i in 0..60 {
+            let q = p - Vec2::Y * (i as f32 * 8.0);
+            if solid(q) {
+                return p;
+            }
+            if wet(q) && wet(q + Vec2::Y * 40.0) {
+                return q;
+            }
+        }
+        p
+    };
     for (e, mut o, mut k, mut c, mut anim, health, hug, swimmer) in &mut q {
         let Some(mut sw) = swimmer else { continue };
         let pos = k.body.pos;
