@@ -16735,7 +16735,7 @@ fn dive_script(
             k.body.pos.x - 960.0,
             k.body.vel.y,
             if switch.hand.on { "lit" } else { "out" },
-            breath.map(|b| (b.left * 10.0).round() / 10.0),
+            breath.map(|b| ((b.left * 10.0).round() / 10.0, (b.most * 10.0).round() / 10.0)),
             h.hp
         );
     }

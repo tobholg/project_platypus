@@ -320,8 +320,8 @@
             gear: (slot: Feet, weight: Light, stats: { SwimSpeed: 50 },
             look: (recolor: [(colors: { 'B': (222, 182, 34), 'C': (168, 132, 20), 'U': (250, 226, 110), 'o': (120, 92, 12) })]))),
         (id: "diving_helmet", name: "Diving helmet", color: (196, 150, 60),
-            about: "A brass dome with a glass porthole: hold your breath three times as long under water.",
-            gear: (slot: Head, weight: Heavy, stats: { Armor: 3, Breath: 200 },
+            about: "A brass dome with a glass porthole and a little air of its own: four minutes under water on a breath.",
+            gear: (slot: Head, weight: Heavy, stats: { Armor: 3, Breath: 1233 },
             look: (palette: { 'b': (112, 78, 28), 'B': (196, 150, 60), 'h': (240, 208, 124), 'g': (84, 60, 24), 'G': (96, 156, 176), 'w': (220, 246, 255), 'r': (236, 196, 108), 'c': (82, 70, 56) }, over: [(parts: ["head", "blink"], at: (-1, -2), rows: [
                 ".....bbbbb.....",
                 "...bbBBBBBbb...",
