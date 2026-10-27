@@ -5,7 +5,7 @@
 // under the ground: life.ron, `Flooded`.)
 (
     name: "Drowned",
-    loot: "zombie",
+    loot: "drowned",
     // What it had on when it went in: now and then a hood.
     wears: [("cloth_hood", 0.1)],
     size: (9, 20),

@@ -80,6 +80,8 @@ stats! {
     Luck: "luck", false;
     /// Breath held under water (a diving helmet's).
     Breath: "breath", true;
+    /// Faster strokes under water (flippers').
+    SwimSpeed: "swim speed", true;
 }
 
 /// What gear adds up to, on a creature (none worn: all zero).

@@ -16634,6 +16634,8 @@ fn paint_script(
 /// torch in its off hand, dropped in (1 s): it sinks, its torch goes out,
 /// its breath runs down and it drowns a while; pulled out (26 s), its torch
 /// lights again and its breath comes back. Logs it each half second.
+/// (`PLATYPUS_DIVE_SWIM=1`: from 3 s to 9 s it swims right, strokes held;
+/// `across` in the log: how far it's got.)
 fn dive_script(
     mut commands: Commands,
     s: Res<Scenario>,
@@ -16648,6 +16650,7 @@ fn dive_script(
     mut state: Local<(u8, f32)>,
     others: Query<(&crate::creatures::Creature, &Kinematics, &crate::creatures::Health), Without<LocalPlayer>>,
     mut put: Local<bool>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
 ) {
     if s.name != "dive" {
         return;
@@ -16675,13 +16678,16 @@ fn dive_script(
             if let Some(i) = (0..eq.worn.len()).find(|&i| crate::gear::Equipment::fits(&items, i, &torch)) {
                 eq.worn[i] = Some(torch);
             }
-            // (`PLATYPUS_HELMET=1`: in a diving helmet.)
-            if std::env::var("PLATYPUS_HELMET").is_ok()
-                && let Some(id) = items.id("diving_helmet")
-            {
-                let helmet = crate::hands::items::Stack::new(id, 1);
-                if let Some(i) = (0..eq.worn.len()).find(|&i| crate::gear::Equipment::fits(&items, i, &helmet)) {
-                    eq.worn[i] = Some(helmet);
+            // (`PLATYPUS_HELMET=1`: in a diving helmet; `PLATYPUS_FLIPPERS=1`:
+            // flippers.)
+            for (var, item) in [("PLATYPUS_HELMET", "diving_helmet"), ("PLATYPUS_FLIPPERS", "flippers")] {
+                if std::env::var(var).is_ok()
+                    && let Some(id) = items.id(item)
+                {
+                    let gear = crate::hands::items::Stack::new(id, 1);
+                    if let Some(i) = (0..eq.worn.len()).find(|&i| crate::gear::Equipment::fits(&items, i, &gear)) {
+                        eq.worn[i] = Some(gear);
+                    }
                 }
             }
             *step = 1;
@@ -16699,6 +16705,12 @@ fn dive_script(
             *step = 3;
         }
         _ => {}
+    }
+    if std::env::var("PLATYPUS_DIVE_SWIM").is_ok() {
+        let swim = *step == 2 && (3.0..9.0).contains(&t);
+        for key in [KeyCode::KeyD, KeyCode::Space] {
+            if swim { keys.press(key) } else { keys.release(key) }
+        }
     }
     // (`PLATYPUS_DIVE_WITH=kind`: one of those in the pool too, 1.5 s.)
     if !*put && t > 1.5
@@ -16718,8 +16730,9 @@ fn dive_script(
             }
         }
         info!(
-            "dive: t {t:.1} depth {:.0} sinking {:+.0} torch {} breath {:?} health {:.0}; torches out {snuffed}",
+            "dive: t {t:.1} depth {:.0} across {:+.0} sinking {:+.0} torch {} breath {:?} health {:.0}; torches out {snuffed}",
             fl as f32 - (k.body.pos.y - k.body.half.y),
+            k.body.pos.x - 960.0,
             k.body.vel.y,
             if switch.hand.on { "lit" } else { "out" },
             breath.map(|b| (b.left * 10.0).round() / 10.0),

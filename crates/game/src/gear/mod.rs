@@ -335,6 +335,7 @@ pub(crate) fn apply(items: Option<Res<Items>>, rules: Res<GearRules>, creatures:
         // (Heavy armour sinks: each piece of it this much faster in water.)
         let heavy = eq.pieces(&items).filter(|s| items.def(s.item).gear.as_ref().is_some_and(|g| g.weight == Some(Weight::Heavy))).count();
         m.swim_max_fall *= 1.0 + HEAVY_SINKS * heavy as f32;
+        m.swim_stroke *= total.mult(Stat::SwimSpeed);
         m.run_speed *= total.mult(Stat::MoveSpeed) * pace.map_or(1.0, |p| p.0);
         m.jump_height *= total.mult(Stat::JumpHeight);
         m.air_jumps = (m.air_jumps as f32 + total.get(Stat::AirJumps)).round().clamp(0.0, 9.0) as u8;

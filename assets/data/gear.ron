@@ -315,6 +315,10 @@
             ])]))),
         // A diving helmet: a brass dome, a glass porthole to look out of, a
         // riveted collar; breath three times as long under water.
+        (id: "flippers", name: "Flippers", color: (232, 196, 40),
+            about: "Yellow rubber fins: your strokes under water half as strong again. Off the drowned, now and then.",
+            gear: (slot: Feet, weight: Light, stats: { SwimSpeed: 50 },
+            look: (recolor: [(colors: { 'B': (222, 182, 34), 'C': (168, 132, 20), 'U': (250, 226, 110), 'o': (120, 92, 12) })]))),
         (id: "diving_helmet", name: "Diving helmet", color: (196, 150, 60),
             about: "A brass dome with a glass porthole: hold your breath three times as long under water.",
             gear: (slot: Head, weight: Heavy, stats: { Armor: 3, Breath: 200 },
