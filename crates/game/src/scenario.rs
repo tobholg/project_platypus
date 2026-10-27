@@ -3930,12 +3930,15 @@ fn lakes_script(
     let (lakes, at, since, frames, ticks) = &mut *state;
     let secs: f32 = std::env::var("PLATYPUS_LAKE_SECS").ok().and_then(|v| v.parse().ok()).unwrap_or(8.0);
     // (`PLATYPUS_LAKE_HALLS=1`: the world's great halls, nearest first,
-    // in place of a search.)
-    if lakes.is_empty() && t > 1.0 && std::env::var("PLATYPUS_LAKE_HALLS").is_ok() {
-        let mut halls: Vec<(CellPos, usize)> = sim.generator.landmarks().into_iter().filter(|(_, n)| n == "great hall").map(|(p, _)| (p, 0)).collect();
+    // in place of a search; `PLATYPUS_LAKE_SEAS=1`: its underground seas,
+    // at their water.)
+    let seas = std::env::var("PLATYPUS_LAKE_SEAS").is_ok();
+    if lakes.is_empty() && t > 1.0 && (seas || std::env::var("PLATYPUS_LAKE_HALLS").is_ok()) {
+        let mark = if seas { "underground sea" } else { "great hall" };
+        let mut halls: Vec<(CellPos, usize)> = sim.generator.landmarks().into_iter().filter(|(_, n)| n == mark).map(|(p, _)| (p, 0)).collect();
         halls.sort_by_key(|(p, _)| (p.x as f32 - k.body.pos.x).abs() as i64);
         halls.truncate(std::env::var("PLATYPUS_LAKES").ok().and_then(|v| v.parse().ok()).unwrap_or(4));
-        info!("lakes: great halls {:?}", halls.iter().map(|(p, _)| (p.x, p.y)).collect::<Vec<_>>());
+        info!("lakes: {mark}s {:?}", halls.iter().map(|(p, _)| (p.x, p.y)).collect::<Vec<_>>());
         *lakes = halls;
         *at = usize::MAX;
         *since = t;

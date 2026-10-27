@@ -262,6 +262,8 @@ pub struct Caves {
     pub areas: Vec<Area>,
     /// The great lake halls (`Hall`).
     pub halls: Vec<Hall>,
+    /// The underground seas (`Sea`).
+    pub seas: Vec<Sea>,
     pub chambers: Vec<Chamber>,
     pub tunnels: Vec<Tunnel>,
     pub pockets: Vec<Pocket>,
@@ -349,10 +351,45 @@ pub struct Ground<'a> {
     pub start: (i32, i32),
     /// The world's size against the reference world's (sizes, counts).
     pub scale: crate::plan::Scale,
-    /// The caverns' water table, per `table_span` columns (a great hall
-    /// is set in one, so it cuts the hall where its lake's surface is).
-    pub water_tables: &'a [i32],
-    pub table_span: i32,
+    /// The caverns' stretches of one water table each (a great hall is set
+    /// in one, so it cuts the hall where its lake's surface is; not in a
+    /// sea's), and the seas.
+    pub stretches: &'a [crate::plan::Stretch],
+    pub seas: &'a [Sea],
+}
+
+/// An underground sea: a vast basin in the lower caverns, three quarters
+/// water (its stretch's table is its own), a ragged air gap under its
+/// roof. A flatter floor with ribs of rock rising off it, a domed roof,
+/// its sides swaying and ragged at every scale.
+#[derive(Clone, Debug)]
+pub struct Sea {
+    pub x: f32,
+    pub y: f32,
+    pub rx: f32,
+    pub ry: f32,
+    /// Its water's level.
+    pub table: i32,
+}
+
+impl Sea {
+    /// Inside it?
+    fn holds(&self, x: f32, y: f32, rim: &Perlin) -> bool {
+        let (xf, yf) = (x as f64, y as f64);
+        // (Swaying: its middle leans this way and that going up.)
+        let sway = self.rx * 0.12 * rim.get([yf / 1_400.0, self.x as f64 / 977.0]) as f32;
+        let (dx, dy) = ((x - self.x - sway) / self.rx, (y - self.y) / self.ry);
+        if dx.abs() > 1.35 || dy.abs() > 1.35 {
+            return false;
+        }
+        // A flatter floor, a dome over.
+        let e = if dy < 0.0 { 3.0 } else { 2.2 };
+        let r = (dx.abs().powf(e) + dy.abs().powf(e)).powf(1.0 / e);
+        let ragged = 0.1 * rim.get([xf / 800.0, yf / 800.0 + 300.0]) as f32 + 0.05 * rim.get([xf / 180.0, yf / 180.0 + 310.0]) as f32 + 0.02 * rim.get([xf / 45.0, yf / 45.0 + 320.0]) as f32;
+        // (Ribs of rock off its floor.)
+        let ribs = if dy < 0.0 { 0.16 * (rim.get([xf / 520.0, 330.0]) as f32).max(0.0) * -dy } else { 0.0 };
+        r < 1.0 + ragged - ribs
+    }
 }
 
 /// A great lake hall: a huge chamber in the caverns, set where the water
@@ -530,11 +567,14 @@ impl Caves {
             if halls.len() >= want {
                 break;
             }
-            let span = (unit(&mut hrng) * g.water_tables.len() as f32) as usize % g.water_tables.len().max(1);
-            let table = g.water_tables[span] as f32;
+            let st = g.stretches[(unit(&mut hrng) * g.stretches.len() as f32) as usize % g.stretches.len().max(1)];
+            if st.sea {
+                continue;
+            }
+            let table = st.table as f32;
             let rx = range(&mut hrng, HALL_RX) * sw.max(0.3) * grand;
             let edge = rx + 120.0 + g.dam as f32;
-            let (s0, s1) = ((span as i32 * g.table_span) as f32 + edge, ((span as i32 + 1) * g.table_span).min(g.width) as f32 - edge);
+            let (s0, s1) = (st.x0 as f32 + edge, st.x1.min(g.width) as f32 - edge);
             if s1 <= s0 {
                 continue;
             }
@@ -839,7 +879,7 @@ impl Caves {
                 }
             }
         }
-        let mut caves = Caves { areas, halls, chambers, tunnels, pockets: Vec::new(), bins, pocket_bins: HashMap::new(), rim: Perlin::new((seed as u32) ^ 0xC0FE) };
+        let mut caves = Caves { areas, halls, seas: g.seas.to_vec(), chambers, tunnels, pockets: Vec::new(), bins, pocket_bins: HashMap::new(), rim: Perlin::new((seed as u32) ^ 0xC0FE) };
         caves.settle();
         caves.perch(seed, g);
         caves
@@ -1059,8 +1099,9 @@ impl Caves {
 
     /// What the caves put at a cell, if they reach it.
     pub fn at(&self, x: i32, y: i32) -> Option<Open> {
-        // (A great hall's open space, whatever else is planned there.)
-        if self.halls.iter().any(|h| h.holds(x as f32, y as f32, &self.rim)) {
+        // (A great hall's or a sea's open space, whatever else is planned
+        // there.)
+        if self.halls.iter().any(|h| h.holds(x as f32, y as f32, &self.rim)) || self.seas.iter().any(|s| s.holds(x as f32, y as f32, &self.rim)) {
             return Some(Open::Air);
         }
         let (cx, cy) = (x.div_euclid(CHUNK), y.div_euclid(CHUNK));

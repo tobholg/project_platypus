@@ -2205,7 +2205,8 @@ impl ChunkGenerator for TerrainGen {
         // (The great halls: the middle of their vaults, between the lake
         // and the roof.)
         let halls = self.plan.caves.halls.iter().map(|h| (CellPos::new(h.x as i32, (self.plan.water_table(h.x as i32) + (h.y + h.ry) as i32) / 2), "great hall".to_string()));
-        lairs.chain(built).chain(halls).collect()
+        let seas = self.plan.caves.seas.iter().map(|s| (CellPos::new(s.x as i32, s.table), "underground sea".to_string()));
+        lairs.chain(built).chain(halls).chain(seas).collect()
     }
 
     fn zone_at(&self, x: i32, y: i32) -> Option<&'static str> {
@@ -2577,6 +2578,42 @@ mod tests {
         }
     }
 
+    /// Underground seas: 4-5 in a large world, 2-3 in the reference, 1-2 in
+    /// a small one; each wide, three quarters water (over its middle, water
+    /// under its level, much of it air over), its water lying on nothing
+    /// open (across it, down to its floor), in a stretch of its own.
+    #[test]
+    fn underground_seas() {
+        let m = mats();
+        for (preset, want) in [(Preset::Small, 1..=2), (Preset::Medium, 2..=3), (Preset::Large, 4..=5)] {
+            let g = TerrainGen::new(1, preset, &m);
+            let seas = &g.plan.caves.seas;
+            assert!(want.contains(&seas.len()), "{preset:?}: {} seas", seas.len());
+            let tall = (g.plan.band_span(Band::Caverns).1 - g.plan.band_span(Band::Caverns).0) as f32;
+            for s in seas {
+                assert!(2.0 * s.rx > 0.6 * tall, "{preset:?}: a sea at x {} only {} wide", s.x, 2.0 * s.rx);
+                let st = g.plan.stretches().iter().find(|st| st.x0 as f32 <= s.x && (s.x as i32) < st.x1).expect("in a stretch");
+                assert!(st.sea && st.table == s.table, "{preset:?}: the sea at x {} isn't in its own stretch", s.x);
+                let (mut wet, mut dry, mut n) = (0, 0, 0);
+                for x in ((s.x - s.rx * 0.5) as i32..(s.x + s.rx * 0.5) as i32).step_by(53) {
+                    n += 1;
+                    wet += (g.sample(x, s.table - 60).0 == g.ids.water) as i32;
+                    dry += (g.sample(x, s.table + 30).0 == g.ids.air) as i32;
+                }
+                assert!(wet * 10 > n * 9 && dry * 3 > n, "{preset:?}: the sea at x {}: {wet} wet, {dry} dry of {n}", s.x);
+                let mut leaks = Vec::new();
+                for x in ((s.x - s.rx * 1.3) as i32..(s.x + s.rx * 1.3) as i32).step_by(151) {
+                    for y in (s.y - s.ry * 1.2) as i32..s.table {
+                        if g.sample(x, y).0 == g.ids.water && [(0, -1), (-1, 0), (1, 0)].iter().any(|&(dx, dy)| g.sample(x + dx, y + dy).0 == g.ids.air) {
+                            leaks.push((x, y));
+                        }
+                    }
+                }
+                assert!(leaks.is_empty(), "{preset:?}: the sea at x {}: water on or beside air at {:?}", s.x, &leaks[..leaks.len().min(6)]);
+            }
+        }
+    }
+
     /// The caverns are mild: their water scalds nowhere, under the hottest
     /// desert down to their lowest (wandering) floor; under them the deep
     /// heats fast (its lower half is scalding), the bottom as hot as ever.
@@ -2629,9 +2666,11 @@ mod tests {
             }
             // Across the dam between two stretches: from under the lower
             // table to the higher (where one side's flooded, the other not).
-            for k in (1..width / plan::WATER_TABLE_SPAN).step_by(5) {
-                let line = k * plan::WATER_TABLE_SPAN;
-                let (a, b) = (g.plan.water_table(line - 1), g.plan.water_table(line));
+            // (Every third line, and every sea's.)
+            let st = g.plan.stretches();
+            for k in (1..st.len()).filter(|&k| k % 3 == 1 || st[k].sea || st[k - 1].sea) {
+                let line = st[k].x0;
+                let (a, b) = (st[k - 1].table, st[k].table);
                 for x in (line - 700..line + 700).step_by(2) {
                     for y in a.min(b).max(g.plan.caverns_floor(x)) - 100..a.max(b) {
                         look(x, y);
@@ -3521,6 +3560,8 @@ mod tests {
         }
     }
 
+    /// Chasms run from the surface down into the deep, or into an
+    /// underground sea's air.
     #[test]
     fn chasms_run_from_the_surface_into_the_deep() {
         let m = mats();
@@ -3528,12 +3569,17 @@ mod tests {
         let p = g.plan();
         assert!(p.chasms.len() >= 3, "{} chasms", p.chasms.len());
         let (deep_lo, deep_hi) = p.band_span(Band::Deep);
+        let mut into_seas = 0;
         for c in &p.chasms {
-            assert!(c.bottom > deep_lo && c.bottom < deep_hi, "chasm at {} ends in the deep", c.x);
+            // (In the deep, or in a sea's air: over its water.)
+            let sea = p.caves.seas.iter().any(|s| s.table == c.bottom);
+            into_seas += sea as i32;
+            assert!(sea || (c.bottom > deep_lo && c.bottom < deep_hi), "chasm at {} ends in the deep, or in a sea", c.x);
             // Open down its whole length: its centre is air every 75 cells.
             let blocked: Vec<i32> = (c.bottom + 600..c.top - 15).step_by(75).filter(|&y| g.material_at(c.at(y).0 as i32, y) != MaterialId::AIR).collect();
             assert!(blocked.is_empty(), "chasm at {} blocked at {:?}", c.x, &blocked[..blocked.len().min(5)]);
         }
+        assert!(into_seas > 0 && into_seas < p.chasms.len() as i32, "{into_seas} of {} chasms end in a sea", p.chasms.len());
     }
 
     #[test]

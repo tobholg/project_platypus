@@ -118,6 +118,10 @@ fn main() {
         }
     }
     println!("{} lakes: {}", lakes.len(), lakes.join("; "));
+    let seas: Vec<String> = plan.caves.seas.iter().map(|s| format!("x {:.0} ({:.0}×{:.0}, water to {})", s.x, 2.0 * s.rx, 2.0 * s.ry, s.table)).collect();
+    println!("{} underground seas: {}", seas.len(), seas.join("; "));
+    let halls: Vec<String> = plan.caves.halls.iter().map(|h| format!("x {:.0} ({:.0}×{:.0})", h.x, 2.0 * h.rx, 2.0 * h.ry)).collect();
+    println!("{} great halls: {}", halls.len(), halls.join("; "));
     let isl: Vec<String> = plan.islands.iter().map(|i| format!("({},{} {}×{})", i.x0, i.y0, i.w, i.h)).collect();
     println!("sky islands (x,y w×h): {}", isl.join(" "));
     let st: Vec<String> = plan

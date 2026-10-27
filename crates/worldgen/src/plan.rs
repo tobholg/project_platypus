@@ -199,8 +199,22 @@ const CRYPT_SPACING: f64 = 2_100.0;
 /// Castles on the summits (large world).
 const CASTLES: f64 = 3.0;
 const CHASM_WIDTH: (f64, f64) = (165.0, 360.0);
-/// Columns sharing one cavern water table (wide enough for a great hall).
+/// Columns sharing one cavern water table, about (wide enough for a great
+/// hall): the stretches between the seas' own are cut about this wide.
 pub(crate) const WATER_TABLE_SPAN: i32 = 6_144;
+/// Underground seas: this many times the square root of the world's width
+/// against the reference's, and one more half the time (large 4-5, the
+/// reference 2-3, small 1-2). This big (half-width, half-height: shares of
+/// the caverns' height; the first the greatest; never shorter than this
+/// many cells), three quarters water; room left round each in its stretch
+/// (cells, sized with the world: for what branches off it).
+const SEAS: f64 = 2.0;
+const SEA_RX: (f64, f64) = (0.33, 0.62);
+const SEA_GIANT_RX: (f64, f64) = (0.58, 0.7);
+const SEA_RY: (f64, f64) = (0.1, 0.16);
+const SEA_RY_LEAST: f64 = 230.0;
+const SEA_WATER: f64 = 0.75;
+const SEA_ROOM: f64 = 1_500.0;
 /// Between two stretches of the water table, a dam of rock from the
 /// caverns' floor to over the higher table (and this far over it): this
 /// thick either side of the line at least, and up to this much more, its
@@ -266,9 +280,9 @@ pub struct WorldPlan {
     pub spires: Vec<Spire>,
     /// Vertical shafts from the surface down into the deep.
     pub chasms: Vec<Chasm>,
-    /// The water table in the caverns, per `WATER_TABLE_SPAN` columns:
-    /// cavern chambers below it are flooded.
-    water_tables: Vec<i32>,
+    /// The caverns' stretches, left to right, each under one water table
+    /// (cavern chambers below it are flooded), a dam between each two.
+    stretches: Vec<Stretch>,
     pub climate: Climate,
     pub forest: Forest,
     /// Trees on the sky islands.
@@ -645,12 +659,8 @@ impl WorldPlan {
             }
         }
         chasms.sort_by_key(|c| c.x);
-        let water_tables: Vec<i32> = (0..=width / WATER_TABLE_SPAN)
-            .map(|i| {
-                let (lo, hi) = (band_floors[4], band_floors[3]);
-                lo + ((hi - lo) as f64 * (0.1 + 0.35 * (hash(&[seed, 0x7AB1E, i as u64]) % 1000) as f64 / 1000.0)) as i32
-            })
-            .collect();
+        let seas = plan_seas(seed, (width, ocean_w), band_floors, scale, &mut chasms);
+        let stretches = stretches(seed, width, band_floors, scale, &seas);
 
         let mut caves = Caves::plan(
             seed,
@@ -666,8 +676,8 @@ impl WorldPlan {
                 spawn_x: mid,
                 start: start.span(),
                 scale,
-                water_tables: &water_tables,
-                table_span: WATER_TABLE_SPAN,
+                stretches: &stretches,
+                seas: &seas,
             },
         );
         let mut list = crypts(seed, &surface, &water, &biomes, &chasms, (width, ocean_w, mid), scale, band_floors);
@@ -742,7 +752,7 @@ impl WorldPlan {
             )
         };
 
-        WorldPlan { seed, preset, width, height, sea_level, band_floors, biomes, surface, plain, start, water, rugged, islands, chasms, water_tables, climate, forest, island_forest, structures, caves, spires }
+        WorldPlan { seed, preset, width, height, sea_level, band_floors, biomes, surface, plain, start, water, rugged, islands, chasms, stretches, climate, forest, island_forest, structures, caves, spires }
     }
 
     /// First air cell above the ground at a world column.
@@ -822,26 +832,39 @@ impl WorldPlan {
     /// In the dam of rock between two stretches of the water table (so
     /// neither's water stands beside the other's air, or above its level).
     pub fn dam_at(&self, x: i32, y: i32) -> bool {
-        let k = (x + WATER_TABLE_SPAN / 2) / WATER_TABLE_SPAN;
-        let line = k * WATER_TABLE_SPAN;
-        let d = x - line;
-        if k <= 0 || line >= self.width || d.abs() > DAM.0 + DAM.1 {
+        let i = self.stretch_index(x);
+        let st = self.stretches[i];
+        let reach = DAM.0 + DAM.1;
+        // (The line it's nearest: its own stretch's left end or right.)
+        let (line, other) = if x - st.x0 <= reach && i > 0 {
+            (st.x0, self.stretches[i - 1])
+        } else if st.x1 - x <= reach && i + 1 < self.stretches.len() {
+            (st.x1, self.stretches[i + 1])
+        } else {
             return false;
-        }
-        let n = self.water_tables.len();
-        let (a, b) = (self.water_tables[(k as usize - 1) % n], self.water_tables[k as usize % n]);
-        if y >= a.max(b) + DAM.2 || y < self.band_floors[5] {
+        };
+        if y >= st.table.max(other.table) + DAM.2 || y < self.band_floors[5] {
             return false;
         }
         // (Each face its own wander, both off the line: the line's always
         // inside it.)
-        let face = |salt: u64| DAM.0 + ((0.5 + 0.5 * wave(hash(&[self.seed, salt, k as u64]), y as f64 / DAM_WANDER)) * DAM.1 as f64) as i32;
+        let d = x - line;
+        let face = |salt: u64| DAM.0 + ((0.5 + 0.5 * wave(hash(&[self.seed, salt, line as u64]), y as f64 / DAM_WANDER)) * DAM.1 as f64) as i32;
         if d < 0 { -d <= face(0xDA0) } else { d <= face(0xDA1) }
+    }
+
+    /// The caverns' stretches under one water table each, left to right.
+    pub fn stretches(&self) -> &[Stretch] {
+        &self.stretches
+    }
+
+    fn stretch_index(&self, x: i32) -> usize {
+        self.stretches.partition_point(|s| s.x1 <= x).min(self.stretches.len() - 1)
     }
 
     /// Cavern chambers below this height are flooded.
     pub fn water_table(&self, x: i32) -> i32 {
-        self.water_tables[(x.max(0) / WATER_TABLE_SPAN) as usize % self.water_tables.len()]
+        self.stretches[self.stretch_index(x)].table
     }
 
     /// The band a height lies in.
@@ -911,7 +934,7 @@ impl WorldPlan {
         for c in &self.chasms {
             h = hash(&[h, c.x as u64, c.top as u64, c.bottom as u64, c.width.to_bits()]);
         }
-        h = hash(&[h, fold(&mut self.water_tables.iter().map(|&v| v as u64))]);
+        h = hash(&[h, fold(&mut self.stretches.iter().map(|s| hash(&[s.x0 as u64, s.table as u64])))]);
         h = hash(&[h, self.caves.chambers.len() as u64, self.caves.tunnels.len() as u64]);
         for c in &self.caves.chambers {
             h = hash(&[h, c.x.to_bits() as u64, c.y.to_bits() as u64, c.rx.to_bits() as u64]);
@@ -922,6 +945,97 @@ impl WorldPlan {
 
 /// A vertical shaft: opens as a funnel at the surface, wanders sideways,
 /// narrows and widens (ledges), and ends in the deep.
+/// A stretch of the caverns under one water table (from x, to x; a dam
+/// of rock at each end): a sea's own, if it holds one.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Stretch {
+    pub x0: i32,
+    pub x1: i32,
+    pub table: i32,
+    pub sea: bool,
+}
+
+/// The underground seas (`SEAS`): in the lower caverns, apart, each with
+/// room round it in its stretch; a chasm over one ends in its air.
+fn plan_seas(seed: u64, (width, ocean_w): (i32, i32), band_floors: [i32; 7], scale: Scale, chasms: &mut [Chasm]) -> Vec<caves::Sea> {
+    let mut rng = Rng::seeded(&[seed, 0x5EA5]);
+    let tall = (band_floors[3] - band_floors[4]) as f64;
+    let wave = FLOOR_WAVE.0 * tall;
+    let want = (SEAS * scale.count.sqrt()).round() as usize + (hash(&[seed, 0x5EA6]) % 2) as usize;
+    let room = SEA_ROOM * scale.size.0.max(0.25) + (DAM.0 + DAM.1) as f64;
+    let mut seas: Vec<caves::Sea> = Vec::new();
+    for _ in 0..want * 60 {
+        if seas.len() >= want {
+            break;
+        }
+        let rx = tall * range(&mut rng, if seas.is_empty() { SEA_GIANT_RX } else { SEA_RX });
+        let ry = (tall * range(&mut rng, SEA_RY)).max(SEA_RY_LEAST);
+        let half = 1.3 * rx + room;
+        let (x0, x1) = (ocean_w as f64 + half, (width - ocean_w) as f64 - half);
+        if x1 <= x0 {
+            continue;
+        }
+        let x = x0 + unit(&mut rng) * (x1 - x0);
+        if seas.iter().any(|s| (s.x as f64 - x).abs() < 1.3 * s.rx as f64 + room + half) {
+            continue;
+        }
+        // (Low in the caverns: its floor over theirs, however it wanders,
+        // its roof well under their top.)
+        let lo = band_floors[4] as f64 + wave + 220.0 + 1.15 * ry;
+        let hi = band_floors[3] as f64 - 300.0 - 1.15 * ry;
+        if hi <= lo {
+            continue;
+        }
+        let y = lo + unit(&mut rng) * 0.45 * (hi - lo);
+        let table = (y - ry + 2.0 * ry * SEA_WATER) as i32;
+        seas.push(caves::Sea { x: x as f32, y: y as f32, rx: rx as f32, ry: ry as f32, table });
+    }
+    seas.sort_by(|a, b| a.x.total_cmp(&b.x));
+    // A chasm over a sea ends in its air (it would run dry through the
+    // water, and on down under its floor).
+    for c in chasms.iter_mut() {
+        let reach = c.wander + c.width * 3.0;
+        for sea in &seas {
+            if (c.x as f64 - sea.x as f64).abs() < 1.3 * sea.rx as f64 + reach {
+                c.bottom = c.bottom.max(sea.table);
+            }
+        }
+    }
+    seas
+}
+
+/// The stretches: each sea's own (it and its room), the rest between cut
+/// about `WATER_TABLE_SPAN` wide, each its own table, between a tenth and
+/// nearly half the caverns' height up.
+fn stretches(seed: u64, width: i32, band_floors: [i32; 7], scale: Scale, seas: &[caves::Sea]) -> Vec<Stretch> {
+    let room = SEA_ROOM * scale.size.0.max(0.25) + (DAM.0 + DAM.1) as f64;
+    let mut out: Vec<Stretch> = Vec::new();
+    let plain = |x0: i32, x1: i32, out: &mut Vec<Stretch>| {
+        let n = ((x1 - x0) as f64 / WATER_TABLE_SPAN as f64).round().max(1.0) as i32;
+        for k in 0..n {
+            let i = out.len() as u64;
+            let (lo, hi) = (band_floors[4], band_floors[3]);
+            let table = lo + ((hi - lo) as f64 * (0.1 + 0.35 * (hash(&[seed, 0x7AB1E, i]) % 1000) as f64 / 1000.0)) as i32;
+            out.push(Stretch { x0: x0 + (x1 - x0) * k / n, x1: x0 + (x1 - x0) * (k + 1) / n, table, sea: false });
+        }
+    };
+    let mut at = 0;
+    for sea in seas {
+        let half = (1.3 * sea.rx as f64 + room) as i32;
+        let (s0, s1) = (sea.x as i32 - half, sea.x as i32 + half);
+        // (A gap too narrow for a stretch of its own goes to the sea's.)
+        let s0 = if s0 - at < WATER_TABLE_SPAN / 3 { at } else { plain(at, s0, &mut out); s0 };
+        out.push(Stretch { x0: s0, x1: s1, table: sea.table, sea: true });
+        at = s1;
+    }
+    if width - at < WATER_TABLE_SPAN / 3 && let Some(last) = out.last_mut() {
+        last.x1 = width;
+    } else {
+        plain(at, width, &mut out);
+    }
+    out
+}
+
 pub struct Chasm {
     pub x: i32,
     pub top: i32,
