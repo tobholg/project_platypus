@@ -286,6 +286,11 @@ pub struct Haunt {
     /// up), a group one after another.
     #[serde(default)]
     pub emerges: bool,
+    /// `Flooded`: only where the water is this open (cells of it either
+    /// side and above the spot): the great halls' lakes, not a flooded
+    /// tunnel (the leviathan).
+    #[serde(default)]
+    pub open: i32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
@@ -534,6 +539,10 @@ fn ambient(
                 }
                 let wet = |dx: i32, dy: i32| kind_at(x + dx, y + dy).is_some_and(|(_, ph)| ph.kind == Kind::Liquid && !ph.hot && ph.corrosive == 0);
                 if !(wet(0, 0) && wet(-6, 0) && wet(6, 0) && wet(0, 8) && wet(0, -6)) {
+                    return None;
+                }
+                let o = h.open;
+                if o > 0 && !(wet(-o, 0) && wet(o, 0) && wet(0, o / 2) && wet(-o / 2, o / 3) && wet(o / 2, o / 3)) {
                     return None;
                 }
                 let bed = (y - 120..y).rev().find(|&fy| kind_at(x, fy).is_some_and(|(air, ph)| !air && matches!(ph.kind, Kind::Static | Kind::Powder)))?;

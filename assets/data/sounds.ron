@@ -182,6 +182,7 @@
         "launch": (make: Whoosh(from: 500, to: 2200, length: 0.5, q: 1.2), variants: 2, pitch: 0.06, volume: 0.5),
         // Being seared (signs.rs): a short sizzle; acid on you: a hiss.
         // Up out of water short of breath (breath.rs): a gasp.
+        "leviathan_groan": (make: Groan(pitch: 38, length: 2.6, sag: 0.7, rasp: 0.35), variants: 2, pitch: 0.1, reverb: 0.5, room: 3.0, volume: 1.0),
         "pod_pop": (make: Blip(pitch: 520, to: 180, length: 0.09), variants: 3, pitch: 0.15, volume: 0.5),
         "gasp": (make: Whoosh(from: 500, to: 1400, length: 0.35, q: 1.5), variants: 2, pitch: 0.08, volume: 0.45),
         // Ice painted on (magic/brush.rs): a glassy tinkle as it sets.

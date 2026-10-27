@@ -270,8 +270,9 @@ pub fn parse(text: &str) -> Result<ArtFile, String> {
 }
 
 /// Art drawn on another's (`base`, a file name beside it): its palette
-/// (and any parts, poses, clips, overlays it gives) over the base's; the
-/// rest is the base's. A villager in the player's clothes, recoloured.
+/// (and any parts, poses, clips, overlays, anchors it gives) over the
+/// base's; the rest is the base's. A villager in the player's clothes,
+/// recoloured.
 #[derive(Clone, Debug, Deserialize)]
 struct Based {
     base: String,
@@ -287,6 +288,8 @@ struct Based {
     clips: BTreeMap<String, Clip>,
     #[serde(default)]
     over: BTreeMap<String, Vec<String>>,
+    #[serde(default)]
+    anchors: BTreeMap<String, BTreeMap<String, (i32, i32)>>,
 }
 
 /// Parse art that may be drawn on another's (`base: "player"`): `read`
@@ -303,6 +306,7 @@ pub fn parse_based(text: &str, read: &dyn Fn(&str) -> Result<String, String>) ->
     file.poses.extend(b.poses);
     file.clips.extend(b.clips);
     file.over.extend(b.over);
+    file.anchors.extend(b.anchors);
     Ok(file)
 }
 

@@ -23,6 +23,8 @@
 //     and no more near the player than its biggest pack where it is
 //   away: never within that many cells of the world's start (the big ones)
 //   within: only within that many cells of the start (with away, a ring)
+//   open: Flooded only where the water is that open (cells either side and
+//     above): the great halls' lakes, not a flooded tunnel
 //
 // The start valley in rings: HOME (1500 cells either side of the start:
 // slimes by day, the dead by night, nothing else that hunts), its EDGES
@@ -106,6 +108,8 @@
     (kind: "drowned", place: Flooded, bands: ["caverns"], most: 3, rate: 0.1),
     // An angler lurker hangs in the flooded caverns' dark, its lure glowing.
     (kind: "angler_lurker", place: Flooded, bands: ["caverns"], most: 1, rate: 0.03),
+    // The leviathan: one, rare, in the great halls' open lakes.
+    (kind: "leviathan", place: Flooded, bands: ["caverns"], most: 1, rate: 0.01, open: 90),
     (kind: "glutton", place: Cave, bands: ["caverns", "deep"], most: 1, rate: 0.04),
     (kind: "vampire_bat", place: Cave, bands: ["caverns", "deep"], most: 2, rate: 0.12),
     (kind: "watcher", place: Cave, bands: ["caverns", "deep"], most: 1, rate: 0.012),

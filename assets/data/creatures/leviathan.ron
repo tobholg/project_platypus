@@ -1,0 +1,42 @@
+// The leviathan: a huge serpent of the great halls' lakes (a gnasher's maw
+// grown huge, custom/gnasher.rs `aquatic`, a long body of segments trailing
+// it along the way it swam: legs.rs `segments`). Rare. You hear it before
+// you see it: a groan through the water. It circles, its lure cold blue,
+// then lunges along a line and snaps, twice before it tires.
+(
+    name: "Leviathan",
+    size: (32, 30),
+    health: 900,
+    heft: 9,
+    poise: 90,
+    team: Enemy,
+    touchless: true,
+    kind: "beast",
+    profile: {fire: 0.6},
+    catches: 0.3,
+    blood: "blood",
+    art: "leviathan",
+    eyes: (220, 236, 255),
+    light: (color: (110, 170, 255), strength: 0.35),
+    voice: Some(("leviathan_groan", (6.0, 12.0))),
+    legs: (view: Side, reach: 1, upper: 0.5, step: 0.2, lift: 0, ride: 0, stride: 2, tilt: 0,
+           color: (40, 56, 74), joint: (60, 82, 104), far: (20, 28, 38), outline: (8, 10, 16), thick: 2,
+           body: "leviathan", eyes: (220, 236, 255),
+           each: [],
+           segments: (count: 32, spacing: 11, size: (18, 15), color: (36, 52, 70), lit: (70, 98, 124), belly: (120, 140, 150),
+                      reach: 1, lean: 0, wave: 0.08, tail: 26, taper: 0.3)),
+    movement: (
+        run_speed: 90,
+        ground_accel: 600,
+        ground_decel: 800,
+        air_accel: 320,
+        jump_height: 20,
+        air_jumps: 0,
+        step_height: 6,
+        dash_speed: 0,
+        fly_speed: 120,
+        fly_accel: 260,
+    ),
+    brain: (kind: "hunter", params: (aggro: 520, close: Range(near: 110, far: 240))),
+    custom: (name: "gnasher", params: (lunges: 2, lure: 0, bite: 1.0, glow: (150, 210, 255), aquatic: true)),
+)

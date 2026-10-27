@@ -1,0 +1,20 @@
+// The leviathan's head: the gnasher's drawing, grown huge and abyssal:
+// slate blue-black, bone-white teeth, a cold blue lure.
+(
+    base: "gnasher",
+    palette: {
+        'b': (24, 34, 46),
+        'B': (12, 18, 26),
+        'h': (44, 62, 80),
+        'F': (66, 90, 112),
+        'g': (196, 206, 214),
+        'm': (40, 30, 40),
+        'M': (14, 8, 14),
+        'e': (220, 236, 255),
+        's': (54, 74, 94),
+        'L': (150, 210, 255),
+        'x': (110, 134, 160),
+    },
+    // (Where its body joins: the back of its head.)
+    anchors: { "grip": { "closed": (6, 18), "ajar": (6, 18), "gape": (6, 18), "hurt": (6, 18) } },
+)
