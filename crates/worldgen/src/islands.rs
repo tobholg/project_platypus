@@ -18,6 +18,8 @@ pub enum IslandCell {
     Cave,
     /// What keeps it up: aerolite, veined through its underside.
     Aerolite,
+    /// An old lightning strike's scar: fulgurite, down from its top.
+    Fulgurite,
 }
 
 pub struct Island {
@@ -73,6 +75,8 @@ const AEROLITE_CRUST: i32 = 9;
 const DRIFTER_AEROLITE: f64 = 0.75;
 /// A drifter's depth under its top, against its half-width.
 const DRIFTER_DEPTH: f64 = 1.0;
+/// Old lightning scars on an island, at most (and one at least).
+const SCARS: u32 = 3;
 
 fn unit(rng: &mut Rng) -> f64 {
     rng.next_u32() as f64 / u32::MAX as f64
@@ -180,6 +184,29 @@ fn carve(rng: &mut Rng, surf: &Perlin, edge: &Perlin, cx: i32, top: i32, rx: f64
             isl.set(lx, y - y0, c);
         }
         isl.top[lx as usize] = Some(crest);
+    }
+    // Old lightning scars (an island's, not a drifter's): fulgurite in
+    // forking veins down from its top.
+    if aero < 0.5 {
+        for _ in 0..1 + rng.next_u32() % SCARS {
+            let lx0 = (unit(rng) * 0.8 + 0.1) * w as f64;
+            let Some(top) = isl.top[lx0 as usize] else { continue };
+            let mut veins = vec![(lx0, (top - y0 - 1) as f64, 18 + (rng.next_u32() % 40) as i32)];
+            while let Some((mut lx, mut ly, mut len)) = veins.pop() {
+                while len > 0 && matches!(isl.get(lx as i32, ly as i32), IslandCell::Grass | IslandCell::Dirt | IslandCell::Stone) {
+                    isl.set(lx as i32, ly as i32, IslandCell::Fulgurite);
+                    if rng.chance(70) {
+                        isl.set(lx as i32 + if rng.coin() { 1 } else { -1 }, ly as i32, IslandCell::Fulgurite);
+                    }
+                    lx += (unit(rng) - 0.5) * 1.6;
+                    ly -= 1.0;
+                    len -= 1;
+                    if rng.chance(14) && veins.len() < 4 {
+                        veins.push((lx + if rng.coin() { 2.0 } else { -2.0 }, ly, len / 2));
+                    }
+                }
+            }
+        }
     }
     // Caves: a walker or two wandering inside, tunnels and small rooms,
     // turning back before the shell.

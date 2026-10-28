@@ -410,6 +410,7 @@ struct Ids {
     needles: MaterialId,
     dark_leaves: MaterialId,
     aerolite: MaterialId,
+    fulgurite: MaterialId,
     tall_grass: MaterialId,
     ice: MaterialId,
     sandstone: MaterialId,
@@ -559,6 +560,7 @@ impl TerrainGen {
             needles: mats.expect_id("needles"),
             dark_leaves: mats.expect_id("dark_leaves"),
             aerolite: mats.expect_id("aerolite_ore"),
+            fulgurite: mats.expect_id("fulgurite"),
             tall_grass: mats.expect_id("tall_grass"),
             ice: mats.expect_id("ice"),
             sandstone: mats.expect_id("sandstone"),
@@ -1242,6 +1244,7 @@ impl TerrainGen {
                     IslandCell::Dirt => return i.dirt,
                     IslandCell::Stone => return i.stone,
                     IslandCell::Aerolite => return i.aerolite,
+                    IslandCell::Fulgurite => return i.fulgurite,
                     IslandCell::Cave => return i.air,
                     IslandCell::None => {}
                 }
@@ -1252,6 +1255,7 @@ impl TerrainGen {
                 Some(IslandCell::Dirt) => return i.dirt,
                 Some(IslandCell::Stone) => return i.stone,
                 Some(IslandCell::Aerolite) => return i.aerolite,
+                Some(IslandCell::Fulgurite) => return i.fulgurite,
                 _ => {}
             }
             return i.air;
@@ -3396,6 +3400,10 @@ mod tests {
             assert!(green as i32 > i.w / 2, "island at {} is {} ({green} of {})", i.x0, if cold { "snowy" } else { "grassy" }, i.w);
         }
         assert!(p.island_forest.len() >= p.islands.len(), "trees on them ({})", p.island_forest.len());
+        // (Scarred by old lightning: fulgurite down from their tops.)
+        let glass = m.expect_id("fulgurite");
+        let scarred = p.islands.iter().filter(|i| (i.x0..i.x0 + i.w).any(|x| (i.y0..i.y0 + i.h).any(|y| g.material_at(x, y) == glass))).count();
+        assert!(scarred * 10 >= p.islands.len() * 9, "{scarred} of {} islands scarred by lightning", p.islands.len());
     }
 
     /// Drying: water stood on the ground where the seed put none goes from

@@ -131,6 +131,13 @@
         (name: "aerolite_ore", loot: Ore, kind: Static, lifts: true, charges: true, density: 1200, hardness: 130, crumbles_into: "gravel", glow: (26, 12, 44),
             nuggets: (spacing: 6, size: 3.6, fill: 0.9), sparkle: true, luster: (120, 70, 210),
             colors: [(20, 14, 32), (48, 42, 66), (60, 52, 80), (150, 96, 232), (214, 186, 255)]),
+        // Fulgurite (the sky arc): stormglass, sand and rock fused by
+        // lightning where it struck, in veins down from the strike (the
+        // sky islands are scarred with old ones; any strike grows a new
+        // one). Storm-charged: touch it wet and it shocks you. Smoky glass,
+        // white-blue threads through it, glimmering; past aerolite.
+        (name: "fulgurite", loot: Ore, kind: Static, charges: true, density: 2400, hardness: 140, crumbles_into: "gravel", opacity: 40, glow: (18, 26, 44), shimmer: 200, sparkle: true, luster: (150, 200, 255),
+            colors: [(44, 46, 60), (70, 74, 92), (110, 120, 146), (190, 214, 250), (232, 244, 255)]),
         // A fallen star's heart (world-events: events.rs): dark, glassy,
         // flecked with light, shining a cold blue in yours; an iron pick
         // takes it.

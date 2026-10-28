@@ -814,6 +814,14 @@ fn rain_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, mut player: Query<&m
             sim.queue(WorldEdit::Lightning { x: x - 90, from_y: p.body.pos.y as i32 + 300 });
             *step = 3;
         }
+        // (What it fused: fulgurite down from where it struck.)
+        3 if s.elapsed > 7.0 => {
+            let glass = sim.materials().id("fulgurite");
+            let y = p.body.pos.y as i32;
+            let n = (x - 140..x - 40).flat_map(|xx| (y - 120..y + 60).map(move |yy| CellPos::new(xx, yy))).filter(|&q| sim.world.get(q).is_some_and(|c| Some(c.material) == glass)).count();
+            info!("rain: the strike fused {n} cells of fulgurite");
+            *step = 4;
+        }
         _ => {}
     }
 }
@@ -16749,6 +16757,15 @@ fn dive_script(
             }
             if let Some(art) = art.as_deref() {
                 crate::light::plant_torch(&mut commands, Vec2::new((x0 + 10) as f32, (fl - deep) as f32), &settings, art);
+            }
+            // (`PLATYPUS_DIVE_GLASS=1`: the pool's floor fulgurite: wet,
+            // touching it, the diver's shocked.)
+            if std::env::var("PLATYPUS_DIVE_GLASS").is_ok()
+                && let Some(glass) = sim.materials().id("fulgurite")
+            {
+                for x in x0..x1 {
+                    sim.world.set(CellPos::new(x, fl - deep - 1), platypus_sim::Cell::new(glass, 128));
+                }
             }
             let torch = crate::hands::items::Stack::new(items.id("torch").expect("torch"), 1);
             if let Some(i) = (0..eq.worn.len()).find(|&i| crate::gear::Equipment::fits(&items, i, &torch)) {
