@@ -171,6 +171,10 @@ fn world_spawns(
                 Some(kind) => crafting.spawn(&mut commands, kind, feet, false),
                 None => warn!("no crafting station `{id}`"),
             },
+            // (Its cells taken over once they're loaded: `drift`.)
+            Spawn::Drifter(w, h) => {
+                commands.spawn(crate::drift::Drifter::new(IVec2::new(seen.x, seen.y), IVec2::new(w as i32, h as i32)));
+            }
             // (The world clock refills its lair: see `clock::lairs`.)
             Spawn::Keeper(kind) => {
                 spawn_creature(&mut commands, kind, feet, move |e| {

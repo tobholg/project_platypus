@@ -187,6 +187,10 @@ pub enum Spawn {
     Prop(&'static str),
     /// A crafting station, by id (crafting.ron): the village smithy's anvil.
     Station(&'static str),
+    /// A drifter (a rock floating free about a sky island, held up by its
+    /// aerolite): the box it's in (from here, its bottom-left: width,
+    /// height); the game takes its cells over and moves them.
+    Drifter(u16, u16),
 }
 
 /// How far a chunk has healed (the world clock, DESIGN §13).
@@ -1202,6 +1206,14 @@ impl TerrainGen {
                     IslandCell::None => {}
                 }
             }
+            // A drifter, as the seed made it (the game moves it after).
+            match plan.drifter_at(x, y) {
+                Some(IslandCell::Grass) => return if plan.climate.ambient(x, y) <= 0 { i.snow } else { i.grass },
+                Some(IslandCell::Dirt) => return i.dirt,
+                Some(IslandCell::Stone) => return i.stone,
+                Some(IslandCell::Aerolite) => return i.aerolite,
+                _ => {}
+            }
             return i.air;
         }
 
@@ -1397,7 +1409,8 @@ impl TerrainGen {
         for start in 0..(CHUNK * CHUNK) {
             let (sx, sy) = (start % CHUNK, start / CHUNK);
             let sw = ((sy + M) * W + sx + M) as usize;
-            if state[sw] & SEEN != 0 || !solid_at(&mut state, cells, sx, sy) {
+            // (A drifter's not a speck: it holds itself up.)
+            if state[sw] & SEEN != 0 || !solid_at(&mut state, cells, sx, sy) || self.plan.drifter_at(o.x + sx, o.y + sy).is_some() {
                 continue;
             }
             piece.clear();
@@ -2417,6 +2430,9 @@ impl ChunkGenerator for TerrainGen {
         self.sweep_specks(pos, &mut cells);
         let mut spawns = self.structure_spawns(pos);
         spawns.extend(self.lair_spawns(pos));
+        // (A drifter: from the chunk its corner's in.)
+        let o = pos.origin();
+        spawns.extend(self.plan.drifters.iter().filter(|d| (o.x..o.x + CHUNK).contains(&d.x0) && (o.y..o.y + CHUNK).contains(&d.y0)).map(|d| (CellPos::new(d.x0, d.y0), Spawn::Drifter(d.w as u16, d.h as u16))));
         spawns.extend(self.cave_chest(pos, &cells, &mut rng).map(|p| (p, Spawn::Chest)));
         if self.plan.structures.pieces_in(pos.x, pos.y).next().is_none() {
             spawns.extend(self.mine_camp(pos, &cells, &mut rng));
@@ -2985,7 +3001,7 @@ mod tests {
                         match what {
                             Spawn::Chest => chests_seen.push(p),
                             Spawn::Creature(_) => spawns.push(p),
-                            Spawn::Prop(_) | Spawn::Keeper(_) | Spawn::Station(_) => {}
+                            Spawn::Prop(_) | Spawn::Keeper(_) | Spawn::Station(_) | Spawn::Drifter(..) => {}
                         }
                     }
                 }
@@ -3290,6 +3306,28 @@ mod tests {
         let snow = m.expect_id("snow");
         let snowy = cold.iter().filter(|&&x| g.material_at(x, p.surface_at(x) - 1) == snow).count();
         assert!(snowy * 10 >= cold.len() * 9, "{snowy} of {} cold, gentle columns are snow", cold.len());
+    }
+
+    /// Drifters about the islands: a few each, small, aerolite in them,
+    /// made as cells, and each reported once (its corner's chunk) for the
+    /// game to take over.
+    #[test]
+    fn drifters_float_about_the_islands() {
+        let m = mats();
+        let g = TerrainGen::new(1, Preset::Large, &m);
+        let p = g.plan();
+        let n = p.drifters.len();
+        eprintln!("{n} drifters about {} islands", p.islands.len());
+        assert!(n >= p.islands.len() * 3 / 2, "{n} drifters about {} islands", p.islands.len());
+        let aero = m.expect_id("aerolite_ore");
+        for d in p.drifters.iter().take(20) {
+            let cells = (d.x0..d.x0 + d.w).flat_map(|x| (d.y0..d.y0 + d.h).map(move |y| (x, y))).filter(|&(x, y)| g.material_at(x, y) != MaterialId::AIR).count();
+            let ore = (d.x0..d.x0 + d.w).flat_map(|x| (d.y0..d.y0 + d.h).map(move |y| (x, y))).filter(|&(x, y)| g.material_at(x, y) == aero).count();
+            assert!(cells > 40 && ore * 6 > cells, "the drifter at {},{}: {cells} cells, {ore} aerolite", d.x0, d.y0);
+            let at = CellPos::new(d.x0, d.y0);
+            let spawns = g.generate_with_spawns(at.chunk()).1;
+            assert_eq!(spawns.iter().filter(|(p, s)| *p == at && matches!(s, Spawn::Drifter(..))).count(), 1, "the drifter at {},{} reported", d.x0, d.y0);
+        }
     }
 
     #[test]

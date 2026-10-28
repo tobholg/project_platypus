@@ -248,6 +248,11 @@ pub struct MaterialDef {
     /// sides, and open underfoot to one that wants to drop.
     #[serde(default)]
     pub platform: bool,
+    /// Holds itself up (aerolite): a piece with any of it in, cut loose,
+    /// doesn't fall but floats free (`World::take_freed`: the game makes
+    /// it a drifter).
+    #[serde(default)]
+    pub lifts: bool,
     /// A wall: built into the background (behind you), never the playfield
     /// (a house's back wall: the game's business).
     #[serde(default)]
@@ -486,6 +491,8 @@ pub struct MatPhys {
     pub brittle: bool,
     /// See `MaterialDef::platform`.
     pub platform: bool,
+    /// See `MaterialDef::lifts`.
+    pub lifts: bool,
     /// See `MaterialDef::sticky`.
     pub sticky: bool,
     /// See `MaterialDef::slippery`.
@@ -716,6 +723,7 @@ impl MaterialTable {
                 object: d.object,
                 brittle: d.brittle,
                 platform: d.platform,
+                lifts: d.lifts,
                 sticky: d.sticky,
                 slippery: d.slippery,
                 latent: d.latent,

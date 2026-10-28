@@ -11,7 +11,7 @@ use platypus_sim::{CHUNK, Climate};
 
 use crate::biome::Biome;
 use crate::flora::{Forest, Species};
-use crate::islands::{self, Island};
+use crate::islands::{self, Island, IslandCell};
 use crate::caves::{self, Caves};
 use crate::structures::{self, Structure, Structures};
 
@@ -217,6 +217,10 @@ const CLOUD_SEA_AT: f64 = 0.38;
 const ISLANDS_FROM: f64 = 0.55;
 const ISLANDS_TO: f64 = 0.12;
 const ISLAND_CLEAR: f64 = 300.0;
+/// Drifters about each island (fewest, most), their half-width at most
+/// (reference cells).
+const DRIFTERS: (u32, u32) = (2, 4);
+const DRIFTER_RX: f64 = 36.0;
 /// How far either side a lake's rims are looked for (large world): wider
 /// valleys are dry land, not one giant lake.
 const LAKE_REACH: f64 = 1_800.0;
@@ -329,6 +333,9 @@ pub struct WorldPlan {
     pub sunken_city: (i32, i32, i32),
     /// The sea of clouds' height (drawn in the backdrop).
     pub cloud_sea: i32,
+    /// Small rocks floating free about the islands (the game moves them),
+    /// by x.
+    pub drifters: Vec<Island>,
 }
 
 fn unit(rng: &mut Rng) -> f64 {
@@ -678,6 +685,11 @@ impl WorldPlan {
             (135.0 * sw.max(0.5), 360.0 * sw.max(0.5)),
             |x0, x1, bottom| (x0..=x1).step_by(8).all(|x| surface[x.clamp(0, width - 1) as usize] + clear < bottom),
         );
+        // Drifters about them: small rocks with aerolite hearts, floating
+        // free.
+        let drifters = islands::drifters(seed, &islands, DRIFTERS, (12.0, DRIFTER_RX * sw.max(0.5)), ((180.0 * sw.max(0.5)) as i32, (160.0 * sh.max(0.5)) as i32), |x0, x1, bottom| {
+            (x0..=x1).step_by(4).all(|x| surface[x.clamp(0, width - 1) as usize] + clear < bottom)
+        });
 
         // Chasms: a few shafts from the lowland surface down into the deep,
         // away from the spawn, lakes and mountains, wandering as they fall.
@@ -811,7 +823,7 @@ impl WorldPlan {
             let (a, b) = ((SUNKEN_CITY.0 * ocean_w as f64) as i32, (SUNKEN_CITY.1 * ocean_w as f64) as i32);
             (a, b, surface[a as usize..b as usize].iter().copied().max().unwrap_or(sea_level))
         };
-        WorldPlan { seed, preset, width, height, sea_level, band_floors, biomes, surface, plain, start, water, rugged, islands, chasms, stretches, climate, forest, island_forest, structures, caves, spires, ocean: ocean_w, ocean_floor, sunken_city, cloud_sea: (band_floors[0] as f64 + CLOUD_SEA_AT * (height - 1 - band_floors[0]) as f64) as i32 }
+        WorldPlan { seed, preset, width, height, sea_level, band_floors, biomes, surface, plain, start, water, rugged, islands, chasms, stretches, climate, forest, island_forest, structures, caves, spires, ocean: ocean_w, ocean_floor, sunken_city, drifters, cloud_sea: (band_floors[0] as f64 + CLOUD_SEA_AT * (height - 1 - band_floors[0]) as f64) as i32 }
     }
 
     /// How high rain and snow come in from: the sky band's floor (the
@@ -859,6 +871,13 @@ impl WorldPlan {
     }
 
     /// The sky island over a column, if any.
+    /// What a drifter (as the seed made it) has at a cell, if one's there.
+    pub fn drifter_at(&self, x: i32, y: i32) -> Option<IslandCell> {
+        let x = self.wrap(x);
+        let from = self.drifters.partition_point(|d| d.x0 + (2.0 * DRIFTER_RX) as i32 + 2 < x);
+        self.drifters[from..].iter().take_while(|d| d.x0 <= x).map(|d| d.at(x, y)).find(|&c| c != IslandCell::None)
+    }
+
     pub fn island_at(&self, x: i32) -> Option<&Island> {
         let x = self.wrap(x);
         let i = self.islands.partition_point(|i| i.x0 + i.w <= x);

@@ -67,6 +67,7 @@ mod save;
 mod scenario;
 mod screen_fx;
 mod show;
+mod drift;
 mod shoals;
 #[cfg(feature = "spikes")]
 mod spikes;
@@ -196,6 +197,7 @@ fn main() {
         .add_plugins((dev::DevPlugin, magic::MagicPlugin, vfx::VfxPlugin, arena::ArenaPlugin, editor::EditorPlugin, combat::CombatPlugin, archery::ArcheryPlugin, gear::GearPlugin))
         .add_plugins((replay::ReplayPlugin, fight::FightPlugin, bestiary::panel::BestiaryPlugin, bestiary::stage::StagePlugin, bestiary::cli::CliPlugin))
         .add_plugins(shoals::ShoalsPlugin)
+        .add_plugins(drift::DriftPlugin)
         .add_plugins((reset::ResetPlugin, clock::ClockPlugin, gold::GoldPlugin, hearts::HeartsPlugin, breath::BreathPlugin, kick::KickPlugin, traps::TrapsPlugin, hazards::HazardsPlugin, death::DeathPlugin, talk::TalkPlugin, events::EventsPlugin, show::ShowPlugin, display::DisplayPlugin, pickups::PickupsPlugin, cursor::CursorPlugin))
         .add_plugins((tempo::TempoPlugin, potion::PotionPlugin, screen_fx::ScreenFxPlugin, cloth::ClothPlugin))
         .add_plugins((settings::SettingsPlugin, sound::SoundPlugin))

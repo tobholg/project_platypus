@@ -326,6 +326,7 @@ fn gather(
     sim: Res<SimWorld>,
     mut bodies: Query<(&mut crate::creatures::Kinematics, Option<&mut Transform>)>,
     mut lights: Query<(&mut crate::hands::lights::PlacedLight, &mut Transform), Without<crate::creatures::Kinematics>>,
+    mut drifters: Query<&mut crate::drift::Drifter>,
 ) {
     let Some(w) = sim.world.wraps() else { return };
     let (focus, half) = (sim.world.focus() as f32, w as f32 / 2.0);
@@ -338,6 +339,12 @@ fn gather(
             if let Some(mut tf) = tf {
                 tf.translation.x += d;
             }
+        }
+    }
+    for mut d in &mut drifters {
+        let dx = shift(d.pos.x);
+        if dx != 0.0 {
+            d.shift(dx);
         }
     }
     for (mut l, mut tf) in &mut lights {

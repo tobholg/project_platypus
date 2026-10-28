@@ -69,6 +69,10 @@ impl Island {
 /// and the rows at its very bottom crusted with it.
 const AEROLITE_SHARE: f64 = 0.4;
 const AEROLITE_CRUST: i32 = 9;
+/// A drifter's: most of it under its soil (a small rock needs more to float).
+const DRIFTER_AEROLITE: f64 = 0.75;
+/// A drifter's depth under its top, against its half-width.
+const DRIFTER_DEPTH: f64 = 1.0;
 
 fn unit(rng: &mut Rng) -> f64 {
     rng.next_u32() as f64 / u32::MAX as f64
@@ -94,7 +98,7 @@ pub fn plan(seed: u64, count: usize, (x_lo, x_hi): (i32, i32), (y_lo, y_hi): (i3
             if islands.iter().any(|i| x1 + GAP >= i.x0 && x0 - GAP <= i.x0 + i.w) || !clear(x0, x1, top - (depth * 1.4) as i32 - 9) {
                 continue;
             }
-            islands.push(carve(&mut rng, &surf, &edge, cx, top, rx, depth));
+            islands.push(carve(&mut rng, &surf, &edge, cx, top, rx, depth, AEROLITE_SHARE));
             break;
         }
     }
@@ -102,7 +106,43 @@ pub fn plan(seed: u64, count: usize, (x_lo, x_hi): (i32, i32), (y_lo, y_hi): (i3
     islands
 }
 
-fn carve(rng: &mut Rng, surf: &Perlin, edge: &Perlin, cx: i32, top: i32, rx: f64, depth: f64) -> Island {
+/// Drifters about the islands: small rocks with an aerolite heart, free to
+/// float (the game moves them: `drift.rs`): `per` (fewest, most) about
+/// each island, half-widths `rx_lo..rx_hi`, within the island's width (and
+/// `reach` more) across and `rise` up or down of its top; none touching an
+/// island or each other, each where `clear` says it may be (from x, to x,
+/// its bottom).
+pub fn drifters(seed: u64, islands: &[Island], (per_lo, per_hi): (u32, u32), (rx_lo, rx_hi): (f64, f64), (reach, rise): (i32, i32), clear: impl Fn(i32, i32, i32) -> bool) -> Vec<Island> {
+    let mut rng = Rng::seeded(&[seed, 0xD12F7]);
+    let surf = Perlin::new((seed ^ 0xD1AF) as u32);
+    let edge = Perlin::new((seed ^ 0xD1ED) as u32);
+    let mut out: Vec<Island> = Vec::new();
+    const GAP: i32 = 24;
+    let apart = |a: (i32, i32, i32, i32), b: &Island| a.0 > b.x0 + b.w + GAP || a.1 + GAP < b.x0 || a.2 > b.y0 + b.h + GAP || a.3 + GAP < b.y0;
+    for isl in islands {
+        let n = per_lo + rng.next_u32() % (per_hi - per_lo + 1);
+        for _ in 0..n {
+            for _try in 0..40 {
+                let rx = rx_lo + unit(&mut rng) * (rx_hi - rx_lo);
+                // (Chunkier than an island: a boulder, not a slab.)
+                let depth = rx * DRIFTER_DEPTH;
+                let cx = isl.x0 - reach + (unit(&mut rng) * (isl.w + 2 * reach) as f64) as i32;
+                let top = isl.y0 + isl.h - 9 + ((unit(&mut rng) - 0.5) * 2.0 * rise as f64) as i32;
+                let h = (depth * 1.4) as i32 + 18;
+                let (x0, x1, y0, y1) = (cx - rx as i32, cx + rx as i32, top - h + 9, top + 9);
+                if !islands.iter().all(|i| apart((x0, x1, y0, y1), i)) || !out.iter().all(|i| apart((x0, x1, y0, y1), i)) || !clear(x0, x1, y0) {
+                    continue;
+                }
+                out.push(carve(&mut rng, &surf, &edge, cx, top, rx, depth, DRIFTER_AEROLITE));
+                break;
+            }
+        }
+    }
+    out.sort_by_key(|i| i.x0);
+    out
+}
+
+fn carve(rng: &mut Rng, surf: &Perlin, edge: &Perlin, cx: i32, top: i32, rx: f64, depth: f64, aero: f64) -> Island {
     let w = 2 * rx as i32 + 1;
     let h = (depth * 1.4) as i32 + 18;
     let x0 = cx - rx as i32;
@@ -128,10 +168,12 @@ fn carve(rng: &mut Rng, surf: &Perlin, edge: &Perlin, cx: i32, top: i32, rx: f64
             }
             // (Its underside's lower part veined with aerolite, its last
             // rows crusted with it: what keeps it up.)
-            let low = d as f64 >= under as f64 * (1.0 - AEROLITE_SHARE);
+            let low = d as f64 >= under as f64 * (1.0 - aero);
+            // (Soil a quarter of a small rock's depth, at most 8.)
+            let soil = (under / 4).clamp(2, 8);
             let c = match d {
                 0 => IslandCell::Grass,
-                1..=8 => IslandCell::Dirt,
+                _ if d <= soil => IslandCell::Dirt,
                 _ if low && (d >= under - AEROLITE_CRUST || edge.get([x as f64 / 13.0, y as f64 / 8.0 + 50.0]) > -0.1) => IslandCell::Aerolite,
                 _ => IslandCell::Stone,
             };

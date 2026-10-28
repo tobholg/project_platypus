@@ -278,6 +278,10 @@ struct ThingsFile {
     /// where, which way a beam goes (`hands::lights`).
     #[serde(default)]
     lights: Vec<(String, (f32, f32), (f32, f32))>,
+    /// Drifters (`drift`): their box's bottom-left and size, where they
+    /// float and wander about.
+    #[serde(default)]
+    drifters: Vec<((i32, i32), (i32, i32), f32, f32)>,
 }
 
 fn write_ron<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
@@ -363,7 +367,7 @@ fn save(
     items: Option<Res<Items>>,
     chests: Res<Chests>,
     spawned: Res<Spawned>,
-    (hand, held, lights_down): (Res<Hand>, Res<crate::hands::ui::Held>, Query<&crate::hands::lights::PlacedLight>),
+    (hand, held, lights_down, drifters): (Res<Hand>, Res<crate::hands::ui::Held>, Query<&crate::hands::lights::PlacedLight>, Query<&crate::drift::Drifter>),
     player: Query<SavedPlayer, With<LocalPlayer>>,
     boxes: Query<(&Chest, &Kinematics)>,
     drops: Query<(&Dropped, &Kinematics)>,
@@ -462,6 +466,13 @@ fn save(
             .collect(),
         drops: drops.iter().map(|(d, k)| ((stored(k.body.pos.x), k.body.pos.y), stack_out(&items, &d.stack))).collect(),
         lights: lights_down.iter().map(|l| (items.def(l.item).id.clone(), (stored(l.at.x), l.at.y), (l.dir.x, l.dir.y))).collect(),
+        drifters: drifters
+            .iter()
+            .map(|d| {
+                let off = stored(d.cell.x as f32) - d.cell.x as f32;
+                ((d.cell.x + off as i32, d.cell.y), (d.size.x, d.size.y), d.rest, d.home + off)
+            })
+            .collect(),
         creatures: creatures.iter().map(|(c, k, h, keeps)| SavedCreature { kind: c.kind.clone(), feet: (stored(k.body.pos.x), k.body.pos.y - k.body.half.y), hp: h.hp, keeps: keeps.map(|k| k.0) }).collect(),
     };
     for (b, k) in &bodies {
@@ -595,6 +606,9 @@ fn load_world(
         if let Some(stack) = stack_in(&items, s) {
             spawn_drop(&mut commands, &items, Vec2::new(*x, *y), stack);
         }
+    }
+    for &((x, y), (w, h), rest, home) in &things.drifters {
+        commands.spawn(crate::drift::Drifter::saved(IVec2::new(x, y), IVec2::new(w, h), rest, home));
     }
     for c in &things.creatures {
         let (hp, keeps) = (c.hp, c.keeps);

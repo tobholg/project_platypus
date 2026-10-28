@@ -414,7 +414,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, fall_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, save_script)
             .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script, wardrobe_script, herbcut_script, zombiejump_script, crushcheck_script, batcount_script, airswing_script, dive_script, paint_script, firewall_script, fields_script, ward_script, seam_script))
-            .add_systems(Update, sky_script)
+            .add_systems(Update, (sky_script, drift_script))
             .add_systems(PreUpdate, craft_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pack_script.after(bevy::ui::UiSystems::Focus).before(crate::pause::key))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
@@ -16991,8 +16991,10 @@ fn seam_script(
 /// 1200) over the sea of clouds the backdrop draws (negative: under it),
 /// from 0.5 s, to look at it; `PLATYPUS_SKY_ISLAND=dy`: instead `dy` cells
 /// over the bottom of the sky island nearest the spawn (negative: under
-/// it). Logs where it is.
-fn sky_script(s: Res<Scenario>, sim: Res<SimWorld>, mut menu: ResMut<crate::devmenu::DevMenu>, mut player: Query<&mut Kinematics, With<LocalPlayer>>, mut state: Local<(Option<Vec2>, f32)>) {
+/// it); with `PLATYPUS_SKY_CUT=1` too, a piece of its underside cut off
+/// (3 s: a slot over it, its sides cut down), to float free. Logs where it
+/// is, and the drifters near it.
+fn sky_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, mut menu: ResMut<crate::devmenu::DevMenu>, mut player: Query<&mut Kinematics, With<LocalPlayer>>, drifters: Query<&crate::drift::Drifter>, mut state: Local<(Option<Vec2>, f32, bool)>) {
     if s.name != "sky" {
         return;
     }
@@ -17002,6 +17004,29 @@ fn sky_script(s: Res<Scenario>, sim: Res<SimWorld>, mut menu: ResMut<crate::devm
     let Some(sea) = sim.generator.cloud_sea() else { return };
     if t < 0.5 {
         return;
+    }
+    // (A piece of the island's underside cut off: a slot over it, its
+    // sides down to the bottom.)
+    if let Some(at) = state.0
+        && t > 3.0
+        && !state.2
+        && std::env::var("PLATYPUS_SKY_CUT").is_ok()
+    {
+        state.2 = true;
+        let cx = at.x as i32;
+        let from = (at.y - std::env::var("PLATYPUS_SKY_ISLAND").ok().and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0)) as i32;
+        // (Its underside here: the first rock up from its box's bottom.)
+        let bottom = (from..from + 200).find(|&y| sim.world.get(CellPos::new(cx, y)).is_some_and(|c| !c.is_air())).unwrap_or(from);
+        let (x0, x1, top) = (cx - 22, cx + 22, bottom + 26);
+        let cut: Vec<CellPos> = (x0..=x1).flat_map(|x| (top..top + 3).map(move |y| CellPos::new(x, y))).chain((bottom - 40..top).flat_map(|y| [x0, x0 + 1, x0 + 2, x1 - 2, x1 - 1, x1].map(|x| CellPos::new(x, y)))).collect();
+        for p in &cut {
+            sim.world.set(*p, platypus_sim::Cell::AIR);
+        }
+        let aero = sim.materials().id("aerolite_ore");
+        let inside = (x0 + 3..x1 - 2).flat_map(|x| (bottom - 40..top).map(move |y| CellPos::new(x, y))).filter_map(|p| sim.world.get(p)).filter(|c| !c.is_air()).collect::<Vec<_>>();
+        info!("sky: the piece: {} cells, {} aerolite", inside.len(), inside.iter().filter(|c| Some(c.material) == aero).count());
+        let n = sim.world.loosen_fragments(CellPos::new(cx, top - 6), 30);
+        info!("sky: t {t:.1} a piece of its underside cut off ({x0}..{x1}, up to {top}); {n} cells loosened");
     }
     let up: f32 = std::env::var("PLATYPUS_SKY_UP").ok().and_then(|v| v.parse().ok()).unwrap_or(1_200.0);
     let island: Option<f32> = std::env::var("PLATYPUS_SKY_ISLAND").ok().and_then(|v| v.parse().ok());
@@ -17020,7 +17045,122 @@ fn sky_script(s: Res<Scenario>, sim: Res<SimWorld>, mut menu: ResMut<crate::devm
     k.body.vel = Vec2::ZERO;
     if t >= state.1 {
         state.1 = t + 1.0;
-        info!("sky: t {t:.1} {up:+.0} from the sea of clouds (at {sea})");
+        let near: Vec<String> = drifters.iter().filter(|d| d.pos.distance(at) < 600.0).map(|d| format!("{:+.0},{:+.0}{} {:+.1}", d.pos.x - at.x, d.pos.y - at.y, if d.taken() { "" } else { " (not yet)" }, d.pos.y - d.rest)).collect();
+        info!("sky: t {t:.1} {up:+.0} from the sea of clouds (at {sea}); {} drifters, near: {}", drifters.iter().count(), near.join("; "));
+    }
+}
+
+/// `drift` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat PLATYPUS_SAVE=off`): a
+/// drifter (a rock 40 × 20, its lower third aerolite) made 140 over the
+/// floor; the player dropped onto it from 60 over it (1.5 s), jumping off
+/// it to the right (5 s), and back on (7 s, from the left, running); half
+/// its aerolite and more mined out at 10 s, then all but a fifth at 13 s.
+/// Logs the drifter's height against where it floats, its speed, the
+/// player's feet against its top.
+fn drift_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    drifters: Query<&crate::drift::Drifter>,
+    mut state: Local<(u8, f32)>,
+) {
+    if s.name != "drift" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let Ok(mut k) = player.single_mut() else { return };
+    let fl = platypus_worldgen::arena::FLOOR;
+    let (x0, y0, w, h) = (900, fl + 140, 40, 20);
+    let (step, next) = &mut *state;
+    let mine = |sim: &mut SimWorld, keep: f32| {
+        let Some(aero) = sim.materials().id("aerolite_ore") else { return };
+        let Some(d) = drifters.iter().next() else { return };
+        let cells: Vec<CellPos> = (0..d.size.y).flat_map(|y| (0..d.size.x).map(move |x| CellPos::new(d.cell.x + x, d.cell.y + y))).filter(|&p| sim.world.get(p).is_some_and(|c| c.material == aero)).collect();
+        let n = cells.len();
+        for (i, p) in cells.into_iter().enumerate() {
+            if (i as f32) >= n as f32 * keep {
+                sim.world.set(p, platypus_sim::Cell::AIR);
+            }
+        }
+    };
+    match *step {
+        0 if t > 0.5 => {
+            let (Some(stone), Some(aero)) = (sim.materials().id("stone"), sim.materials().id("aerolite_ore")) else { return };
+            for y in 0..h {
+                for x in 0..w {
+                    // (Rounded at its corners.)
+                    let (dx, dy) = ((x as f32 - w as f32 / 2.0 + 0.5) / (w as f32 / 2.0), (y as f32 - h as f32 / 2.0 + 0.5) / (h as f32 / 2.0));
+                    if dx * dx + dy * dy > 1.15 {
+                        continue;
+                    }
+                    let m = if y < h / 3 { aero } else { stone };
+                    sim.world.set(CellPos::new(x0 + x, y0 + y), platypus_sim::Cell::new(m, 128));
+                }
+            }
+            commands.spawn(crate::drift::Drifter::new(IVec2::new(x0, y0), IVec2::new(w, h)));
+            *step = 1;
+        }
+        1 if t > 1.5 => {
+            k.body.pos = Vec2::new((x0 + w / 2) as f32, (y0 + h + 60) as f32);
+            k.prev_pos = k.body.pos;
+            k.body.vel = Vec2::ZERO;
+            *step = 2;
+        }
+        2 if t > 5.0 => {
+            keys.press(KeyCode::Space);
+            keys.press(KeyCode::KeyD);
+            *step = 3;
+        }
+        3 if t > 5.3 => {
+            keys.release(KeyCode::Space);
+            keys.release(KeyCode::KeyD);
+            *step = 4;
+        }
+        4 if t > 7.0 => {
+            keys.press(KeyCode::KeyA);
+            keys.press(KeyCode::Space);
+            *step = 5;
+        }
+        5 if t > 7.4 => {
+            keys.release(KeyCode::Space);
+            *step = 6;
+        }
+        6 if t > 7.9 => {
+            keys.release(KeyCode::KeyA);
+            *step = 7;
+        }
+        7 if t > 10.0 => {
+            mine(&mut sim, 0.6);
+            info!("drift: t {t:.1} 40% of its aerolite mined out");
+            *step = 8;
+        }
+        8 if t > 13.0 => {
+            mine(&mut sim, 0.33);
+            info!("drift: t {t:.1} all but a fifth of it mined out");
+            *step = 9;
+        }
+        _ => {}
+    }
+    if *step >= 1 && t >= *next {
+        *next = t + 0.25;
+        let feet = k.body.pos.y - k.body.half.y;
+        match drifters.iter().next() {
+            Some(d) => info!(
+                "drift: t {t:.2} at {:.0},{:.1} ({:+.1} from its rest) going {:+.0},{:+.0}; the player {:+.0} across, feet {:+.1} over its top",
+                d.pos.x,
+                d.pos.y,
+                d.pos.y - d.rest,
+                d.vel.x,
+                d.vel.y,
+                k.body.pos.x - (d.pos.x + w as f32 / 2.0),
+                feet - (d.pos.y + h as f32)
+            ),
+            None => info!("drift: t {t:.2} no drifter (fallen, ground now); the player at {:.0},{:.0}", k.body.pos.x, feet),
+        }
     }
 }
 

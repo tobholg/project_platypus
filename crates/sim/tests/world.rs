@@ -2944,3 +2944,26 @@ fn a_wrapping_world_reports_near_its_focus() {
     let x = w.particles()[0].pos[0];
     assert!((x - (width as f32 + 3.0)).abs() < 3.0, "a particle at {x}");
 }
+
+#[test]
+fn a_piece_with_aerolite_in_it_floats_free() {
+    let mut w = boxed_world(2, 2, 3);
+    let (stone, aero) = (w.materials().expect_id("stone"), w.materials().expect_id("aerolite_ore"));
+    // Two rocks hanging in the air: one with aerolite in it, one without.
+    for (x0, with) in [(20, true), (80, false)] {
+        for y in 60..70 {
+            for x in x0..x0 + 12 {
+                let m = if with && y < 62 { aero } else { stone };
+                w.set(CellPos::new(x, y), Cell::new(m, 0));
+            }
+        }
+    }
+    w.loosen_fragments(CellPos::new(26, 65), 10);
+    w.loosen_fragments(CellPos::new(86, 65), 10);
+    let freed = w.take_freed();
+    assert_eq!(freed.len(), 1, "the one with aerolite freed");
+    assert_eq!(freed[0].len(), 120, "all of it");
+    let loose = |x: i32| w.get(CellPos::new(x, 65)).unwrap().flags & platypus_sim::cell::flags::LOOSE != 0;
+    assert!(!loose(26), "it holds itself up");
+    assert!(loose(86), "the other falls");
+}

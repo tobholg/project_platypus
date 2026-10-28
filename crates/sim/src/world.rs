@@ -100,6 +100,10 @@ pub struct World {
     /// (particles, bodies, blasts, rain), it reports as the copy of it
     /// nearest there.
     focus: i32,
+    /// Pieces cut loose that hold themselves up (with aerolite in them,
+    /// `MatPhys::lifts`): floating free, for the game to take over
+    /// (`take_freed`).
+    freed: Vec<Vec<CellPos>>,
     /// The top and bottom of what the players see (`set_view`): rain and
     /// snow come in just over it, and go once they've fallen out under it.
     view: Option<(i32, i32)>,
@@ -169,6 +173,7 @@ impl World {
             wrap: None,
             focus: 0,
             view: None,
+            freed: Vec::new(),
             skies: FxHashMap::default(),
         }
     }
@@ -451,6 +456,12 @@ impl World {
     }
 
     // ---- the seam ---------------------------------------------------------
+
+    /// Pieces cut loose since last asked that hold themselves up (aerolite
+    /// in them): their cells.
+    pub fn take_freed(&mut self) -> Vec<Vec<CellPos>> {
+        std::mem::take(&mut self.freed)
+    }
 
     /// Make the world wrap at `width` cells (a whole, even number of chunks,
     /// so the step's checkerboard passes hold across the seam), or not.
@@ -1656,6 +1667,13 @@ impl World {
                 if grounded {
                     anchored.extend(piece.iter().copied());
                     anchored.extend(stack.iter().copied());
+                    continue;
+                }
+                // Held up by its aerolite: it floats free (the game's to
+                // take over), and holds up what's on it.
+                if pass == Pass::Front && piece.iter().any(|&p| self.get(p).is_some_and(|c| mats.phys(c.material).lifts)) {
+                    anchored.extend(piece.iter().copied());
+                    self.freed.push(std::mem::take(&mut piece));
                     continue;
                 }
                 if pass != Pass::Front {
