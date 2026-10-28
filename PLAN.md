@@ -76,7 +76,19 @@ Decided (2026-10-28):
 
 Branches in order; each merges to `main` when it holds.
 
-**1. `wrap`: the world loops.** Generation that wraps (per-column plans,
+**1. `wrap`: the world loops.** BUILT on `wrap` (2026-10-28, unmerged):
+generation meets itself at the seam (noise eased over the last 1024
+cells, the plan's columns wrap, a dam across the seam, the edge oceans one
+ocean; caves keep clear of it), the sim stores the world modulo its
+width and reports round a focus, the game streams, draws, spawns, saves
+and maps round it. One change from the plan: no shift of everything at
+the seam; positions stay unbounded while playing (f32 keeps 1/64 cell a
+lap out on a large world, 1/4 at sixteen laps), saves store them modulo
+the width, and a gather pass brings things kept a lap away to the near
+copy. Scenario `seam` (walk, chase, water; `PLATYPUS_SEAM_SWIM`).
+Left: caves linking across the seam, the map's biome labels round it,
+the clock's dev readout a lap out.
+Planned: Generation that wraps (per-column plans,
 noise, caves, water tables, structures and chasms away from or across
 the seam); the sim's storage modulo the width (chunks, neighbours,
 particles, bodies, weather); unbounded positions recentred on crossing;
