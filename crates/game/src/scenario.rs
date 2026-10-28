@@ -16989,7 +16989,9 @@ fn seam_script(
 
 /// `sky` (a generated world): the player held `PLATYPUS_SKY_UP` cells (default
 /// 1200) over the sea of clouds the backdrop draws (negative: under it),
-/// from 0.5 s, to look at it. Logs where it is against the sea.
+/// from 0.5 s, to look at it; `PLATYPUS_SKY_ISLAND=dy`: instead `dy` cells
+/// over the bottom of the sky island nearest the spawn (negative: under
+/// it). Logs where it is.
 fn sky_script(s: Res<Scenario>, sim: Res<SimWorld>, mut menu: ResMut<crate::devmenu::DevMenu>, mut player: Query<&mut Kinematics, With<LocalPlayer>>, mut state: Local<(Option<Vec2>, f32)>) {
     if s.name != "sky" {
         return;
@@ -17002,7 +17004,17 @@ fn sky_script(s: Res<Scenario>, sim: Res<SimWorld>, mut menu: ResMut<crate::devm
         return;
     }
     let up: f32 = std::env::var("PLATYPUS_SKY_UP").ok().and_then(|v| v.parse().ok()).unwrap_or(1_200.0);
-    let at = *state.0.get_or_insert(Vec2::new(k.body.pos.x, sea as f32 + up));
+    let island: Option<f32> = std::env::var("PLATYPUS_SKY_ISLAND").ok().and_then(|v| v.parse().ok());
+    let at = *state.0.get_or_insert_with(|| match island {
+        Some(dy) => {
+            let sx = sim.generator.spawn_point().x;
+            let isles = sim.generator.sky_islands();
+            let (lo, hi) = isles.iter().min_by_key(|(lo, hi)| ((lo.x + hi.x) / 2 - sx).abs()).copied().unwrap_or_default();
+            info!("sky: the island at {}..{}, {}..{}", lo.x, hi.x, lo.y, hi.y);
+            Vec2::new((lo.x + hi.x) as f32 / 2.0, lo.y as f32 + dy)
+        }
+        None => Vec2::new(k.body.pos.x, sea as f32 + up),
+    });
     k.body.pos = at;
     k.prev_pos = at;
     k.body.vel = Vec2::ZERO;

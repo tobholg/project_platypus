@@ -147,6 +147,23 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
         var d = in.uv - a.xy;
         d.x = d.x * fw.aspect;
         let w = vec2<f32>(d.x, -d.y) * fw.scale + vec2<f32>(b.z * 97.0, b.z * 61.0);
+        if (a.w > 3.5) {
+            // Aerolite: under a sky island, space bending as if gravity ran
+            // up: a haze rising in slow sheets, colours parting a little,
+            // a faint violet light (an ellipse: `a.z` across, `b.x` up and
+            // down, in screen heights).
+            let e = vec2<f32>(d.x / a.z, d.y / b.x);
+            let r = length(e);
+            if (r >= 1.0) {
+                continue;
+            }
+            let body = (1.0 - r * r) * s;
+            let rise = vec2<f32>(sin(w.y * 0.11 + t * 0.9 + w.x * 0.04) * 0.0022 + sin(w.y * 0.31 - t * 1.7) * 0.0009, sin(w.x * 0.07 - t * 0.6) * 0.0016 + sin(w.y * 0.21 + t * 2.3) * 0.0012) * body;
+            bend += vec2<f32>(rise.x / fw.aspect, rise.y);
+            split += 0.0016 * body;
+            light += vec3<f32>(0.42, 0.24, 0.72) * body * (0.035 + 0.02 * sin(w.y * 0.18 + t * 1.3 + b.z * 6.28));
+            continue;
+        }
         if (a.w < 2.5) {
             let r = length(d) / a.z;
             if (r >= 1.0) {

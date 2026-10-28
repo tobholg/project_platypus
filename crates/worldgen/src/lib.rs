@@ -69,6 +69,12 @@ pub trait ChunkGenerator: Send + Sync {
         None
     }
 
+    /// The sky islands as the seed made them (bottom-left and top-right
+    /// cells of each).
+    fn sky_islands(&self) -> Vec<(CellPos, CellPos)> {
+        Vec::new()
+    }
+
     /// The ground height at x as generated (before anything was dug), for
     /// telling whether unloaded air above a column is open sky.
     fn surface_hint(&self, _x: i32) -> Option<i32> {
@@ -359,6 +365,7 @@ struct Ids {
     leaves: MaterialId,
     needles: MaterialId,
     dark_leaves: MaterialId,
+    aerolite: MaterialId,
     tall_grass: MaterialId,
     ice: MaterialId,
     sandstone: MaterialId,
@@ -507,6 +514,7 @@ impl TerrainGen {
             leaves: mats.expect_id("leaves"),
             needles: mats.expect_id("needles"),
             dark_leaves: mats.expect_id("dark_leaves"),
+            aerolite: mats.expect_id("aerolite_ore"),
             tall_grass: mats.expect_id("tall_grass"),
             ice: mats.expect_id("ice"),
             sandstone: mats.expect_id("sandstone"),
@@ -1189,6 +1197,7 @@ impl TerrainGen {
                     IslandCell::Grass => return if plan.climate.ambient(x, y) <= 0 { i.snow } else { i.grass },
                     IslandCell::Dirt => return i.dirt,
                     IslandCell::Stone => return i.stone,
+                    IslandCell::Aerolite => return i.aerolite,
                     IslandCell::Cave => return i.air,
                     IslandCell::None => {}
                 }
@@ -2319,6 +2328,10 @@ impl ChunkGenerator for TerrainGen {
 
     fn cloud_sea(&self) -> Option<i32> {
         Some(self.plan.cloud_sea)
+    }
+
+    fn sky_islands(&self) -> Vec<(CellPos, CellPos)> {
+        self.plan.islands.iter().map(|i| (CellPos::new(i.x0, i.y0), CellPos::new(i.x0 + i.w - 1, i.y0 + i.h - 1))).collect()
     }
 
     fn spawn_point(&self) -> CellPos {

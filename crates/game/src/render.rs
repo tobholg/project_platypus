@@ -16,7 +16,7 @@ use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use platypus_sim::cell::flags;
-use platypus_sim::{CHUNK, Cell, CellPos, ChunkPos, Climate, Kind, MaterialTable};
+use platypus_sim::{CHUNK, Cell, CellPos, ChunkPos, Climate, Kind, MaterialId, MaterialTable};
 
 use crate::creatures::Kinematics;
 use crate::camera::MainCamera;
@@ -84,10 +84,27 @@ struct ChunkGfx {
     /// Where it's drawn: round a wrapping world, the copy of the chunk
     /// nearest the players (`World::near_chunk`), moved when that changes.
     at: ChunkPos,
+    /// Its aerolite (a sky island's underside), if any: the box round it
+    /// (cells in the chunk, low and high corners), for its shimmer.
+    aero: Option<(IVec2, IVec2)>,
     /// What's solid in front, a bit a cell (a row a word): the background's
     /// shading (`occlusion`) is only redone when it changes, not every time
     /// blood or a spark dirties the front.
     solid: Vec<u64>,
+}
+
+/// The box round a chunk's aerolite (cells in it), if it has enough to
+/// shimmer.
+fn aerolite_box(cells: &[Cell], aerolite: Option<MaterialId>) -> Option<(IVec2, IVec2)> {
+    let id = aerolite?;
+    let (mut lo, mut hi, mut n) = (IVec2::MAX, IVec2::MIN, 0);
+    for (i, c) in cells.iter().enumerate() {
+        if c.material == id {
+            let p = IVec2::new(i as i32 % CHUNK, i as i32 / CHUNK);
+            (lo, hi, n) = (lo.min(p), hi.max(p), n + 1);
+        }
+    }
+    (n >= AEROLITE_SHIMMERS).then_some((lo, hi))
 }
 
 /// A chunk's solid front cells, a bit a cell.
@@ -104,6 +121,15 @@ fn solid_mask(front: &[Cell], mats: &MaterialTable) -> Vec<u64> {
 
 #[derive(Resource, Default)]
 struct ChunkGfxs(HashMap<ChunkPos, ChunkGfx>);
+
+/// The aerolite in view, a patch an island (the boxes round it, world
+/// cells, low and high corners, merged where they touch): space bends
+/// under each (`magic::field::show`, the warp pass).
+#[derive(Resource, Default)]
+pub struct Aerolite(pub Vec<(Vec2, Vec2)>);
+
+/// Aerolite cells in a chunk, at least, for it to shimmer.
+const AEROLITE_SHIMMERS: usize = 24;
 
 /// Springs that bend foliage, one per 2×8-cell tile, created where creatures
 /// move and removed once they settle. Displacement is in cells.
@@ -137,6 +163,7 @@ impl Plugin for ChunkRenderPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(ClearColor(SKY_COLOR))
             .init_resource::<ChunkGfxs>()
+            .init_resource::<Aerolite>()
             .init_resource::<FoliageSprings>()
             .insert_resource(SwayClock(Timer::from_seconds(1.0 / SWAY_HZ, TimerMode::Repeating)))
             .add_systems(Update, (excite_foliage, sparkle))
@@ -485,6 +512,7 @@ fn sync_chunks(
     mut gfx: ResMut<ChunkGfxs>,
     mut images: ResMut<Assets<Image>>,
     camera: Query<(&GlobalTransform, &ChunkLoader), With<MainCamera>>,
+    mut glow: ResMut<Aerolite>,
 ) {
     gfx.0.retain(|pos, g| {
         let keep = sim.world.is_loaded(*pos);
@@ -507,6 +535,7 @@ fn sync_chunks(
     });
     let mats = sim.materials();
     let climate = sim.world.climate();
+    let aerolite = mats.id("aerolite_ore");
 
     for chunk in sim.world.chunks() {
         let at = sim.world.near_chunk(chunk.pos);
@@ -514,7 +543,7 @@ fn sync_chunks(
         if fresh {
             let front = new_layer(&mut commands, &mut images, at, Z_WORLD);
             let back = new_layer(&mut commands, &mut images, at, Z_BACKGROUND);
-            gfx.0.insert(chunk.pos, ChunkGfx { front, back, at, solid: Vec::new() });
+            gfx.0.insert(chunk.pos, ChunkGfx { front, back, at, aero: None, solid: Vec::new() });
         }
         let g = gfx.0.get_mut(&chunk.pos).expect("inserted above");
         if g.at != at {
@@ -533,6 +562,7 @@ fn sync_chunks(
         let mut reshade = false;
         if dirty {
             rebuild(&mut g.front, chunk.cells(), mats, o, &climate, false, None, None);
+            g.aero = aerolite_box(chunk.cells(), aerolite);
             let solid = solid_mask(chunk.cells(), mats);
             reshade = solid != g.solid;
             g.solid = solid;
@@ -555,6 +585,39 @@ fn sync_chunks(
             compose(layer, data, (seen.x, seen.y), &sway, &springs);
         }
     }
+    // The aerolite in view (a margin round it), merged where it touches:
+    // a patch an island.
+    let mut boxes: Vec<(Vec2, Vec2)> = gfx
+        .0
+        .values()
+        .filter_map(|g| {
+            let (lo, hi) = g.aero?;
+            let o = g.at.origin();
+            let (lo, hi) = (Vec2::new((o.x + lo.x) as f32, (o.y + lo.y) as f32), Vec2::new((o.x + hi.x + 1) as f32, (o.y + hi.y + 1) as f32));
+            view.is_none_or(|(a, b)| hi.x >= a.x - 200.0 && lo.x <= b.x + 200.0 && hi.y >= a.y - 200.0 && lo.y <= b.y + 200.0).then_some((lo, hi))
+        })
+        .collect();
+    let touch = |a: &(Vec2, Vec2), b: &(Vec2, Vec2)| a.0.x <= b.1.x + 2.0 && b.0.x <= a.1.x + 2.0 && a.0.y <= b.1.y + 2.0 && b.0.y <= a.1.y + 2.0;
+    let mut merged: Vec<(Vec2, Vec2)> = Vec::new();
+    while let Some(mut b) = boxes.pop() {
+        // (Grown till nothing left touches it.)
+        loop {
+            let before = boxes.len();
+            boxes.retain(|o| {
+                if touch(&b, o) {
+                    b = (b.0.min(o.0), b.1.max(o.1));
+                    false
+                } else {
+                    true
+                }
+            });
+            if boxes.len() == before {
+                break;
+            }
+        }
+        merged.push(b);
+    }
+    glow.0 = merged;
 }
 
 /// Creatures in foliage part it: every tile near a body is pulled towards a

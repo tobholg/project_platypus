@@ -16,6 +16,8 @@ pub enum IslandCell {
     Stone,
     /// Inside the island but carved out: air in front, rock behind.
     Cave,
+    /// What keeps it up: aerolite, veined through its underside.
+    Aerolite,
 }
 
 pub struct Island {
@@ -62,6 +64,11 @@ impl Island {
         if lx >= 0 && ly >= 0 && lx < self.w && ly < self.h { self.cells[(ly * self.w + lx) as usize] } else { IslandCell::None }
     }
 }
+
+/// The lower share of an island's underside its aerolite's veined through,
+/// and the rows at its very bottom crusted with it.
+const AEROLITE_SHARE: f64 = 0.4;
+const AEROLITE_CRUST: i32 = 9;
 
 fn unit(rng: &mut Rng) -> f64 {
     rng.next_u32() as f64 / u32::MAX as f64
@@ -119,9 +126,13 @@ fn carve(rng: &mut Rng, surf: &Perlin, edge: &Perlin, cx: i32, top: i32, rx: f64
             if d >= under - 5 && edge.get([x as f64 / 7.5, y as f64 / 7.5]) < -0.1 {
                 continue;
             }
+            // (Its underside's lower part veined with aerolite, its last
+            // rows crusted with it: what keeps it up.)
+            let low = d as f64 >= under as f64 * (1.0 - AEROLITE_SHARE);
             let c = match d {
                 0 => IslandCell::Grass,
                 1..=8 => IslandCell::Dirt,
+                _ if low && (d >= under - AEROLITE_CRUST || edge.get([x as f64 / 13.0, y as f64 / 8.0 + 50.0]) > -0.1) => IslandCell::Aerolite,
                 _ => IslandCell::Stone,
             };
             isl.set(lx, y - y0, c);

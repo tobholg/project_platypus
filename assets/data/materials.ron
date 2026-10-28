@@ -124,6 +124,13 @@
         (name: "mithril_ore", loot: Ore, kind: Static, charges: true, density: 3000, hardness: 110, crumbles_into: "gravel", above: (1950, "molten_mithril"),
             nuggets: (spacing: 5, size: 3.2, fill: 0.85), sparkle: true, luster: (24, 110, 120),
             colors: [(18, 24, 32), (58, 60, 74), (70, 72, 88), (64, 186, 200), (172, 250, 250)]),
+        // Aerolite (the sky arc): what keeps the sky islands up, veined
+        // through their undersides; anti-gravity in a stone, dark violet,
+        // glowing faintly of itself, space bending round it (`warp`: a
+        // shimmer under an island). Past mithril: a mithril pick takes it.
+        (name: "aerolite_ore", loot: Ore, kind: Static, charges: true, density: 1200, hardness: 130, crumbles_into: "gravel", glow: (26, 12, 44),
+            nuggets: (spacing: 6, size: 3.6, fill: 0.9), sparkle: true, luster: (120, 70, 210),
+            colors: [(20, 14, 32), (48, 42, 66), (60, 52, 80), (150, 96, 232), (214, 186, 255)]),
         // A fallen star's heart (world-events: events.rs): dark, glassy,
         // flecked with light, shining a cold blue in yours; an iron pick
         // takes it.

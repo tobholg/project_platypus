@@ -255,6 +255,7 @@
         (id: "silver_bar",     name: "Silver bar",     stack: 99, color: (214, 218, 230)),
         (id: "gold_bar",       name: "Gold bar",       stack: 99, color: (236, 196, 72)),
         (id: "mithril_bar",    name: "Mithril bar",    stack: 99, color: (110, 220, 228)),
+        (id: "aerolite_bar",   name: "Aerolite bar",   stack: 99, color: (160, 110, 236), about: "Lighter than air: it pulls up."),
     ],
     // Kits: what a new player starts with (`play` in a new game, `dev` in
     // dev mode: `mode.rs`), and more for the dev menu to hand out. Carried

@@ -210,6 +210,8 @@ const RIPPLES: usize = 8;
 pub const RIPPLE_LIFE: f32 = 0.8;
 /// Fields in the warp at once at most (the nearest the view's middle).
 const SHOWN: usize = 8;
+/// How far under an island's aerolite space bends (cells).
+const AEROLITE_HAZE: f32 = 70.0;
 
 /// Something in a slow field: its time runs at this share (`SLOW`).
 #[derive(Component, Clone, Copy, Debug)]
@@ -532,7 +534,7 @@ pub fn motes(mut sim: ResMut<SimWorld>, fields: Res<Fields>) {
 
 /// The fields in the warp the camera wears: the nearest the view's middle,
 /// in screen terms, and the ripples on them.
-pub fn show(time: Res<Time>, mut fields: ResMut<Fields>, camera: Single<(&Camera, &GlobalTransform, &mut super::warp::Warp), With<crate::camera::MainCamera>>) {
+pub fn show(time: Res<Time>, mut fields: ResMut<Fields>, aerolite: Res<crate::render::Aerolite>, camera: Single<(&Camera, &GlobalTransform, &mut super::warp::Warp), With<crate::camera::MainCamera>>) {
     let dt = time.delta_secs();
     for r in &mut fields.ripples {
         r.1 += dt;
@@ -540,7 +542,7 @@ pub fn show(time: Res<Time>, mut fields: ResMut<Fields>, camera: Single<(&Camera
     fields.ripples.retain(|r| r.1 < RIPPLE_LIFE);
     let (cam, cam_tf, mut warp) = camera.into_inner();
     let warp = &mut warp.fields;
-    if fields.fields.is_empty() {
+    if fields.fields.is_empty() && aerolite.0.is_empty() {
         if warp.count != 0.0 {
             warp.count = 0.0;
         }
@@ -560,6 +562,19 @@ pub fn show(time: Res<Time>, mut fields: ResMut<Fields>, camera: Single<(&Camera
         let (Some(at), Some(top)) = (uv(f.at), uv(Vec2::new(f.at.x, f.reach()))) else { continue };
         warp.shapes[2 * n] = Vec4::new(at.x, at.y, f.size() * per_cell, f.kind.code());
         warp.shapes[2 * n + 1] = Vec4::new(top.y, f.strength(), (f.at.x * 0.37 + f.at.y * 0.11).fract(), 0.0);
+        n += 1;
+    }
+    // Under the sky islands' aerolite, space bends: a haze rising under
+    // each patch, the nearest first (in what slots the fields leave).
+    let mut glow: Vec<&(Vec2, Vec2)> = aerolite.0.iter().collect();
+    glow.sort_by(|a, b| ((a.0 + a.1) / 2.0).distance(mid).total_cmp(&((b.0 + b.1) / 2.0).distance(mid)));
+    for &(lo, hi) in glow.into_iter().take(SHOWN - n) {
+        let half = (hi - lo) / 2.0;
+        let at = Vec2::new(lo.x + half.x, lo.y + half.y * 0.3);
+        let Some(p) = uv(at) else { continue };
+        let (rx, ry) = ((half.x + 30.0) * per_cell, (half.y * 1.3 + AEROLITE_HAZE) * per_cell);
+        warp.shapes[2 * n] = Vec4::new(p.x, p.y, rx, 4.0);
+        warp.shapes[2 * n + 1] = Vec4::new(ry, 1.0, (at.x * 0.37 + at.y * 0.11).fract(), 0.0);
         n += 1;
     }
     warp.count = n as f32;

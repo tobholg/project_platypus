@@ -756,6 +756,7 @@
         (makes: "silver_bar", needs: [("block:silver_ore", 4)], at: "furnace"),
         (makes: "gold_bar", needs: [("block:gold_ore", 4)], at: "furnace"),
         (makes: "mithril_bar", needs: [("block:mithril_ore", 5)], at: "furnace"),
+        (makes: "aerolite_bar", needs: [("block:aerolite_ore", 5)], at: "furnace"),
         // Vessels: the ladle for molten metal, a bucket, a glass flask.
         (makes: "ladle", needs: [("iron_bar", 4)], at: "anvil"),
         // Lights to carry: a lantern, flashlights, a miner's helmet.
