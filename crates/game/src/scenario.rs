@@ -414,7 +414,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, fall_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, save_script)
             .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script, wardrobe_script, herbcut_script, zombiejump_script, crushcheck_script, batcount_script, airswing_script, dive_script, paint_script, firewall_script, fields_script, ward_script, seam_script))
-            .add_systems(Update, (sky_script, drift_script))
+            .add_systems(Update, (sky_script, drift_script, high_script))
             .add_systems(PreUpdate, craft_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pack_script.after(bevy::ui::UiSystems::Focus).before(crate::pause::key))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
@@ -17047,6 +17047,61 @@ fn sky_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, mut menu: ResMut<crat
         state.1 = t + 1.0;
         let near: Vec<String> = drifters.iter().filter(|d| d.pos.distance(at) < 600.0).map(|d| format!("{:+.0},{:+.0}{} {:+.1}", d.pos.x - at.x, d.pos.y - at.y, if d.taken() { "" } else { " (not yet)" }, d.pos.y - d.rest)).collect();
         info!("sky: t {t:.1} {up:+.0} from the sea of clouds (at {sea}); {} drifters, near: {}", drifters.iter().count(), near.join("; "));
+    }
+}
+
+/// `high` (a generated world): the player put in the high air
+/// `PLATYPUS_HIGH` (default 0.67: the jet stream's middle) of the way up
+/// the sky band (0.5 s), left to fall, jumping at 2 s. Logs its height,
+/// its speed, the gravity and the air there, and its breath.
+fn high_script(
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut player: Query<(&mut Kinematics, Option<&crate::breath::Breath>), With<LocalPlayer>>,
+    mut state: Local<(u8, f32)>,
+) {
+    if s.name != "high" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let Ok((mut k, breath)) = player.single_mut() else { return };
+    let Some(sky) = sim.generator.sky_layers() else { return };
+    let share: f32 = std::env::var("PLATYPUS_HIGH").ok().and_then(|v| v.parse().ok()).unwrap_or(0.67);
+    let (step, next) = &mut *state;
+    match *step {
+        0 if t > 0.5 => {
+            // (The sky band: from its floor, the jet stream's start back by
+            // its share, to the world's top.)
+            let top = sky.weightless.1 as f32;
+            let floor = (sky.jet.0 as f32 - 0.62 * top) / (1.0 - 0.62);
+            k.body.pos = Vec2::new(k.body.pos.x, floor + share * (top - floor));
+            k.prev_pos = k.body.pos;
+            k.body.vel = Vec2::ZERO;
+            *step = 1;
+        }
+        1 if t > 2.0 => {
+            keys.press(KeyCode::Space);
+            *step = 2;
+        }
+        2 if t > 2.3 => {
+            keys.release(KeyCode::Space);
+            *step = 3;
+        }
+        _ => {}
+    }
+    if *step >= 1 && t >= *next {
+        *next = t + 0.5;
+        let y = k.body.pos.y;
+        info!(
+            "high: t {t:.1} y {y:.0} (jet {:.0}..{:.0}, thin from {}, weightless {:.0}..{:.0}) going {:+.0},{:+.0}; gravity {:.2}, air thin {:.2}, jet {:+.0}; breath {:?}",
+            sky.jet.0, sky.jet.1, sky.thin_from, sky.weightless.0, sky.weightless.1,
+            k.body.vel.x, k.body.vel.y,
+            sky.gravity(y), sky.thin(y), crate::sky::jet_at(&sim, y),
+            breath.map(|b| (b.left * 10.0).round() / 10.0)
+        );
     }
 }
 

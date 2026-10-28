@@ -75,6 +75,11 @@ pub trait ChunkGenerator: Send + Sync {
         Vec::new()
     }
 
+    /// The high air's layers, if the world has a sky.
+    fn sky_layers(&self) -> Option<SkyLayers> {
+        None
+    }
+
     /// The ground height at x as generated (before anything was dug), for
     /// telling whether unloaded air above a column is open sky.
     fn surface_hint(&self, _x: i32) -> Option<i32> {
@@ -191,6 +196,41 @@ pub enum Spawn {
     /// aerolite): the box it's in (from here, its bottom-left: width,
     /// height); the game takes its cells over and moves them.
     Drifter(u16, u16),
+}
+
+/// The high air over the sky islands (heights, cells): the jet stream's
+/// band, where the air starts to thin (breath runs down, faster the
+/// higher), and where gravity starts to fade and where it's gone (the
+/// world's top, where space begins).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SkyLayers {
+    pub jet: (i32, i32),
+    pub thin_from: i32,
+    pub weightless: (i32, i32),
+}
+
+impl SkyLayers {
+    /// How much gravity there is at `y` (1 down to 0 at the top).
+    pub fn gravity(&self, y: f32) -> f32 {
+        let (a, b) = (self.weightless.0 as f32, self.weightless.1 as f32);
+        1.0 - smooth(((y - a) / (b - a)).clamp(0.0, 1.0))
+    }
+
+    /// How thin the air is at `y` (0: breathable … 1: none, at the top).
+    pub fn thin(&self, y: f32) -> f32 {
+        let (a, b) = (self.thin_from as f32, self.weightless.1 as f32);
+        smooth(((y - a) / (b - a)).clamp(0.0, 1.0))
+    }
+
+    /// How hard the jet stream blows at `y` (0 … 1 in its middle).
+    pub fn jet(&self, y: f32) -> f32 {
+        let (a, b) = (self.jet.0 as f32, self.jet.1 as f32);
+        if y <= a || y >= b { 0.0 } else { (std::f32::consts::PI * (y - a) / (b - a)).sin() }
+    }
+}
+
+fn smooth(t: f32) -> f32 {
+    t * t * (3.0 - 2.0 * t)
 }
 
 /// How far a chunk has healed (the world clock, DESIGN §13).
@@ -2341,6 +2381,10 @@ impl ChunkGenerator for TerrainGen {
 
     fn cloud_sea(&self) -> Option<i32> {
         Some(self.plan.cloud_sea)
+    }
+
+    fn sky_layers(&self) -> Option<SkyLayers> {
+        Some(self.plan.sky_layers())
     }
 
     fn sky_islands(&self) -> Vec<(CellPos, CellPos)> {

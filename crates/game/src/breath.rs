@@ -56,6 +56,8 @@ const BUBBLES: (f32, f32) = (1.5, 9.0);
 const GASP_BELOW: f32 = 0.5;
 /// A bladder pod's gulp: this share of a full breath.
 const POD_AIR: f32 = 0.34;
+/// Air this thin (0 … 1) still breathes.
+const THIN_BREATHES: f32 = 0.05;
 
 fn breathe(
     mut commands: Commands,
@@ -85,6 +87,20 @@ fn breathe(
         sounds.write(crate::sound::PlaySound::at("gasp", head));
     }
     b.under = under;
+    // High in the sky the air thins: breath runs down (faster the higher:
+    // none to breathe at the world's top), and out of it you suffocate.
+    let thin = if under || dying.0.is_some() { 0.0 } else { sim.generator.sky_layers().map_or(0.0, |s| s.thin(head.y)) };
+    if !under && thin > THIN_BREATHES {
+        b.left = (b.left - dt * thin).max(0.0);
+        if b.left <= 0.0 && h.hp > 0.0 {
+            let dealt = DROWNING * h.max * dt * thin;
+            h.hp -= dealt;
+            if h.records {
+                h.recent.push(crate::death::Hurt { cause: crate::death::Cause::new("Thin air", "suffocated"), kind: Harm::Blunt, dealt, age: 0.0 });
+            }
+        }
+        return;
+    }
     if !under {
         b.left = (b.left + dt * most / REFILL).min(most);
         return;

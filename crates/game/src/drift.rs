@@ -255,7 +255,13 @@ fn drift(
         let rest = d.rest + BOB * (t * 0.7).sin();
         let held = if lift < FALLS { lift } else { lift * (1.0 + (rest - d.pos.y) / SPAN).clamp(0.0, 2.0) };
         let mut acc = Vec2::new(0.0, -GRAVITY + GRAVITY * held * mass / (mass + load) - BOB_DAMP * d.vel.y);
-        if lift >= FALLS {
+        // (In the jet stream, carried off with it: it wanders about where
+        // it's got to.)
+        let jet = crate::sky::jet_at(&sim, d.pos.y);
+        if jet != 0.0 {
+            acc.x = (jet - d.vel.x) * DRAG;
+            d.home = d.pos.x;
+        } else if lift >= FALLS {
             let wander = WANDER * (t * WANDER_HZ * std::f32::consts::TAU).sin() - (d.pos.x - d.home) / WANDER_REACH * WANDER;
             acc.x = (wander - d.vel.x) * DRAG;
         } else {

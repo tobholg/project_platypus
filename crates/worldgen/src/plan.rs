@@ -211,11 +211,18 @@ const ISLANDS: f64 = 12.0;
 /// band (a share of it).
 const CLOUD_SEA_AT: f64 = 0.38;
 /// The islands' tops: from this far up the peaks band (a share of it: the
-/// lowest just over the peaks, in reach of rocket boots) to this far short
-/// of the world's top (a share of the sky band); none within
+/// lowest just over the peaks, in reach of rocket boots) to this far up the
+/// sky band (a share of it: over them, the high air); none within
 /// `ISLAND_CLEAR` of the ground under it (reference cells).
 const ISLANDS_FROM: f64 = 0.55;
-const ISLANDS_TO: f64 = 0.12;
+const ISLANDS_TO: f64 = 0.55;
+/// The high air, over the islands (shares of the sky band, up from its
+/// floor): the jet stream (from, to), the air thinning from here (breath
+/// runs down, faster the higher), gravity fading from here to nothing at
+/// the world's top (where space begins).
+const JET: (f64, f64) = (0.62, 0.72);
+const THIN_FROM: f64 = 0.7;
+const WEIGHTLESS_FROM: f64 = 0.74;
 const ISLAND_CLEAR: f64 = 300.0;
 /// Drifters about each island (fewest, most), their half-width at most
 /// (reference cells).
@@ -681,7 +688,7 @@ impl WorldPlan {
             seed,
             (ISLANDS * cw).round().max(2.0) as usize,
             (ocean_w, width - ocean_w),
-            ((band_floors[1] as f64 + ISLANDS_FROM * (sky_lo - band_floors[1]) as f64) as i32, (sky_hi as f64 - ISLANDS_TO * (sky_hi - sky_lo) as f64) as i32),
+            ((band_floors[1] as f64 + ISLANDS_FROM * (sky_lo - band_floors[1]) as f64) as i32, (sky_lo as f64 + ISLANDS_TO * (sky_hi - sky_lo) as f64) as i32),
             (135.0 * sw.max(0.5), 360.0 * sw.max(0.5)),
             |x0, x1, bottom| (x0..=x1).step_by(8).all(|x| surface[x.clamp(0, width - 1) as usize] + clear < bottom),
         );
@@ -830,6 +837,13 @@ impl WorldPlan {
     /// lowest islands catch it too).
     pub fn rain_from(&self) -> i32 {
         self.band_floors[0]
+    }
+
+    /// The high air's layers.
+    pub fn sky_layers(&self) -> crate::SkyLayers {
+        let (lo, span) = (self.band_floors[0] as f64, (self.height - 1 - self.band_floors[0]) as f64);
+        let at = |share: f64| (lo + share * span) as i32;
+        crate::SkyLayers { jet: (at(JET.0), at(JET.1)), thin_from: at(THIN_FROM), weightless: (at(WEIGHTLESS_FROM), self.height - 1) }
     }
 
     /// The world wraps: a column's x, around into 0 … width.

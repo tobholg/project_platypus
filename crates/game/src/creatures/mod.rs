@@ -678,6 +678,7 @@ pub(crate) fn move_creatures(
     coatings: Res<body::elements::Coatings>,
 ) {
     let grid = WorldGrid(&sim.world);
+    let sky = sim.generator.sky_layers();
     for (entity, mut k, stats, controls, (chilled, coated, gooey, phasing, tug, slowed), track, web_walker, rope, player, ease, faltering) in &mut q {
         // Frozen until the ground under it is loaded.
         if !sim.world.is_loaded(CellPos::from_world(k.body.pos.x, k.body.pos.y).chunk()) {
@@ -708,6 +709,17 @@ pub(crate) fn move_creatures(
         } else {
             &paced
         };
+        // High in the sky gravity fades (to none at the world's top): it
+        // falls slower, and a jump (as fast off the ground as ever) goes
+        // higher.
+        let light;
+        let g = sky.map_or(1.0, |s| s.gravity(k.body.pos.y));
+        let stats = if g < 1.0 {
+            light = platypus_physics::MovementStats { gravity: stats.gravity * g, jump_height: stats.jump_height / g.max(0.05), ..stats.clone() };
+            &light
+        } else {
+            stats
+        };
         // On a grappling hook's rope: it swings, held at the rope's length
         // (reeling in pulls it up: `gear::hook`).
         let tether = rope.and_then(|r| r.tether());
@@ -715,7 +727,12 @@ pub(crate) fn move_creatures(
         // (A climber can hold on to the wall behind it; a spider to its
         // web, anywhere in it.)
         k.loco.backed = stats.cling && (backed(&sim.world, k.body.pos) || (web_walker && stuck_in(&sim.world, &k.body)));
+        // (In the jet stream it steers through the air, and the air's
+        // going somewhere: off the ground, it's carried along.)
+        let jet = if k.loco.contacts.ground { 0.0 } else { crate::sky::jet_at(&sim, k.body.pos.y) };
+        k.body.vel.x -= jet;
         let ev = k.loco.steer(stats, &controls.0, &mut k.body, dt);
+        k.body.vel.x += jet;
         if let Some((at, len)) = tether {
             platypus_physics::tether(&mut k.body, at, len, dt);
         }
