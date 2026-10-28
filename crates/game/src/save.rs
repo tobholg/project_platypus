@@ -430,8 +430,11 @@ fn save(
     let encoded = fresh.len();
     let chunks_ms = chunks_from.elapsed().as_secs_f32() * 1e3;
     chunks.extend(sim.store.iter().map(|(p, b)| (p, b.clone())));
+    // (Round a wrapping world, where things are as stored: x in 0 … its
+    // width, whichever lap they were on.)
+    let stored = |x: f32| sim.world.canon_f(x);
     let me = PlayerFile {
-        pos: (k.body.pos.x, k.body.pos.y),
+        pos: (stored(k.body.pos.x), k.body.pos.y),
         hp: health.hp,
         mana: mana.map(|m| m.cur),
         bar: hand.bar,
@@ -441,29 +444,29 @@ fn save(
         progress: progress.cloned().unwrap_or_default(),
         gold: gold.map_or(0, |g| g.0),
         pickup: pickup.copied().unwrap_or_default(),
-        checkpoint: checkpoint.0.map(|p| (p.x, p.y)),
+        checkpoint: checkpoint.0.map(|p| (stored(p.x), p.y)),
         cursor: held.kept().0.map(|s| stack_out(&items, &s)),
         trash: held.kept().1.map(|s| stack_out(&items, &s)),
     };
     let placed: Vec<(&String, (f32, f32), bool)> =
-        stations.iter().filter_map(|(s, k)| Some((&crafting.stations.get(s.kind)?.id, (k.body.pos.x, k.body.pos.y - k.body.half.y), s.flip))).collect();
+        stations.iter().filter_map(|(s, k)| Some((&crafting.stations.get(s.kind)?.id, (stored(k.body.pos.x), k.body.pos.y - k.body.half.y), s.flip))).collect();
     let mut things = ThingsFile {
-        chests: boxes.iter().map(|(c, k)| (c.key, (k.body.pos.x, k.body.pos.y - k.body.half.y))).collect(),
+        chests: boxes.iter().map(|(c, k)| (c.key, (stored(k.body.pos.x), k.body.pos.y - k.body.half.y))).collect(),
         stations: placed.iter().map(|&(id, feet, _)| (id.clone(), feet)).collect(),
         stations_flipped: placed.iter().map(|&(_, _, flip)| flip).collect(),
         stashes: chests
             .stashes()
             // (A body's belongings are kept as items where it lies.)
             .filter(|(key, ..)| !bodies.iter().any(|(b, _)| b.key == *key))
-            .map(|(key, origin, contents)| SavedStash { key, origin: (origin.x, origin.y), contents: contents.map(|i| slots_out(&items, &i.slots)) })
+            .map(|(key, origin, contents)| SavedStash { key, origin: (sim.world.canon(origin.x), origin.y), contents: contents.map(|i| slots_out(&items, &i.slots)) })
             .collect(),
-        drops: drops.iter().map(|(d, k)| ((k.body.pos.x, k.body.pos.y), stack_out(&items, &d.stack))).collect(),
-        lights: lights_down.iter().map(|l| (items.def(l.item).id.clone(), (l.at.x, l.at.y), (l.dir.x, l.dir.y))).collect(),
-        creatures: creatures.iter().map(|(c, k, h, keeps)| SavedCreature { kind: c.kind.clone(), feet: (k.body.pos.x, k.body.pos.y - k.body.half.y), hp: h.hp, keeps: keeps.map(|k| k.0) }).collect(),
+        drops: drops.iter().map(|(d, k)| ((stored(k.body.pos.x), k.body.pos.y), stack_out(&items, &d.stack))).collect(),
+        lights: lights_down.iter().map(|l| (items.def(l.item).id.clone(), (stored(l.at.x), l.at.y), (l.dir.x, l.dir.y))).collect(),
+        creatures: creatures.iter().map(|(c, k, h, keeps)| SavedCreature { kind: c.kind.clone(), feet: (stored(k.body.pos.x), k.body.pos.y - k.body.half.y), hp: h.hp, keeps: keeps.map(|k| k.0) }).collect(),
     };
     for (b, k) in &bodies {
         if let Some(inv) = chests.inventory(b.key) {
-            things.drops.extend(inv.slots.iter().flatten().map(|s| ((k.body.pos.x, k.body.pos.y), stack_out(&items, s))));
+            things.drops.extend(inv.slots.iter().flatten().map(|s| ((stored(k.body.pos.x), k.body.pos.y), stack_out(&items, s))));
         }
     }
     // The files written on a thread of their own: the frame pays only for

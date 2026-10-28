@@ -339,14 +339,17 @@ fn seeds(mut screen: ResMut<MapScreen>, sim: Res<SimWorld>, window: Query<&Windo
             done.push((*k, v));
         }
     }
+    // (Round a wrapping world any x is in it, its tiles made as stored.)
+    let laps = sim.world.wraps().map(|w| w / (TILE * CELLS));
+    let key = |k: IVec2| laps.map_or(k, |n| IVec2::new(k.x.rem_euclid(n), k.y));
     for (k, v) in done {
         screen.making.remove(&k);
         screen.seeds.insert(k, v);
-        for dy in -1..=1 {
-            for dx in -1..=1 {
-                if let Some(sh) = screen.shown.get_mut(&(k + IVec2::new(dx, dy))) {
-                    sh.drawn = false;
-                }
+        // (Its picture and those beside it, wherever round the world.)
+        for (sk, sh) in screen.shown.iter_mut() {
+            let d = key(*sk - k + IVec2::new(1, 1));
+            if (0..=2).contains(&d.x) && (-1..=1).contains(&(sk.y - k.y)) {
+                sh.drawn = false;
             }
         }
     }
@@ -356,9 +359,12 @@ fn seeds(mut screen: ResMut<MapScreen>, sim: Res<SimWorld>, window: Query<&Windo
     let (lo, hi) = view_tiles(&screen, screen_size(&window));
     let (b0, b1) = sim.generator.bounds();
     let (w0, w1) = (IVec2::new(b0.x * 64, b0.y * 64) / (TILE * CELLS), IVec2::new(b1.x * 64 + 63, b1.y * 64 + 63) / (TILE * CELLS));
-    let mut want: Vec<IVec2> = (lo.y.max(w0.y)..=hi.y.min(w1.y)).flat_map(|y| (lo.x.max(w0.x)..=hi.x.min(w1.x)).map(move |x| IVec2::new(x, y))).filter(|k| !screen.seeds.contains_key(k) && !screen.making.contains_key(k)).collect();
+    let (x0, x1) = if laps.is_some() { (lo.x, hi.x) } else { (lo.x.max(w0.x), hi.x.min(w1.x)) };
     let mid = (screen.center / TILE as f32).floor().as_ivec2();
-    want.sort_by_key(|k| (*k - mid).length_squared());
+    let mut want: Vec<(IVec2, IVec2)> = (lo.y.max(w0.y)..=hi.y.min(w1.y)).flat_map(|y| (x0..=x1).map(move |x| IVec2::new(x, y))).map(|k| (k, key(k))).filter(|(_, k)| !screen.seeds.contains_key(k) && !screen.making.contains_key(k)).collect();
+    want.sort_by_key(|(k, _)| (*k - mid).length_squared());
+    want.dedup_by_key(|(_, k)| *k);
+    let want = want.into_iter().map(|(_, k)| k);
     // (On the IO pool: the light's solve has the compute pool, and the
     // seed's tiles, a tenth of a second each, held it up.)
     let pool = IoTaskPool::get();
@@ -435,7 +441,7 @@ fn place(
     for ty in lo.y..=hi.y {
         for tx in lo.x..=hi.x {
             let k = IVec2::new(tx, ty);
-            if !(map.tiles.contains_key(&k) || (fog_off && screen.seeds.contains_key(&k))) {
+            if !(map.tile(k).is_some() || (fog_off && screen.seeds.contains_key(&map.key(k)))) {
                 continue;
             }
             in_view.push(k);
@@ -508,11 +514,12 @@ fn draw(mut screen: ResMut<MapScreen>, mut map: ResMut<WorldMap>, palette: Optio
         if let Some(t) = map.tiles.get_mut(&k) {
             t.dirty = false;
         }
-        for dy in -1..=1 {
-            for dx in -1..=1 {
-                if let Some(s) = screen.shown.get_mut(&(k + IVec2::new(dx, dy))) {
-                    s.drawn = false;
-                }
+        // (Its picture, and those beside it for their edges: wherever
+        // round the world they're shown.)
+        for (sk, s) in screen.shown.iter_mut() {
+            let d = map.apart(*sk, k);
+            if d.x.abs() <= 1 && d.y.abs() <= 1 {
+                s.drawn = false;
             }
         }
     }
@@ -554,11 +561,11 @@ fn picture(k: IVec2, map: &WorldMap, screen: &MapScreen, palette: &Palette, sim:
         if !screen.fog_off {
             return None;
         }
-        let (t, i) = WorldMap::locate(m);
+        let (t, i) = map.locate(m);
         screen.seeds.get(&t).map(|v| v[i])
     };
     // (Its own pixels straight from it; only its border looked up.)
-    let (own, own_seed) = (map.tiles.get(&k), if screen.fog_off { screen.seeds.get(&k) } else { None });
+    let (own, own_seed) = (map.tile(k), if screen.fog_off { screen.seeds.get(&map.key(k)) } else { None });
     for ly in -PAD..TILE + PAD {
         for lx in -PAD..TILE + PAD {
             let i = ((ly + PAD) as usize) * p + (lx + PAD) as usize;

@@ -72,13 +72,32 @@ pub struct WorldMap {
     pub pins: Vec<Vec2>,
     /// Where you last died.
     pub death: Option<Vec2>,
+    /// Round a wrapping world, its width in tiles: tiles are kept as
+    /// stored (x in 0 … that), whichever lap they were charted on.
+    pub laps: Option<i32>,
 }
 
 impl WorldMap {
-    /// The tile a map pixel's in, and its index there.
-    pub fn locate(m: IVec2) -> (IVec2, usize) {
+    /// The tile a map pixel's in (as stored), and its index there.
+    pub fn locate(&self, m: IVec2) -> (IVec2, usize) {
         let t = IVec2::new(m.x.div_euclid(TILE), m.y.div_euclid(TILE));
-        (t, (m.y.rem_euclid(TILE) * TILE + m.x.rem_euclid(TILE)) as usize)
+        (self.key(t), (m.y.rem_euclid(TILE) * TILE + m.x.rem_euclid(TILE)) as usize)
+    }
+
+    /// A tile as stored: round a wrapping world, x in 0 … its width.
+    pub fn key(&self, t: IVec2) -> IVec2 {
+        self.laps.map_or(t, |n| IVec2::new(t.x.rem_euclid(n), t.y))
+    }
+
+    /// The tile at `t`, wherever round the world that is, if charted.
+    pub fn tile(&self, t: IVec2) -> Option<&Tile> {
+        self.tiles.get(&self.key(t))
+    }
+
+    /// How far tile `a` is from `b` (round the world the shorter way).
+    pub fn apart(&self, a: IVec2, b: IVec2) -> IVec2 {
+        let d = a - b;
+        self.laps.map_or(d, |n| IVec2::new((d.x + n / 2).rem_euclid(n) - n / 2, d.y))
     }
 
     /// The map pixel a world point's in.
@@ -88,7 +107,7 @@ impl WorldMap {
 
     /// What's at a map pixel, if it's been seen.
     pub fn what(&self, m: IVec2) -> Option<u16> {
-        let (t, i) = Self::locate(m);
+        let (t, i) = self.locate(m);
         self.tiles.get(&t).filter(|t| t.seen(i)).map(|t| t.px[i])
     }
 
@@ -98,7 +117,7 @@ impl WorldMap {
     }
 
     fn chart(&mut self, m: IVec2, what: u16) {
-        let (t, i) = Self::locate(m);
+        let (t, i) = self.locate(m);
         let tile = self.tiles.entry(t).or_insert_with(Tile::new);
         if !tile.seen(i) || tile.px[i] != what {
             tile.px[i] = what;
@@ -152,6 +171,10 @@ fn what_at(sim: &SimWorld, m: IVec2) -> Option<u16> {
 
 /// Chart what's lit in view (and what's open to the sky).
 fn chart(time: Res<Time>, sim: Res<SimWorld>, mut lit: ResMut<crate::light::Lit>, mut map: ResMut<WorldMap>, mut clock: Local<f32>) {
+    let laps = sim.world.wraps().map(|w| w / (TILE * CELLS));
+    if map.laps != laps {
+        map.laps = laps;
+    }
     *clock -= time.delta_secs();
     if *clock <= 0.0 && lit.view.is_none() {
         lit.want = true;
@@ -375,7 +398,7 @@ fn save(
     let mats = sim.materials();
     let names: Vec<String> = (0..mats.len()).map(|i| mats.def(MaterialId(i as u16)).name.clone()).collect();
     // (A copy to write from: the map goes on being charted meanwhile.)
-    let copy = WorldMap { tiles: map.tiles.iter().map(|(k, t)| (*k, Tile { px: t.px.clone(), seen: t.seen.clone(), dirty: false })).collect(), pins: map.pins.clone(), death: map.death };
+    let copy = WorldMap { tiles: map.tiles.iter().map(|(k, t)| (*k, Tile { px: t.px.clone(), seen: t.seen.clone(), dirty: false })).collect(), pins: map.pins.clone(), death: map.death, laps: map.laps };
     let path = slot.dir.join("map.bin");
     let handle = std::thread::spawn(move || {
         if let Err(e) = write_map(&path, &names, &copy) {

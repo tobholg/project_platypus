@@ -157,19 +157,23 @@ fn world_spawns(
         if !spawned.0.insert(at) {
             continue;
         }
+        // (Known by where it was made, as stored; put where it's seen:
+        // round a wrapping world, the copy nearest the players.)
+        let seen = CellPos::new(sim.world.near(at.x), at.y);
+        let feet = Vec2::new(seen.x as f32, seen.y as f32);
         match what {
-            Spawn::Creature(kind) | Spawn::Prop(kind) => spawn_creature(&mut commands, kind, Vec2::new(at.x as f32, at.y as f32), |_| {}),
+            Spawn::Creature(kind) | Spawn::Prop(kind) => spawn_creature(&mut commands, kind, feet, |_| {}),
             // (Deep down, a chest is now and then a mimic.)
-            Spawn::Chest if mimic_at(&sim, at) => spawn_creature(&mut commands, "mimic", Vec2::new(at.x as f32, at.y as f32), |_| {}),
-            Spawn::Chest => chests.spawn_found(&mut commands, at),
+            Spawn::Chest if mimic_at(&sim, at) => spawn_creature(&mut commands, "mimic", feet, |_| {}),
+            Spawn::Chest => chests.spawn_found(&mut commands, at, seen),
             // (A village's anvil, furnace, workbench.)
             Spawn::Station(id) => match crafting.station(id) {
-                Some(kind) => crafting.spawn(&mut commands, kind, Vec2::new(at.x as f32, at.y as f32), false),
+                Some(kind) => crafting.spawn(&mut commands, kind, feet, false),
                 None => warn!("no crafting station `{id}`"),
             },
             // (The world clock refills its lair: see `clock::lairs`.)
             Spawn::Keeper(kind) => {
-                spawn_creature(&mut commands, kind, Vec2::new(at.x as f32, at.y as f32), move |e| {
+                spawn_creature(&mut commands, kind, feet, move |e| {
                     e.insert(crate::clock::Keeps((at.x, at.y)));
                 });
                 let seen = clock.now;
@@ -195,7 +199,10 @@ fn old_candles(mut commands: Commands, mut sim: ResMut<SimWorld>, mut seen: Loca
     *seen = loaded;
     let chunk = platypus_sim::CHUNK;
     for pos in new {
-        let (x0, y0) = (pos.x * chunk, pos.y * chunk);
+        // (Looked at where it's seen: round a wrapping world, the copy
+        // nearest the players.)
+        let at = sim.world.near_chunk(pos);
+        let (x0, y0) = (at.x * chunk, at.y * chunk);
         let is = |w: &World, x: i32, y: i32| w.get(CellPos::new(x, y)).is_some_and(|c| c.material == candle);
         // (A candle standing on the chunk below, not loaded yet: its foot's
         // there; this chunk waits for it, looked at again next time.)

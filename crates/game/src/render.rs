@@ -81,6 +81,9 @@ const MAX_SPARKLES: usize = 160;
 struct ChunkGfx {
     front: Layer,
     back: Layer,
+    /// Where it's drawn: round a wrapping world, the copy of the chunk
+    /// nearest the players (`World::near_chunk`), moved when that changes.
+    at: ChunkPos,
     /// What's solid in front, a bit a cell (a row a word): the background's
     /// shading (`occlusion`) is only redone when it changes, not every time
     /// blood or a spark dirties the front.
@@ -451,6 +454,12 @@ fn compose(layer: &Layer, data: &mut [u8], origin: (i32, i32), sway: &Sway, spri
 
 // ---- systems -----------------------------------------------------------------
 
+/// A chunk layer's sprite, drawn at `pos`.
+fn layer_transform(pos: ChunkPos, z: f32) -> Transform {
+    let (o, half) = (pos.origin(), CHUNK as f32 / 2.0);
+    Transform::from_xyz(o.x as f32 + half, o.y as f32 + half, z)
+}
+
 fn new_layer(commands: &mut Commands, images: &mut Assets<Image>, pos: ChunkPos, z: f32) -> Layer {
     let image = Image::new_fill(
         Extent3d { width: N as u32, height: N as u32, depth_or_array_layers: 1 },
@@ -460,14 +469,8 @@ fn new_layer(commands: &mut Commands, images: &mut Assets<Image>, pos: ChunkPos,
         RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
     );
     let image = images.add(image);
-    let o = pos.origin();
-    let half = CHUNK as f32 / 2.0;
     let entity = commands
-        .spawn((
-            Sprite { image: image.clone(), custom_size: Some(Vec2::splat(CHUNK as f32)), ..default() },
-            Transform::from_xyz(o.x as f32 + half, o.y as f32 + half, z),
-            ChunkSprite,
-        ))
+        .spawn((Sprite { image: image.clone(), custom_size: Some(Vec2::splat(CHUNK as f32)), ..default() }, layer_transform(pos, z), ChunkSprite))
         .id();
     Layer { entity, image, base: vec![0; N * N * 4], plants: Vec::new(), glints: Vec::new() }
 }
@@ -506,17 +509,25 @@ fn sync_chunks(
     let climate = sim.world.climate();
 
     for chunk in sim.world.chunks() {
+        let at = sim.world.near_chunk(chunk.pos);
         let fresh = !gfx.0.contains_key(&chunk.pos);
         if fresh {
-            let front = new_layer(&mut commands, &mut images, chunk.pos, Z_WORLD);
-            let back = new_layer(&mut commands, &mut images, chunk.pos, Z_BACKGROUND);
-            gfx.0.insert(chunk.pos, ChunkGfx { front, back, solid: Vec::new() });
+            let front = new_layer(&mut commands, &mut images, at, Z_WORLD);
+            let back = new_layer(&mut commands, &mut images, at, Z_BACKGROUND);
+            gfx.0.insert(chunk.pos, ChunkGfx { front, back, at, solid: Vec::new() });
         }
         let g = gfx.0.get_mut(&chunk.pos).expect("inserted above");
+        if g.at != at {
+            g.at = at;
+            for (layer, z) in [(&g.front, Z_WORLD), (&g.back, Z_BACKGROUND)] {
+                commands.entity(layer.entity).insert(layer_transform(at, z));
+            }
+        }
         // (Each layer redrawn only when its own cells changed.)
         let dirty = chunk.take_render_dirty() || fresh;
         let bg_dirty = chunk.take_bg_render_dirty() || fresh;
-        let o = chunk.pos.origin();
+        // (Its cells as stored, drawn where it's seen.)
+        let (o, seen) = (chunk.pos.origin(), at.origin());
         // (The background's shaded by the front: redrawn when what's solid
         // in front changes.)
         let mut reshade = false;
@@ -531,7 +542,7 @@ fn sync_chunks(
             rebuild(&mut g.back, chunk.background(), mats, o, &climate, true, ground.as_deref(), Some(chunk.cells()));
         }
         let visible = view.is_none_or(|(lo, hi)| {
-            let (x, y) = (o.x as f32, o.y as f32);
+            let (x, y) = (seen.x as f32, seen.y as f32);
             x + CHUNK as f32 >= lo.x && x <= hi.x && y + CHUNK as f32 >= lo.y && y <= hi.y
         });
         for (layer, dirty) in [(&g.front, dirty), (&g.back, bg_dirty)] {
@@ -541,7 +552,7 @@ fn sync_chunks(
             }
             let Some(mut image) = images.get_mut(&layer.image) else { continue };
             let Some(data) = image.data.as_mut() else { continue };
-            compose(layer, data, (o.x, o.y), &sway, &springs);
+            compose(layer, data, (seen.x, seen.y), &sway, &springs);
         }
     }
 }
@@ -579,8 +590,8 @@ fn sparkle(
         *seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
         (*seed >> 33) as f32 / (1u64 << 31) as f32
     };
-    for (pos, g) in &gfx.0 {
-        let o = pos.origin();
+    for g in gfx.0.values() {
+        let o = g.at.origin();
         if (o.x as f32) > hi.x || (o.x + CHUNK) as f32 <= lo.x || (o.y as f32) > hi.y || (o.y + CHUNK) as f32 <= lo.y {
             continue;
         }

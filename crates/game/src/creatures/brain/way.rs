@@ -663,6 +663,12 @@ fn forget_changed(sim: Res<SimWorld>, mut ways: ResMut<Ways>) {
             continue;
         }
         gone.push(t);
+        // (Round a wrapping world the tiles are kept where they were asked
+        // for: the copies either side of the players' too.)
+        if let Some(w) = sim.world.wraps() {
+            let near = sim.world.near_chunk(c.pos).x;
+            gone.extend([near - w / platypus_sim::CHUNK, near, near + w / platypus_sim::CHUNK].map(|x| IVec2::new(x, c.pos.y)).into_iter().filter(|&n| n != t));
+        }
         ways.remade.insert(t, tick);
         c.clear_nav_dirty();
     }

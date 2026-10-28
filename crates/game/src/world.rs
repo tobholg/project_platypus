@@ -85,6 +85,9 @@ impl Plugin for WorldPlugin {
         let (mats, generator) = (self.materials.clone(), self.generator.clone());
         let mut world = World::new(self.seed, mats);
         world.set_climate(generator.climate());
+        // (A world that loops: walk off one edge and you're back at the
+        // other.)
+        world.set_wrap(generator.wraps());
         if let Some((y0, height)) = generator.cloud_band() {
             let (lo, hi) = generator.bounds();
             let width = (hi.x - lo.x + 1) * CHUNK;
@@ -100,7 +103,7 @@ impl Plugin for WorldPlugin {
             .configure_sets(FixedUpdate, (TickSet::Intent, TickSet::Bodies, TickSet::Cells).chain())
             .add_systems(FixedUpdate, (sweep_specks, step_cells).chain().in_set(TickSet::Cells))
             .add_systems(Startup, cap_catch_up)
-            .add_systems(PreUpdate, stream_chunks)
+            .add_systems(PreUpdate, (stream_chunks, gather).chain())
             .add_systems(Update, hot_reload_materials);
     }
 }
@@ -209,6 +212,17 @@ fn stream_chunks(
     if rects.is_empty() {
         return;
     }
+    // (What the world reports, it reports round the first loader: the
+    // camera.)
+    if let Some((tf, _)) = loaders.iter().next() {
+        sim.world.set_focus(tf.translation().x.floor() as i32);
+    }
+    // Round a wrapping world, chunks are kept as stored (x in 0 … its
+    // width); a loader's reach, wherever it is, finds them there.
+    let laps = sim.world.wraps().map(|w| w / CHUNK);
+    let canon = |p: ChunkPos| laps.map_or(p, |n| ChunkPos::new(p.x.rem_euclid(n), p.y));
+    // (The copy of a stored chunk at or past a rect's left edge.)
+    let past = |p: ChunkPos, left: i32| laps.map_or(p.x, |n| left + (p.x - left).rem_euclid(n));
     let urgent: Vec<(IVec2, IVec2)> = loaders
         .iter()
         .map(|(tf, l)| {
@@ -216,9 +230,9 @@ fn stream_chunks(
             (((c - l.half_extent * URGENT) / CHUNK as f32).floor().as_ivec2(), ((c + l.half_extent * URGENT) / CHUNK as f32).floor().as_ivec2())
         })
         .collect();
-    let in_sight = |p: ChunkPos| urgent.iter().any(|(lo, hi)| p.x >= lo.x && p.y >= lo.y && p.x <= hi.x && p.y <= hi.y);
+    let in_sight = |p: ChunkPos| urgent.iter().any(|(lo, hi)| past(p, lo.x) <= hi.x && p.y >= lo.y && p.y <= hi.y);
     let wanted = |p: ChunkPos, pad: i32| {
-        rects.iter().any(|(lo, hi)| p.x >= lo.x - pad && p.y >= lo.y - pad && p.x <= hi.x + pad && p.y <= hi.y + pad)
+        rects.iter().any(|(lo, hi)| past(p, lo.x - pad) <= hi.x + pad && p.y >= lo.y - pad && p.y <= hi.y + pad)
     };
     // The weather is simulated over the players and a good way round them
     // (clouds are seen far off); the rest of the world's waits.
@@ -245,7 +259,7 @@ fn stream_chunks(
         let mid = (*lo + *hi) / 2;
         for y in lo.y..=hi.y {
             for x in lo.x..=hi.x {
-                let p = ChunkPos::new(x, y);
+                let p = canon(ChunkPos::new(x, y));
                 if sim.generator.in_bounds(p) && !sim.world.is_loaded(p) && !generating.tasks.contains_key(&p) && !generating.ready.iter().any(|(c, _)| c.pos == p) {
                     missing.push(((IVec2::new(x, y) - mid).length_squared(), p));
                 }
@@ -282,7 +296,7 @@ fn stream_chunks(
         g8.tasks.remove(&p);
     }
     g8.ready.retain(|(c, _)| wanted(c.pos, UNLOAD_HYSTERESIS) && !sim.world.is_loaded(c.pos));
-    let near = |p: ChunkPos| rects.iter().map(|(lo, hi)| (IVec2::new(p.x, p.y) - (*lo + *hi) / 2).length_squared()).min().unwrap_or(0);
+    let near = |p: ChunkPos| rects.iter().map(|(lo, hi)| (IVec2::new(past(p, lo.x), p.y) - (*lo + *hi) / 2).length_squared()).min().unwrap_or(0);
     g8.ready.sort_by_key(|(c, _)| std::cmp::Reverse(near(c.pos)));
     for _ in 0..INSERT_MOST {
         match g8.ready.pop() {
@@ -292,12 +306,45 @@ fn stream_chunks(
     }
     generated.retain(|(c, _)| !sim.world.is_loaded(c.pos));
     let (generated, spawns): (Vec<_>, Vec<_>) = generated.into_iter().unzip();
+    // (Where the chunk's stored: round a wrapping world, `world_spawns`
+    // puts each where it's seen.)
     fresh.0 = spawns.into_iter().flatten().collect();
     loaded.0 = from_store.iter().map(|c| (c.pos, true)).chain(generated.iter().map(|c| (c.pos, false))).collect();
     for chunk in from_store.into_iter().chain(generated) {
         sim.world.insert_chunk(chunk);
     }
     metrics.stream_time = t.elapsed();
+}
+
+/// Round a wrapping world: whatever's kept a lap away from the players (a
+/// station, a chest or a light put down on an earlier lap, a save's things
+/// loaded as stored) is moved to the copy of where it is nearest them, so
+/// it's there when they come by.
+fn gather(
+    sim: Res<SimWorld>,
+    mut bodies: Query<(&mut crate::creatures::Kinematics, Option<&mut Transform>)>,
+    mut lights: Query<(&mut crate::hands::lights::PlacedLight, &mut Transform), Without<crate::creatures::Kinematics>>,
+) {
+    let Some(w) = sim.world.wraps() else { return };
+    let (focus, half) = (sim.world.focus() as f32, w as f32 / 2.0);
+    let shift = |x: f32| if (x - focus).abs() > half { sim.world.near_f(x) - x } else { 0.0 };
+    for (mut k, tf) in &mut bodies {
+        let d = shift(k.body.pos.x);
+        if d != 0.0 {
+            k.body.pos.x += d;
+            k.prev_pos.x += d;
+            if let Some(mut tf) = tf {
+                tf.translation.x += d;
+            }
+        }
+    }
+    for (mut l, mut tf) in &mut lights {
+        let d = shift(l.at.x);
+        if d != 0.0 {
+            l.at.x += d;
+            tf.translation.x += d;
+        }
+    }
 }
 
 /// Edit `materials.ron` while the game runs; ids stay stable, errors are

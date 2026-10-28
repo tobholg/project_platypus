@@ -468,7 +468,7 @@ fn regrow(mut sim: ResMut<SimWorld>, mut clock: ResMut<WorldClock>, loaded: Res<
     while now.len() < HEALS_PER_FRAME {
         let Some(p) = clock.queue.pop() else { break };
         if sim.world.is_loaded(p) && !now.iter().any(|&(q, ..)| q == p) {
-            now.push((p, seen(p), clock.judge, false));
+            now.push((p, seen(sim.world.near_chunk(p)), clock.judge, false));
         }
     }
     if now.is_empty() {
@@ -556,7 +556,9 @@ fn wildfires(sim: Res<SimWorld>, mut clock: ResMut<WorldClock>, loaders: Query<(
                 continue;
             }
             let x = i as i32 * clock.column + (hash(&[seed, 0xF1BF, i as u64, hour as u64]) % clock.column.max(1) as u64) as i32;
-            if near.iter().any(|&n| (n - x as f32).abs() < FIRE_AWAY) {
+            // (Its column as stored: round a wrapping world, the players
+            // are about its copy nearest them.)
+            if near.iter().any(|&n| (n - sim.world.near(x) as f32).abs() < FIRE_AWAY) {
                 continue;
             }
             let took = clock.wildfire(&*generator, x, dry);
@@ -571,7 +573,7 @@ fn wildfires(sim: Res<SimWorld>, mut clock: ResMut<WorldClock>, loaders: Query<(
 
 /// Lairs, hourly: a keeper alive (wherever it wandered) keeps its place's
 /// clock; one gone long enough is back (out of sight).
-fn lairs(mut commands: Commands, mut clock: ResMut<WorldClock>, creatures: Query<(&Keeps, &Health)>, loaders: Query<(&GlobalTransform, &ChunkLoader)>) {
+fn lairs(mut commands: Commands, mut clock: ResMut<WorldClock>, sim: Res<SimWorld>, creatures: Query<(&Keeps, &Health)>, loaders: Query<(&GlobalTransform, &ChunkLoader)>) {
     let hour = (clock.now * 24.0).floor() as i64;
     if !clock.started || hour == clock.lair_hour {
         return;
@@ -580,7 +582,9 @@ fn lairs(mut commands: Commands, mut clock: ResMut<WorldClock>, creatures: Query
     let now = clock.now;
     let views: Vec<(Vec2, Vec2)> = loaders.iter().map(|(tf, l)| (tf.translation().truncate() - l.half_extent - 48.0, tf.translation().truncate() + l.half_extent + 48.0)).collect();
     for (&(x, y), keeper) in clock.keepers.iter_mut() {
-        let spot = Vec2::new(x as f32, y as f32);
+        // (Kept as stored; round a wrapping world, back at the copy nearest
+        // the players.)
+        let spot = Vec2::new(sim.world.near(x) as f32, y as f32);
         if creatures.iter().any(|(k, h)| k.0 == (x, y) && h.hp > 0.0) {
             keeper.seen = now;
         } else if now - keeper.seen >= REFILL_DAYS && !views.iter().any(|(a, b)| spot.cmpge(*a).all() && spot.cmple(*b).all()) {

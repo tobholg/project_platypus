@@ -112,7 +112,8 @@ fn on_death(mut commands: Commands, mut died: MessageReader<Died>, mut chests: R
             continue;
         }
         let feet = d.body.pos - Vec2::Y * d.body.half.y;
-        chests.spawn_found(&mut commands, platypus_sim::CellPos::from_world(feet.x, feet.y + 0.5));
+        let at = platypus_sim::CellPos::from_world(feet.x, feet.y + 0.5);
+        chests.spawn_found(&mut commands, at, at);
         sounds.write(crate::sound::PlaySound::at("clank", d.body.pos).pitch(0.5));
     }
 }

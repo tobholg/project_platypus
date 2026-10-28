@@ -179,7 +179,7 @@ fn draw_rects(view: Res<DebugView>, sim: Res<SimWorld>, mut gizmos: Gizmos) {
     }
     let c = CHUNK as f32;
     for chunk in sim.world.chunks() {
-        let o = chunk.pos.origin();
+        let o = sim.world.near_chunk(chunk.pos).origin();
         let origin = Vec2::new(o.x as f32, o.y as f32);
         gizmos.rect_2d(Isometry2d::from_translation(origin + Vec2::splat(c / 2.0)), Vec2::splat(c), Color::srgba(1.0, 1.0, 1.0, 0.12));
         let r = chunk.dirty_rect().clamp_to_chunk();

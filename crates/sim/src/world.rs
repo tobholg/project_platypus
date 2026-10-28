@@ -484,9 +484,24 @@ impl World {
         }
     }
 
+    /// The copy of a chunk nearest the focus (where it's drawn).
+    pub fn near_chunk(&self, pos: ChunkPos) -> ChunkPos {
+        ChunkPos::new(self.near(pos.x * CHUNK + CHUNK / 2).div_euclid(CHUNK), pos.y)
+    }
+
+    /// A chunk as stored (`canon`).
+    pub fn canon_chunk(&self, pos: ChunkPos) -> ChunkPos {
+        self.key(pos)
+    }
+
     /// Column `x` as stored: in 0 … width if the world wraps.
     pub fn canon(&self, x: i32) -> i32 {
         self.wrap.map_or(x, |w| x.rem_euclid(w))
+    }
+
+    /// `canon`, for a position in cells.
+    pub fn canon_f(&self, x: f32) -> f32 {
+        self.wrap.map_or(x, |w| x.rem_euclid(w as f32))
     }
 
     /// A chunk as stored (`canon`).

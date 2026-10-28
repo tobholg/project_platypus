@@ -146,9 +146,10 @@ pub trait ChunkGenerator: Send + Sync {
         None
     }
 
+    /// Is a chunk in the world? (Round a wrapping world, any x is.)
     fn in_bounds(&self, pos: ChunkPos) -> bool {
         let (lo, hi) = self.bounds();
-        pos.x >= lo.x && pos.y >= lo.y && pos.x <= hi.x && pos.y <= hi.y
+        (self.wraps().is_some() || (pos.x >= lo.x && pos.x <= hi.x)) && pos.y >= lo.y && pos.y <= hi.y
     }
 }
 
@@ -2228,7 +2229,7 @@ impl ChunkGenerator for TerrainGen {
     }
 
     fn zone_at(&self, x: i32, y: i32) -> Option<&'static str> {
-        self.plan.caves.zone_at(x, y).map(|z| match z {
+        self.plan.caves.zone_at(self.plan.wrap(x), y).map(|z| match z {
             caves::Zone::Fungal => "fungal",
             caves::Zone::Crystal => "crystal",
             caves::Zone::Toxic => "toxic",
@@ -2252,7 +2253,17 @@ impl ChunkGenerator for TerrainGen {
     }
 
     fn trees_between(&self, x0: i32, x1: i32) -> Vec<i32> {
-        let mut xs: Vec<i32> = self.trees_near(x0, x1).iter().map(|t| t.x).filter(|x| (x0..=x1).contains(x)).collect();
+        // (Round the world: the stretch looked at as stored, a lap at a
+        // time, and the trees put back where it was asked.)
+        let w = self.plan.width;
+        let lap = x0.div_euclid(w) * w;
+        let mut xs: Vec<i32> = (0..=(x1 - lap).div_euclid(w))
+            .flat_map(|k| {
+                let at = lap + k * w;
+                self.trees_near(x0 - at, x1 - at).into_iter().map(move |t| t.x + at)
+            })
+            .filter(|x| (x0..=x1).contains(x))
+            .collect();
         xs.sort_unstable();
         xs.dedup();
         xs

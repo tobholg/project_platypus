@@ -413,7 +413,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, void_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, fall_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, save_script)
-            .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script, wardrobe_script, herbcut_script, zombiejump_script, crushcheck_script, batcount_script, airswing_script, dive_script, paint_script, firewall_script, fields_script, ward_script))
+            .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script, wardrobe_script, herbcut_script, zombiejump_script, crushcheck_script, batcount_script, airswing_script, dive_script, paint_script, firewall_script, fields_script, ward_script, seam_script))
             .add_systems(PreUpdate, craft_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pack_script.after(bevy::ui::UiSystems::Focus).before(crate::pause::key))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
@@ -12638,7 +12638,8 @@ fn mimic_script(
             }
             k.body.pos = Vec2::new(900.0, fl + k.body.half.y);
             k.prev_pos = k.body.pos;
-            chests.spawn_found(&mut commands, CellPos::new(980, platypus_worldgen::arena::FLOOR));
+            let at = CellPos::new(980, platypus_worldgen::arena::FLOOR);
+            chests.spawn_found(&mut commands, at, at);
             crate::creatures::def::spawn_creature(&mut commands, "mimic", Vec2::new(1060.0, fl), |_| {});
             info!("mimic: a chest at 980, a mimic at 1060");
             state.0 = 1;
@@ -16839,6 +16840,110 @@ fn ward_script(
         *next = t + 0.5;
         let zs: Vec<String> = others.iter().filter(|(c, _)| c.kind == "zombie").map(|(_, ok)| format!("{:+.0} ({:.0}/s)", ok.body.pos.x - k.body.pos.x, ok.body.vel.length())).collect();
         info!("ward: t {t:.1} up {warding} mana {:.0}; zombies {}", mana.map_or(0.0, |m| m.cur), zs.join(", "));
+    }
+}
+
+/// `seam` (`PLATYPUS_WORLD=small PLATYPUS_SAVE=off`): the world wraps. A
+/// tunnel is cut through the rock across the seam (x = 0, its width), the
+/// player put in it west of the seam with a zombie behind; it walks east
+/// over the seam (3 s to 9 s), water's poured where the tunnel crosses it
+/// (10 s), and it walks back west (12 s to 18 s). Logs where it is (and as
+/// stored), the zombie's distance, what's loaded either side, and the
+/// water either side of the seam.
+fn seam_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    others: Query<(&crate::creatures::Creature, &Kinematics), Without<LocalPlayer>>,
+    mut state: Local<(u8, f32, i32)>,
+) {
+    if s.name != "seam" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let Ok(mut k) = player.single_mut() else { return };
+    let Some(w) = sim.world.wraps() else { return };
+    let (step, next, floor) = &mut *state;
+    let (west, east) = (w - 700, w + 700);
+    match *step {
+        0 if t > 0.5 => {
+            // (Into the rock under the ocean, to have it load.)
+            *floor = sim.generator.spawn_point().y - 900;
+            k.body.pos = Vec2::new((w - 600) as f32, *floor as f32 + 10.0);
+            k.prev_pos = k.body.pos;
+            *step = 1;
+        }
+        1 if t > 2.5 => {
+            info!("seam: a tunnel cut from x {west} to {east} (the seam at {w})");
+            k.body.pos = Vec2::new((w - 600) as f32, *floor as f32 + k.body.half.y + 1.0);
+            k.prev_pos = k.body.pos;
+            k.body.vel = Vec2::ZERO;
+            crate::creatures::def::spawn_creature(&mut commands, "zombie", Vec2::new((w - 660) as f32, *floor as f32 + 1.0), |_| {});
+            *step = 2;
+        }
+        2 if t > 3.0 => {
+            keys.press(KeyCode::KeyD);
+            *step = 3;
+        }
+        3 if t > 9.0 => {
+            keys.release(KeyCode::KeyD);
+            *step = 4;
+        }
+        4 if t > 10.0 => {
+            if let Some(water) = sim.materials().id("water") {
+                for x in w - 12..w + 12 {
+                    for y in *floor + 8..*floor + 20 {
+                        sim.world.set(CellPos::new(x, y), platypus_sim::Cell::new(water, 128));
+                    }
+                }
+            }
+            info!("seam: water poured over the seam");
+            *step = 5;
+        }
+        5 if t > 12.0 => {
+            keys.press(KeyCode::KeyA);
+            *step = 6;
+        }
+        6 if t > 18.0 => {
+            keys.release(KeyCode::KeyA);
+            *step = 7;
+        }
+        _ => {}
+    }
+    // (The tunnel cut again till the water's poured, as what's past the
+    // seam loads: a floor and a roof of stone, so no cave swallows it.)
+    if (1..4).contains(step) {
+        let stone = sim.materials().id("stone").expect("stone");
+        for x in west..east {
+            for y in *floor - 4..*floor + 28 {
+                let cell = if (*floor..*floor + 24).contains(&y) { platypus_sim::Cell::AIR } else { platypus_sim::Cell::new(stone, 128) };
+                if sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material != cell.material) {
+                    sim.world.set(CellPos::new(x, y), cell);
+                }
+            }
+        }
+    }
+    if *step >= 2 && t >= *next {
+        *next = t + 0.5;
+        let x = k.body.pos.x;
+        let z: Vec<String> = others.iter().filter(|(c, _)| c.kind == "zombie").map(|(_, z)| format!("{:+.0}", z.body.pos.x - x)).collect();
+        let loaded = |dx: f32| sim.world.is_loaded(CellPos::from_world(x + dx, *floor as f32).chunk());
+        let water = sim.materials().id("water");
+        let wet = |a: i32, b: i32| (a..b).filter(|&x| (*floor..*floor + 6).any(|y| sim.world.get(CellPos::new(x, y)).is_some_and(|c| Some(c.material) == water))).count();
+        info!(
+            "seam: t {t:.1} x {x:.0} (stored {:.0}) height {:+.0} zombie {} loaded west {} east {}; water {} before the seam, {} past it",
+            x.rem_euclid(w as f32),
+            k.body.pos.y - k.body.half.y - *floor as f32,
+            z.join(", "),
+            loaded(-300.0),
+            loaded(300.0),
+            wet(w - 120, w),
+            wet(w, w + 120)
+        );
     }
 }
 

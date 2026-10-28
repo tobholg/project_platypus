@@ -184,11 +184,13 @@ fn size() -> Vec2 {
 }
 
 impl Chests {
-    /// A chest the world made at `feet` (once: `Spawned` remembers).
-    pub fn spawn_found(&mut self, commands: &mut Commands, feet: CellPos) {
+    /// A chest the world made at `feet` (once: `Spawned` remembers), put
+    /// at `seen` (round a wrapping world, the copy of `feet` nearest the
+    /// players).
+    pub fn spawn_found(&mut self, commands: &mut Commands, feet: CellPos, seen: CellPos) {
         let key = hash(&[0xC4E57, feet.x as u64, feet.y as u64]) & !(1 << 63);
         self.known.entry(key).or_insert(Stash { origin: feet, contents: None });
-        self.spawn(commands, key, Vec2::new(feet.x as f32, feet.y as f32));
+        self.spawn(commands, key, Vec2::new(seen.x as f32, seen.y as f32));
     }
 
     /// A chest the player just placed: empty, with a key of its own.
