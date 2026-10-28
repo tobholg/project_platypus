@@ -16849,7 +16849,8 @@ fn ward_script(
 /// over the seam (3 s to 9 s), water's poured where the tunnel crosses it
 /// (10 s), and it walks back west (12 s to 18 s). Logs where it is (and as
 /// stored), the zombie's distance, what's loaded either side, and the
-/// water either side of the seam.
+/// water either side of the seam. (`PLATYPUS_SEAM_SWIM=1`: in the great
+/// ocean instead, swimming across the seam at its surface.)
 fn seam_script(
     mut commands: Commands,
     s: Res<Scenario>,
@@ -16869,7 +16870,14 @@ fn seam_script(
     let Some(w) = sim.world.wraps() else { return };
     let (step, next, floor) = &mut *state;
     let (west, east) = (w - 700, w + 700);
+    let swim = std::env::var("PLATYPUS_SEAM_SWIM").is_ok();
     match *step {
+        0 if t > 0.5 && swim => {
+            *floor = sim.world.climate().sea_level - 6;
+            k.body.pos = Vec2::new((w - 300) as f32, (*floor + 4) as f32);
+            k.prev_pos = k.body.pos;
+            *step = 2;
+        }
         0 if t > 0.5 => {
             // (Into the rock under the ocean, to have it load.)
             *floor = sim.generator.spawn_point().y - 900;
@@ -16893,7 +16901,7 @@ fn seam_script(
             keys.release(KeyCode::KeyD);
             *step = 4;
         }
-        4 if t > 10.0 => {
+        4 if t > 10.0 && !swim => {
             if let Some(water) = sim.materials().id("water") {
                 for x in w - 12..w + 12 {
                     for y in *floor + 8..*floor + 20 {
@@ -16916,7 +16924,7 @@ fn seam_script(
     }
     // (The tunnel cut again till the water's poured, as what's past the
     // seam loads: a floor and a roof of stone, so no cave swallows it.)
-    if (1..4).contains(step) {
+    if (1..4).contains(step) && !swim {
         let stone = sim.materials().id("stone").expect("stone");
         for x in west..east {
             for y in *floor - 4..*floor + 28 {
