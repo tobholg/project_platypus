@@ -101,10 +101,22 @@ Done when: walking, swimming and digging across the seam is seamless
 over it); the great ocean joins; tests of the generation's seam and the
 sim across it.
 
-**2. `sky`: the cloudsea and the high air.** The cloud material and the
-deck, the islands rising from it, sky windows, rain from its underside;
-the high air's currents and cold; gravity fading with altitude (creatures
-and cells); aerolite and fulgurite.
+**2. `sky`: the islands and the high air.** BUILT on `sky` (2026-10-28,
+unmerged). Changed from the plan (agreed 2026-10-28): no cloud deck (a
+white floor over the world; clouds are scenery: a sea of clouds drawn in
+the backdrop, far off, a ceiling under it and a floor over it); the
+islands float on aerolite (veined through their undersides, space
+bending under it in the warp pass), through the whole sky from just over
+the peaks; drifters, rocks floating free about them (two to four an
+island; their cells the world's, moved a cell at a time: bob, wander,
+pushed by what lands on, leaps off or runs into them, carry what stands
+on them, sink as their aerolite's mined, fall under half), and any piece
+cut loose with aerolite in it floats free as one. Over the islands the
+high air: the jet stream, thinning air (breath), gravity fading to none
+at the world's top. Fulgurite where lightning goes to earth (and old
+scars on the islands), shocking the wet. Rain comes from just over the
+view wherever it is. Left: the aurora, gear from aerolite and
+stormglass, the islands' long sun shadows.
 
 **3. `zerog`: weightless.** Newtonian zero gravity for the player and
 creatures, recoil from every tool, tumbling; cells that don't fall above
