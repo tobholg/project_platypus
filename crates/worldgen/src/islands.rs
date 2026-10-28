@@ -69,8 +69,9 @@ fn unit(rng: &mut Rng) -> f64 {
 
 /// Up to `count` islands between `x_lo..x_hi`, their tops within `y_lo..y_hi`,
 /// half-widths `rx_lo..rx_hi`, never overlapping in x (one island per column,
-/// so each column has at most one island top for trees).
-pub fn plan(seed: u64, count: usize, (x_lo, x_hi): (i32, i32), (y_lo, y_hi): (i32, i32), (rx_lo, rx_hi): (f64, f64)) -> Vec<Island> {
+/// so each column has at most one island top for trees), each where `clear`
+/// says it may be (from x, to x, its bottom).
+pub fn plan(seed: u64, count: usize, (x_lo, x_hi): (i32, i32), (y_lo, y_hi): (i32, i32), (rx_lo, rx_hi): (f64, f64), clear: impl Fn(i32, i32, i32) -> bool) -> Vec<Island> {
     let mut rng = Rng::seeded(&[seed, 0x15_1A4D]);
     let surf = Perlin::new((seed ^ 0x15AF) as u32);
     let edge = Perlin::new((seed ^ 0x15ED) as u32);
@@ -83,7 +84,7 @@ pub fn plan(seed: u64, count: usize, (x_lo, x_hi): (i32, i32), (y_lo, y_hi): (i3
             let cx = x_lo + rx as i32 + (unit(&mut rng) * (x_hi - x_lo - 2 * rx as i32).max(1) as f64) as i32;
             let top = y_lo + depth as i32 + (unit(&mut rng) * (y_hi - y_lo - depth as i32).max(1) as f64) as i32;
             let (x0, x1) = (cx - rx as i32, cx + rx as i32);
-            if islands.iter().any(|i| x1 + GAP >= i.x0 && x0 - GAP <= i.x0 + i.w) {
+            if islands.iter().any(|i| x1 + GAP >= i.x0 && x0 - GAP <= i.x0 + i.w) || !clear(x0, x1, top - (depth * 1.4) as i32 - 9) {
                 continue;
             }
             islands.push(carve(&mut rng, &surf, &edge, cx, top, rx, depth));

@@ -16987,52 +16987,28 @@ fn seam_script(
     }
 }
 
-/// `sky` (a generated world): the player dropped onto the cloud deck at the
-/// first column from the spawn it's over (0.5 s), 60 over its top, to sink
-/// into it and wade; `PLATYPUS_SKY_UNDER=1`: 120 under its underside
-/// instead, held there, to look up at it. Logs the height against the
-/// deck's top, how far in the cloud it is, its fall and its breath.
-fn sky_script(
-    s: Res<Scenario>,
-    sim: Res<SimWorld>,
-    mut menu: ResMut<crate::devmenu::DevMenu>,
-    mut player: Query<(&mut Kinematics, Option<&crate::breath::Breath>), With<LocalPlayer>>,
-    mut state: Local<(Option<(Vec2, i32, i32)>, f32)>,
-) {
+/// `sky` (a generated world): the player held `PLATYPUS_SKY_UP` cells (default
+/// 1200) over the sea of clouds the backdrop draws (negative: under it),
+/// from 0.5 s, to look at it. Logs where it is against the sea.
+fn sky_script(s: Res<Scenario>, sim: Res<SimWorld>, mut menu: ResMut<crate::devmenu::DevMenu>, mut player: Query<&mut Kinematics, With<LocalPlayer>>, mut state: Local<(Option<Vec2>, f32)>) {
     if s.name != "sky" {
         return;
     }
     menu.open = false;
     let t = s.elapsed;
-    let Ok((mut k, breath)) = player.single_mut() else { return };
-    let under = std::env::var("PLATYPUS_SKY_UNDER").is_ok();
-    if state.0.is_none() && t > 0.5 {
-        let x0 = sim.generator.spawn_point().x;
-        let Some((x, (lo, hi))) = (0..20_000).step_by(16).find_map(|d| sim.generator.deck_over(x0 + d).map(|v| (x0 + d, v))) else { return };
-        let at = Vec2::new(x as f32, if under { lo as f32 - 120.0 } else { hi as f32 + 60.0 });
-        k.body.pos = at;
-        k.prev_pos = at;
-        k.body.vel = Vec2::ZERO;
-        state.0 = Some((at, lo, hi));
-        info!("sky: at x {x}, the deck {lo}..{hi} ({} thick)", hi - lo);
+    let Ok(mut k) = player.single_mut() else { return };
+    let Some(sea) = sim.generator.cloud_sea() else { return };
+    if t < 0.5 {
+        return;
     }
-    let Some((at, lo, hi)) = state.0 else { return };
-    if under {
-        k.body.pos = at;
-        k.prev_pos = at;
-        k.body.vel = Vec2::ZERO;
-    }
+    let up: f32 = std::env::var("PLATYPUS_SKY_UP").ok().and_then(|v| v.parse().ok()).unwrap_or(1_200.0);
+    let at = *state.0.get_or_insert(Vec2::new(k.body.pos.x, sea as f32 + up));
+    k.body.pos = at;
+    k.prev_pos = at;
+    k.body.vel = Vec2::ZERO;
     if t >= state.1 {
-        state.1 = t + 0.5;
-        let feet = k.body.pos.y - k.body.half.y;
-        info!(
-            "sky: t {t:.1} feet {:+.0} from the deck's top ({:.0} into it), falling {:+.0}, in it {:.2}, breath {:?}",
-            feet - hi as f32,
-            (hi as f32 - feet).clamp(0.0, (hi - lo) as f32),
-            k.body.vel.y,
-            k.loco.contacts.submerged,
-            breath.map(|b| (b.left * 10.0).round() / 10.0)
-        );
+        state.1 = t + 1.0;
+        info!("sky: t {t:.1} {up:+.0} from the sea of clouds (at {sea})");
     }
 }
 

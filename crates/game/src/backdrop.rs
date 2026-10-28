@@ -27,7 +27,7 @@ use bevy::tasks::{AsyncComputeTaskPool, Task, block_on, poll_once};
 use bevy::render::render_resource::{AsBindGroup, ShaderType};
 use bevy::shader::ShaderRef;
 use bevy::sprite_render::{AlphaMode2d, Material2d, Material2dPlugin};
-use platypus_backdrop::peaks::{Look, Looks, albedo, cloud_data, layer_data};
+use platypus_backdrop::peaks::{Look, Looks, albedo, cloud_data, cloud_sea_data, layer_data};
 use platypus_sim::{CellPos, Kind};
 
 use crate::camera::MainCamera;
@@ -69,6 +69,16 @@ fn layer_at(k: usize, n: usize) -> (f32, f32, f32) {
 /// drift (cells a second). (How high: their look's `clouds.foot`.)
 const CLOUD_PARALLAX: f32 = 0.008;
 const CLOUD_PARALLAX_Y: f32 = 0.004;
+/// The sea of clouds: its share of the camera's motion across, and how
+/// much of the way from where you are to its height it seems to lie
+/// (far: a little; under you once you're well over it, overhead once
+/// you're well under it); its strip's rows.
+const SEA_PARALLAX: f32 = 0.05;
+const SEA_NEAR: f32 = 0.08;
+/// Passing through the sea's height, it turns from hanging over you (by
+/// its bottom) to lying under you (by its heaps' tops) over this (cells).
+const SEA_TURN: f32 = 300.0;
+const SEA_HEIGHT: usize = 420;
 const CLOUD_DRIFT: f32 = 1.8;
 /// The surface's strips: columns a tile, rows (layers, clouds).
 const TILE: usize = 384;
@@ -102,6 +112,8 @@ enum Part {
     /// A look's layer.
     Land,
     Clouds,
+    /// The sea of clouds, far off at its height in the sky (`cloud_sea`).
+    Sea,
 }
 
 /// A tile: what, which look and layer, which column (`ty` unused: 0).
@@ -270,6 +282,8 @@ pub struct Backdrops {
     shown: f32,
     /// How far the clouds have drifted (cells).
     drift: f32,
+    /// The sea of clouds' height, if the world has one.
+    sea: Option<i32>,
     /// A range tile's quad and its skirt's (all the same size); a cloud
     /// tile's.
     meshes: Option<(Handle<Mesh>, Handle<Mesh>)>,
@@ -286,7 +300,7 @@ impl Backdrops {
         let looks = Arc::new(all.looks.clone());
         let weights = looks.iter().map(|v| if v.name == all.default { 1.0 } else { 0.0 }).collect();
         let biomes = Arc::new(all);
-        Backdrops { looks, biomes, weights, tiles: HashMap::new(), making: HashMap::new(), ground: None, shown: 1.0, drift: 0.0, meshes: None, cloud_mesh: None }
+        Backdrops { looks, biomes, weights, tiles: HashMap::new(), making: HashMap::new(), ground: None, shown: 1.0, drift: 0.0, sea: None, meshes: None, cloud_mesh: None }
     }
 
     /// A tile's size in cells.
@@ -294,6 +308,7 @@ impl Backdrops {
         match part {
             Part::Land => (TILE, HEIGHT),
             Part::Clouds => (TILE, CLOUD_HEIGHT),
+            Part::Sea => (TILE, SEA_HEIGHT),
         }
     }
 
@@ -303,6 +318,7 @@ impl Backdrops {
         match part {
             Part::Land => cam.x * (1.0 - layer_at(k, self.looks[v].layers.len()).0),
             Part::Clouds => cam.x * (1.0 - CLOUD_PARALLAX) + self.drift,
+            Part::Sea => cam.x * (1.0 - SEA_PARALLAX) + self.drift * 0.5,
         }
     }
 
@@ -323,8 +339,22 @@ impl Backdrops {
                 foot + self.looks[key.v].layers[key.k].base * h - h / 2.0
             }
             Part::Clouds => ground + self.looks[key.v].clouds.foot + up * (1.0 - CLOUD_PARALLAX_Y) + h / 2.0,
+            // (Under it, its bottom at the sea's height as it seems; over
+            // it, its farthest heaps' tops.)
+            Part::Sea => {
+                let sea = self.sea.unwrap_or(0) as f32;
+                let t = ((cam.y - sea + SEA_TURN) / (2.0 * SEA_TURN)).clamp(0.0, 1.0);
+                let row = 1.0 + (platypus_backdrop::peaks::SEA_CROWN - 1.0) * t * t * (3.0 - 2.0 * t);
+                self.sea_top(cam).unwrap_or(cam.y + 1e6) + h * row - h / 2.0
+            }
         };
         Vec2::new(x, y)
+    }
+
+    /// Where the sea of clouds' heaps top out for the camera at `cam`, if
+    /// the world has one.
+    fn sea_top(&self, cam: Vec2) -> Option<f32> {
+        self.sea.map(|y| cam.y + (y as f32 - cam.y) * SEA_NEAR)
     }
 
     /// What hides the sky now: each mostly shown look tile (layer or
@@ -394,6 +424,7 @@ fn tiles(
     bd.ground = Some(bd.ground.map_or(ground, |g| g + (ground - g) * 0.05));
     let g = bd.ground.unwrap_or(ground);
     bd.shown = (1.0 - (g - c.y - 60.0) / 120.0).clamp(0.0, 1.0);
+    bd.sea = sim.generator.cloud_sea();
     bd.drift += time.delta_secs() * CLOUD_DRIFT;
     // The looks' shares, eased (about a second to change over).
     let target = targets(&bd, &sim, c.x);
@@ -420,6 +451,11 @@ fn tiles(
             }
             let (lo, hi) = span(&bd, Part::Clouds, v, 0);
             want.extend((lo..=hi).map(|tx| Key { part: Part::Clouds, v, k: 0, tx, ty: 0 }));
+            // (The sea of clouds only when it's in view.)
+            if bd.sea_top(c).is_some_and(|top| (top - c.y).abs() < half.y + SEA_HEIGHT as f32) {
+                let (lo, hi) = span(&bd, Part::Sea, v, 0);
+                want.extend((lo..=hi).map(|tx| Key { part: Part::Sea, v, k: 0, tx, ty: 0 }));
+            }
         }
     }
     for &key in &want {
@@ -431,6 +467,7 @@ fn tiles(
         let task = match key.part {
             Part::Land => pool.spawn(async move { layer_data(&looks[key.v], key.k, key.tx * w as i64, w, h, DETAIL, seed) }),
             Part::Clouds => pool.spawn(async move { cloud_data(&looks[key.v], key.tx * w as i64, w, h, DETAIL, seed) }),
+            Part::Sea => pool.spawn(async move { cloud_sea_data(&looks[key.v], key.tx * w as i64, w, h, DETAIL, seed) }),
         };
         bd.making.insert(key, task);
     }
@@ -450,12 +487,13 @@ fn tiles(
         bd.making.remove(&key);
         let (w, h) = Backdrops::size(key.part);
         let alpha: Vec<u8> = px.chunks(4).map(|p| p[3]).collect();
-        let clouds = key.part == Part::Clouds;
+        let clouds = matches!(key.part, Part::Clouds | Part::Sea);
         // The farthest range, the clouds, the nearer ranges.
         let z = Z + key.v as f32 * 0.002
             + match key.part {
                 Part::Land => key.k as f32 * 0.03,
                 Part::Clouds => 0.015,
+                Part::Sea => 0.016,
             };
         if clouds {
             // Their texels (read exactly; the shader blends them after
@@ -519,13 +557,13 @@ fn place(
     let px = zoom.0.max(1.0);
     for (key, tile) in &bd.tiles {
         let exact = bd.centre(*key, c);
-        let at = if key.part == Part::Clouds { exact } else { c + ((exact - c) * px).round() / px };
+        let at = if matches!(key.part, Part::Clouds | Part::Sea) { exact } else { c + ((exact - c) * px).round() / px };
         // (In heavy weather the ranges haze over into the sky, the far ones
         // most; the far clouds thin into the overcast.)
         let haze = gloom.rain * 0.55 + gloom.cover * 0.25;
         let far = match key.part {
             Part::Land => (1.0 - key.k as f32 * 0.18).max(0.3),
-            Part::Clouds => 0.8,
+            Part::Clouds | Part::Sea => 0.8,
         };
         let alpha = bd.shown * bd.weights[key.v] * (1.0 - haze * far).max(0.0);
         let skirt = tile.skirt.map(|s| (s, at.y - HEIGHT as f32 / 2.0 - SKIRT / 2.0));

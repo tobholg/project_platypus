@@ -206,21 +206,17 @@ const SPAWN_TREES: i32 = 450;
 pub(crate) const VILLAGE: bool = false;
 const LAKE_BOWLS: f64 = 3.0;
 const ISLANDS: f64 = 12.0;
-/// The cloud deck the sky islands rise out of: this far up the sky band (a
-/// share of it), this thick (reference cells), its top heaped up to this
-/// much, its underside hanging down to this much; sky windows (holes down
-/// through it to the world below) where a slow noise runs over this.
-const DECK_AT: f64 = 0.38;
-const DECK_THICK: (f64, f64) = (90.0, 480.0);
-/// Its top: great billows (this high at most, about this far apart) and
-/// small ones on them.
-const DECK_BILLOWS: (f64, f64) = (280.0, 420.0);
-const DECK_HEAP: f64 = 50.0;
-const DECK_HANG: f64 = 90.0;
-const DECK_WINDOWS: f64 = 0.42;
-/// How much of an island sinks into the deck where it stands (a share of
-/// its height).
-const ISLAND_SUNK: f64 = 0.35;
+/// The sea of clouds drawn in the backdrop (far off: under you when you're
+/// up among the high islands, over you lower down): this far up the sky
+/// band (a share of it).
+const CLOUD_SEA_AT: f64 = 0.38;
+/// The islands' tops: from this far up the peaks band (a share of it: the
+/// lowest just over the peaks, in reach of rocket boots) to this far short
+/// of the world's top (a share of the sky band); none within
+/// `ISLAND_CLEAR` of the ground under it (reference cells).
+const ISLANDS_FROM: f64 = 0.55;
+const ISLANDS_TO: f64 = 0.12;
+const ISLAND_CLEAR: f64 = 300.0;
 /// How far either side a lake's rims are looked for (large world): wider
 /// valleys are dry land, not one giant lake.
 const LAKE_REACH: f64 = 1_800.0;
@@ -331,11 +327,8 @@ pub struct WorldPlan {
     ocean_floor: Vec<i32>,
     /// The sunken city's site on the left end's bed: from x, to x, the bed.
     pub sunken_city: (i32, i32, i32),
-    /// The cloud deck per column: its underside and top (0, 0 under a sky
-    /// window).
-    deck: Vec<(i32, i32)>,
-    /// Puffs at the deck's edges.
-    puff: Perlin,
+    /// The sea of clouds' height (drawn in the backdrop).
+    pub cloud_sea: i32,
 }
 
 fn unit(rng: &mut Rng) -> f64 {
@@ -673,55 +666,18 @@ impl WorldPlan {
             }
         }
 
-        // The cloud deck, the whole way round: thicker and thinner, heaped
-        // on top, hanging underneath, holed by sky windows. (Meeting itself
-        // at the seam.)
+        // Sky islands, through the whole sky: the lowest just over the
+        // peaks, none over ground within reach of it.
         let (sky_lo, sky_hi) = (band_floors[0], height - 1);
-        let deck_mid = sky_lo as f64 + DECK_AT * (sky_hi - sky_lo) as f64;
-        let deck: Vec<(i32, i32)> = {
-            let thick = Fbm::<Perlin>::new(s(70)).set_octaves(2).set_frequency(1.0 / 1_800.0);
-            let heap = Fbm::<Perlin>::new(s(71)).set_octaves(3).set_frequency(1.0 / 110.0);
-            let billows = Fbm::<Perlin>::new(s(76)).set_octaves(2).set_frequency(1.0 / DECK_BILLOWS.1);
-            let hang = Fbm::<Perlin>::new(s(72)).set_octaves(2).set_frequency(1.0 / 150.0);
-            let windows = Fbm::<Perlin>::new(s(73)).set_octaves(2).set_frequency(1.0 / 2_600.0);
-            let rise = Perlin::new(s(74));
-            let w = width as f64;
-            (0..width)
-                .map(|x| {
-                    let xf = x as f64;
-                    let open = smoothstep(DECK_WINDOWS, DECK_WINDOWS + 0.06, seam(w, xf, |xf| windows.get([xf, 0.3])));
-                    let t = (DECK_THICK.0 + (DECK_THICK.1 - DECK_THICK.0) * (0.5 + 0.5 * seam(w, xf, |xf| thick.get([xf, 0.7])))) * sh * (1.0 - open);
-                    if t < 6.0 {
-                        return (0, 0);
-                    }
-                    let mid = deck_mid + 260.0 * sh * seam(w, xf, |xf| rise.get([xf / 4_000.0, 0.1]));
-                    let lo = mid - t / 2.0 - DECK_HANG * sh * seam(w, xf, |xf| hang.get([xf, 0.2])).abs() * (1.0 - open);
-                    // (Round-topped, steep-sided: cumulus, not peaks.)
-                    let billow = seam(w, xf, |xf| billows.get([xf, 0.5])).max(0.0).sqrt();
-                    let hi = mid + t / 2.0 + (DECK_BILLOWS.0 * billow + DECK_HEAP * (0.5 + 0.5 * seam(w, xf, |xf| heap.get([xf, 0.4])))) * sh * (1.0 - open);
-                    (lo as i32, hi as i32)
-                })
-                .collect()
-        };
-        // Sky islands, risen out of the deck: each sunk into it where it
-        // stands (over a sky window, left floating).
-        let mut islands = islands::plan(
+        let clear = (ISLAND_CLEAR * sh) as i32;
+        let islands = islands::plan(
             seed,
             (ISLANDS * cw).round().max(2.0) as usize,
             (ocean_w, width - ocean_w),
-            (deck_mid as i32, (deck_mid + 600.0 * sh) as i32),
+            ((band_floors[1] as f64 + ISLANDS_FROM * (sky_lo - band_floors[1]) as f64) as i32, (sky_hi as f64 - ISLANDS_TO * (sky_hi - sky_lo) as f64) as i32),
             (135.0 * sw.max(0.5), 360.0 * sw.max(0.5)),
+            |x0, x1, bottom| (x0..=x1).step_by(8).all(|x| surface[x.clamp(0, width - 1) as usize] + clear < bottom),
         );
-        for isl in &mut islands {
-            let (lo, hi) = deck[(isl.x0 + isl.w / 2) as usize];
-            if hi > lo {
-                // (Its middle's deck, not a billow beside it.)
-                let mut tops: Vec<i32> = (isl.x0..isl.x0 + isl.w).map(|x| deck[x as usize].1).collect();
-                tops.sort_unstable();
-                let top = tops[tops.len() / 2];
-                isl.lift(top - isl.y0 - (isl.h as f64 * ISLAND_SUNK) as i32);
-            }
-        }
 
         // Chasms: a few shafts from the lowland surface down into the deep,
         // away from the spawn, lakes and mountains, wandering as they fall.
@@ -855,31 +811,13 @@ impl WorldPlan {
             let (a, b) = ((SUNKEN_CITY.0 * ocean_w as f64) as i32, (SUNKEN_CITY.1 * ocean_w as f64) as i32);
             (a, b, surface[a as usize..b as usize].iter().copied().max().unwrap_or(sea_level))
         };
-        WorldPlan { seed, preset, width, height, sea_level, band_floors, biomes, surface, plain, start, water, rugged, islands, chasms, stretches, climate, forest, island_forest, structures, caves, spires, ocean: ocean_w, ocean_floor, sunken_city, deck, puff: Perlin::new(s(75)) }
+        WorldPlan { seed, preset, width, height, sea_level, band_floors, biomes, surface, plain, start, water, rugged, islands, chasms, stretches, climate, forest, island_forest, structures, caves, spires, ocean: ocean_w, ocean_floor, sunken_city, cloud_sea: (band_floors[0] as f64 + CLOUD_SEA_AT * (height - 1 - band_floors[0]) as f64) as i32 }
     }
 
-    /// How high rain and snow come in from: the cloud deck's underside (its
-    /// lowest).
+    /// How high rain and snow come in from: the sky band's floor (the
+    /// lowest islands catch it too).
     pub fn rain_from(&self) -> i32 {
-        self.deck.iter().filter(|d| d.1 > d.0).map(|d| d.0).min().unwrap_or(self.band_floors[0])
-    }
-
-    /// The cloud deck over a column: its underside and top, if it's there
-    /// (not a sky window).
-    pub fn deck_over(&self, x: i32) -> Option<(i32, i32)> {
-        let d = self.deck[self.wrap(x) as usize];
-        (d.1 > d.0).then_some(d)
-    }
-
-    /// Is a cell in the cloud deck? (Its edges puffed.)
-    pub fn deck_at(&self, x: i32, y: i32) -> bool {
-        let Some((lo, hi)) = self.deck_over(x) else { return false };
-        if y < lo - 14 || y > hi + 14 {
-            return false;
-        }
-        let x = self.wrap(x) as f64;
-        let puff = |salt: f64| seam(self.width as f64, x, |xf| self.puff.get([xf / 23.0, y as f64 / 17.0 + salt])) * 12.0;
-        y as f64 >= lo as f64 + puff(0.0) && (y as f64) < hi as f64 + puff(40.0)
+        self.band_floors[0]
     }
 
     /// The world wraps: a column's x, around into 0 … width.

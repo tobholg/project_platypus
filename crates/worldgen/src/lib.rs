@@ -63,9 +63,9 @@ pub trait ChunkGenerator: Send + Sync {
         None
     }
 
-    /// The cloud deck over column x (its underside, its top), if the world
-    /// has one and it's there (not a sky window).
-    fn deck_over(&self, _x: i32) -> Option<(i32, i32)> {
+    /// How high the sea of clouds drawn in the backdrop lies, if the world
+    /// has one.
+    fn cloud_sea(&self) -> Option<i32> {
         None
     }
 
@@ -359,7 +359,6 @@ struct Ids {
     leaves: MaterialId,
     needles: MaterialId,
     dark_leaves: MaterialId,
-    cloud: MaterialId,
     tall_grass: MaterialId,
     ice: MaterialId,
     sandstone: MaterialId,
@@ -508,7 +507,6 @@ impl TerrainGen {
             leaves: mats.expect_id("leaves"),
             needles: mats.expect_id("needles"),
             dark_leaves: mats.expect_id("dark_leaves"),
-            cloud: mats.expect_id("cloud"),
             tall_grass: mats.expect_id("tall_grass"),
             ice: mats.expect_id("ice"),
             sandstone: mats.expect_id("sandstone"),
@@ -1194,10 +1192,6 @@ impl TerrainGen {
                     IslandCell::Cave => return i.air,
                     IslandCell::None => {}
                 }
-            }
-            // The cloud deck the islands rise out of.
-            if plan.deck_at(x, y) {
-                return i.cloud;
             }
             return i.air;
         }
@@ -2323,8 +2317,8 @@ impl ChunkGenerator for TerrainGen {
         Some(self.plan.rain_from())
     }
 
-    fn deck_over(&self, x: i32) -> Option<(i32, i32)> {
-        self.plan.deck_over(x)
+    fn cloud_sea(&self) -> Option<i32> {
+        Some(self.plan.cloud_sea)
     }
 
     fn spawn_point(&self) -> CellPos {
@@ -3291,10 +3285,14 @@ mod tests {
         let g = TerrainGen::new(1, Preset::Large, &m);
         let p = g.plan();
         assert!(p.islands.len() >= 6, "{} islands", p.islands.len());
-        let (sky_floor, _) = p.band_span(Band::Sky);
         let (grass, snow) = (m.expect_id("grass"), m.expect_id("snow"));
+        // (Through the whole sky, the lowest just over the peaks: some under
+        // the sky band's floor, all well clear of the ground.)
+        let (sky_floor, _) = p.band_span(Band::Sky);
+        assert!(p.islands.iter().any(|i| i.y0 < sky_floor) && p.islands.iter().any(|i| i.y0 > sky_floor + 2_000), "islands low and high");
         for i in &p.islands {
-            assert!(i.y0 > sky_floor, "island at {} floats in the sky band", i.x0);
+            let ground = (i.x0..i.x0 + i.w).map(|x| p.surface_at(x)).max().unwrap_or(0);
+            assert!(i.y0 > ground + 250, "island at {} floats clear of the ground ({} over it)", i.x0, i.y0 - ground);
             // (Grassy, or, over the cold lands, snowy: the air up there is
             // as warm as the land's below it.)
             let cold = p.climate.ambient(i.x0 + i.w / 2, i.y0 + i.h) <= 0;

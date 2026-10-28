@@ -287,6 +287,36 @@ pub fn cloud_data(look: &Look, x0: i64, w: usize, h: usize, detail: f32, seed: u
     out
 }
 
+/// A sea of clouds, strip columns `x0 .. x0 + w`, `h` rows, as
+/// `cloud_data`'s texels: rows of heaps packed side by side, the far rows
+/// higher and smaller, the near ones lower and bigger over them (seen from
+/// above, a floor of cloud running off into the distance; from below, a
+/// ceiling of it). Its heaps top out about `SEA_CROWN` of the way down.
+pub fn cloud_sea_data(look: &Look, x0: i64, w: usize, h: usize, detail: f32, seed: u64) -> Vec<u8> {
+    let mut out = vec![0u8; w * h * 4];
+    let rows = 3;
+    let band = h * 9 / 20;
+    for r in 0..rows {
+        let big = 1.1 + 0.25 * r as f32;
+        let sea = Look { clouds: Clouds { many: 5.0, big, ..look.clouds }, ..look.clone() };
+        let layer = cloud_data(&sea, x0, w, band, detail, seed ^ (0x5EA + r as u64));
+        let off = (h - band) * r / (rows - 1);
+        for y in 0..band {
+            for x in 0..w {
+                let (i, j) = ((y * w + x) * 4, ((y + off) * w + x) * 4);
+                // (Nearer over farther.)
+                if layer[i + 3] > 0 && layer[i + 3] >= out[j + 3] / 2 {
+                    out[j..j + 4].copy_from_slice(&layer[i..i + 4]);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// How far down a sea of clouds' strip its farthest heaps top out.
+pub const SEA_CROWN: f32 = 0.35;
+
 /// The heaps' blobs (x, y, r, seed, the heap's bottom) for columns `xs ..
 /// xe` (units): a broad bottom row, smaller ones stacked on top towards
 /// the middle.
