@@ -445,6 +445,12 @@ impl Caves {
         let mut rng = Rng::seeded(&[seed, 0xCA7E5]);
         let surface = |x: i32| g.surface[x.clamp(0, g.width - 1) as usize];
         let wet = |x: i32| g.water[x.clamp(0, g.width - 1) as usize] > 0;
+        // (Under water, deep enough under the bed beside it too: the
+        // ocean's bed drops steeply, and a chamber beside the slope would
+        // drain it; `WorldPlan::by_the_sea` walls off the rest.)
+        let seal = crate::plan::OCEAN_SEAL;
+        let seabed = |x0: i32, x1: i32| (x0 - seal..=x1 + seal).step_by(12).filter(|&x| wet(x)).map(surface).min();
+        let edge = 60.0;
         let layer = |y: f32| {
             if y >= g.caverns_top as f32 {
                 // The underground (and inside the mountains): small, easy.
@@ -523,7 +529,7 @@ impl Caves {
             let (rx, ry) = (range(&mut rng, l.rx), range(&mut rng, l.ry));
             let cover = if wet(x as i32) { 210.0 } else { 67.5 };
             let top = ((x - rx) as i32..=(x + rx) as i32).step_by(12).map(surface).min().unwrap_or(0) as f32;
-            if y + ry + cover > top || y - ry < lo as f32 || x - rx < 60.0 || x + rx > g.width as f32 - 60.0 {
+            if seabed((x - rx) as i32, (x + rx) as i32).is_some_and(|b| y + ry + 210.0 > b as f32) || y + ry + cover > top || y - ry < lo as f32 || x - rx < edge || x + rx > g.width as f32 - edge {
                 continue;
             }
             let (kx, ky) = key(x, y);
@@ -680,7 +686,7 @@ impl Caves {
             let from = (c.x + ux * c.rx * 0.8, c.y + uy * c.ry * 0.8);
             let len = 80.0 + 140.0 * roll(0xF157);
             let to = (from.0 + ux * len, from.1 + uy * len);
-            if to.0 < 60.0 || to.0 > g.width as f32 - 60.0 || to.1 < lo as f32 || to.1 > surface(to.0 as i32) as f32 - 60.0 {
+            if to.0 < edge || to.0 > g.width as f32 - edge || to.1 < lo as f32 || to.1 > surface(to.0 as i32) as f32 - 60.0 {
                 continue;
             }
             let w = 3.0 + 5.0 * roll(0xF158);

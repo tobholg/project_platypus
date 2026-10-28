@@ -1187,11 +1187,14 @@ impl TerrainGen {
         if band == Band::Underworld {
             return self.underworld(x, y);
         }
-        if plan.chasm_at(x, y) {
-            return i.air;
-        }
-        if let Some(open) = self.cavity(x, y, depth, band) {
-            return open;
+        // (Nothing opens by the sea's water, or it would drain.)
+        if !plan.by_the_sea(x, y) {
+            if plan.chasm_at(x, y) {
+                return i.air;
+            }
+            if let Some(open) = self.cavity(x, y, depth, band) {
+                return open;
+            }
         }
         let under_water = plan.water_at(x).is_some();
 
@@ -2718,6 +2721,37 @@ mod tests {
         }
     }
 
+    /// The great ocean: at each end, and one across the seam, about a tenth
+    /// of a large world's width and most of the way down the underground
+    /// band (a shelf, a slope, the bed, a trench at the seam); its water
+    /// held (no air beside it under sea level, however the caves run); the
+    /// sunken city's site flat and under it.
+    #[test]
+    fn the_great_ocean_is_deep_wide_and_holds() {
+        let m = mats();
+        for (preset, wide) in [(Preset::Small, 1_000..1_500), (Preset::Large, 9_000..11_000)] {
+            let g = TerrainGen::new(1, preset, &m);
+            let p = &g.plan;
+            assert!(wide.contains(&p.ocean), "{preset:?}: the ocean {} wide", p.ocean);
+            let under = p.sea_level - p.band_span(Band::Underground).0;
+            let (bed, trench) = (p.sea_level - p.surface_at(p.ocean / 2), p.sea_level - p.surface_at(0));
+            assert!(bed as f32 > 0.7 * under as f32 && trench > bed, "{preset:?}: the bed {bed} deep, the trench {trench} ({under} to the caverns)");
+            let (a, b, level) = p.sunken_city;
+            let worst = (a..b).map(|x| (p.surface_at(x) - level).abs()).max().unwrap_or(0);
+            assert!(b - a >= p.ocean / 3 && worst < 40 && (a..b).all(|x| p.water_at(x).is_some()), "{preset:?}: the sunken city's site {a}..{b} isn't flat under the sea (off by {worst})");
+            let (water, air) = (g.ids.water, g.ids.air);
+            let mut leaks = Vec::new();
+            for x in (-p.ocean - 200..p.ocean + 200).step_by(if preset == Preset::Large { 7 } else { 2 }) {
+                for y in (p.surface_at(x) - 120).max(0)..p.sea_level {
+                    if g.sample(x, y).0 == water && [(0, -1), (-1, 0), (1, 0)].iter().any(|&(dx, dy)| g.sample(x + dx, y + dy).0 == air) {
+                        leaks.push((x, y));
+                    }
+                }
+            }
+            assert!(leaks.is_empty(), "{preset:?}: {} cells of the ocean beside air, e.g. {:?}", leaks.len(), &leaks[..leaks.len().min(6)]);
+        }
+    }
+
     /// The world wraps: its right edge runs on into its left as any column
     /// into the next (the ground, the rock, the caves and the water), no
     /// line where it meets itself.
@@ -3469,7 +3503,8 @@ mod tests {
             if preset != Preset::Small {
                 assert!(worst >= 8, "{preset:?}: the plain rolls only {worst}: a table");
             }
-            assert!((x0..=x1).all(|x| g.plan.water_at(x).is_none()), "{preset:?}: the plain is dry");
+            let wet: Vec<i32> = (x0..=x1).filter(|&x| g.plan.water_at(x).is_some()).collect();
+            assert!(wet.is_empty(), "{preset:?}: the plain ({x0}..{x1}) is dry, but not {}..{} (water at {:?}, ground {})", wet[0], wet[wet.len() - 1], g.plan.water_at(wet[0]), g.plan.surface_at(wet[0]));
         }
     }
 
@@ -3853,7 +3888,7 @@ mod tests {
         let mut worst = 0u32;
         // (Tall broadleaves round the start, the forest there.)
         let s = g.spawn_point().x;
-        for t in g.plan.forest.near(s - 18_000, s + 18_000).into_iter().filter(|t| t.height > 165 && t.species != flora::Species::Conifer).take(12) {
+        for t in g.plan.forest.near(s - 18_000, s + 18_000).into_iter().filter(|t| t.height > 165 && t.species == flora::Species::Broadleaf).take(12) {
             // The tree and every tree overlapping it: a neighbour's crown
             // reaching in is held by its own wood, which may be outside t's box.
             let trees = g.plan.forest.near(t.bbox.0 - 3, t.bbox.2 + 3);

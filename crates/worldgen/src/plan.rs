@@ -161,8 +161,25 @@ const CONIFER_LINE: i32 = -18;
 
 // Reference-world sizes (`Scale`: smaller worlds scale them down; bigger ones
 // keep them, and have more of each).
-const OCEAN_WIDTH: f64 = 2_400.0;
-const OCEAN_DEPTH: f64 = 570.0;
+/// The great ocean, at each end (one across the seam): this wide in the
+/// reference world, and wider in a wider one (by its width's share to the
+/// power `OCEAN_GROWS`: large ~10 000 a side, small ~1 200).
+const OCEAN_WIDTH: f64 = 3_500.0;
+const OCEAN_GROWS: f64 = 0.76;
+/// Its bed, from the beach out (shares of its width): a shelf this wide and
+/// this deep (a share of the bed's depth), a slope this wide down to the
+/// bed, the bed (a share of the underground band's depth), and a trench
+/// this wide at the seam (between the two ends) this deep.
+const OCEAN_SHELF: (f64, f64) = (0.15, 0.06);
+const OCEAN_SLOPE: f64 = 0.12;
+const OCEAN_BED: f64 = 0.8;
+const OCEAN_TRENCH: (f64, f64) = (0.12, 0.98);
+/// The sunken city's site, kept flat on the left end's bed (from x, to x:
+/// shares of the ocean's width from the world's edge).
+const SUNKEN_CITY: (f64, f64) = (0.225, 0.625);
+/// No cave or chasm opens within this of the ocean's water (cells): it
+/// would drain into it.
+pub(crate) const OCEAN_SEAL: i32 = 60;
 const REGION_WIDTH: (f64, f64) = (2_700.0, 6_750.0);
 /// Biome borders blend over this many cells each side.
 const BLEND: f64 = 450.0;
@@ -291,6 +308,14 @@ pub struct WorldPlan {
     pub structures: Structures,
     /// Chambers and tunnels underground.
     pub caves: Caves,
+    /// The great ocean's width at each end.
+    pub ocean: i32,
+    /// Per column: the lowest the ocean's bed lies within `OCEAN_SEAL` of
+    /// it (`i32::MAX`: no ocean near): nothing opens above that, under the
+    /// sea (`by_the_sea`).
+    ocean_floor: Vec<i32>,
+    /// The sunken city's site on the left end's bed: from x, to x, the bed.
+    pub sunken_city: (i32, i32, i32),
 }
 
 fn unit(rng: &mut Rng) -> f64 {
@@ -334,7 +359,7 @@ impl WorldPlan {
         // tundra towards one edge and a jungle towards the other, a desert
         // somewhere between, temperate land (forest, plains, swamp) around
         // them, oceans at both ends.
-        let ocean_w = (OCEAN_WIDTH * sw) as i32;
+        let ocean_w = (OCEAN_WIDTH * cw.powf(OCEAN_GROWS)) as i32;
         // The start valley in the middle: the plain, a wood each side (the
         // dark one's side from the seed); regions out from it to the seas.
         let (ph, wood) = ((START_PLAIN * sw) as i32, (START_WOOD * sw) as i32);
@@ -513,7 +538,9 @@ impl WorldPlan {
                 let from_edge = x.min(width - 1 - x) as f64;
                 if from_edge < ocean_w as f64 {
                     let t = 1.0 - from_edge / ocean_w as f64; // 0 at the shore, 1 at the edge
-                    h -= OCEAN_DEPTH * sh * smoothstep(0.0, 0.35, t) + lift[x as usize] * t;
+                    // (On the sunken city's site, flat.)
+                    let site = smoothstep(-0.03, 0.0, (from_edge / ocean_w as f64 - SUNKEN_CITY.0).min(SUNKEN_CITY.1 - from_edge / ocean_w as f64)) * (x < width / 2) as i32 as f64;
+                    h = sea + (h - sea) * (1.0 - site) - ocean_depth(t, sea_level - band_floors[3]) - lift[x as usize] * t;
                 }
                 h
             })
@@ -753,15 +780,36 @@ impl WorldPlan {
             )
         };
 
-        WorldPlan { seed, preset, width, height, sea_level, band_floors, biomes, surface, plain, start, water, rugged, islands, chasms, stretches, climate, forest, island_forest, structures, caves, spires }
+        // Round the ocean, the lowest its bed lies near each column (round
+        // the seam: the two ends are one ocean).
+        let mut ocean_floor = vec![i32::MAX; width as usize];
+        for x in (0..ocean_w).chain(width - ocean_w..width) {
+            if water[x as usize] > 0 {
+                for d in -OCEAN_SEAL..=OCEAN_SEAL {
+                    let f = &mut ocean_floor[(x + d).rem_euclid(width) as usize];
+                    *f = (*f).min(surface[x as usize]);
+                }
+            }
+        }
+        let sunken_city = {
+            let (a, b) = ((SUNKEN_CITY.0 * ocean_w as f64) as i32, (SUNKEN_CITY.1 * ocean_w as f64) as i32);
+            (a, b, surface[a as usize..b as usize].iter().copied().max().unwrap_or(sea_level))
+        };
+        WorldPlan { seed, preset, width, height, sea_level, band_floors, biomes, surface, plain, start, water, rugged, islands, chasms, stretches, climate, forest, island_forest, structures, caves, spires, ocean: ocean_w, ocean_floor, sunken_city }
     }
 
-    /// First air cell above the ground at a world column.
     /// The world wraps: a column's x, around into 0 … width.
     pub fn wrap(&self, x: i32) -> i32 {
         x.rem_euclid(self.width)
     }
 
+    /// Under the sea and near its water: nothing opens here (a cave, a
+    /// chasm), or the ocean would drain into it.
+    pub fn by_the_sea(&self, x: i32, y: i32) -> bool {
+        y < self.sea_level && y >= self.ocean_floor[self.wrap(x) as usize].saturating_sub(OCEAN_SEAL)
+    }
+
+    /// First air cell above the ground at a world column.
     pub fn surface_at(&self, x: i32) -> i32 {
         self.surface[self.wrap(x) as usize]
     }
@@ -1198,6 +1246,17 @@ fn wave(seed: u64, t: f64) -> f64 {
     knot(k) + (knot(k + 1.0) - knot(k)) * f
 }
 
+/// How deep the ocean's bed lies at `t` (0 at the beach, 1 at the seam),
+/// in a world whose underground band reaches `under` cells below sea level:
+/// the shelf, the slope, the bed, the trench.
+fn ocean_depth(t: f64, under: i32) -> f64 {
+    let bed = OCEAN_BED * under as f64;
+    let (shelf, trench) = (OCEAN_SHELF.1 * bed, OCEAN_TRENCH.1 * under as f64);
+    shelf * smoothstep(0.0, OCEAN_SHELF.0, t)
+        + (bed - shelf) * smoothstep(OCEAN_SHELF.0, OCEAN_SHELF.0 + OCEAN_SLOPE, t)
+        + (trench - bed) * smoothstep(1.0 - OCEAN_TRENCH.0, 1.0, t)
+}
+
 fn smoothstep(a: f64, b: f64, x: f64) -> f64 {
     let t = ((x - a) / (b - a)).clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
@@ -1291,6 +1350,9 @@ fn water_levels(surface: &[i32], biomes: &[Biome], rugged: &[f32], (bowls, great
         }
         while j + 1 < b && surface[j + 1] < lvl {
             j += 1;
+        }
+        if i <= plain.1 as usize && j >= plain.0 as usize {
+            continue; // the start's plain is dry
         }
         for w in &mut water[i..=j] {
             *w = lvl;
