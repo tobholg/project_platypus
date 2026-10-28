@@ -139,6 +139,10 @@ pub(super) fn build(app: &mut App) {
 }
 
 fn screen_size(window: &Query<&Window, With<PrimaryWindow>>) -> Vec2 {
+    // (Offscreen, the camera's image, whatever the window's left at.)
+    if crate::camera::offscreen() {
+        return SCREEN;
+    }
     window.single().map_or(SCREEN, |w| Vec2::new(w.width(), w.height()))
 }
 
@@ -218,7 +222,7 @@ fn palette(mut commands: Commands, sim: Res<SimWorld>, have: Option<Res<Palette>
 
 /// M opens and shuts it, Esc shuts it; F (dev mode) the fog. Open, it has
 /// the keyboard: the world goes on, you don't.
-fn keys(mut keys: ResMut<ButtonInput<KeyCode>>, mut screen: ResMut<MapScreen>, mode: Res<crate::mode::Mode>, taken: Res<crate::dev::KeyboardTaken>, title: Res<crate::title::Title>, menu: Res<crate::pause::GameMenu>, player: Query<&Kinematics, With<LocalPlayer>>) {
+fn keys(mut keys: ResMut<ButtonInput<KeyCode>>, mut screen: ResMut<MapScreen>, sim: Res<SimWorld>, mode: Res<crate::mode::Mode>, taken: Res<crate::dev::KeyboardTaken>, title: Res<crate::title::Title>, menu: Res<crate::pause::GameMenu>, player: Query<&Kinematics, With<LocalPlayer>>) {
     if screen.open {
         if keys.just_pressed(KeyCode::KeyM) || keys.just_pressed(KeyCode::Escape) {
             screen.open = false;
@@ -237,7 +241,7 @@ fn keys(mut keys: ResMut<ButtonInput<KeyCode>>, mut screen: ResMut<MapScreen>, m
         screen.open = true;
         screen.scale = OPEN_SCALE;
         if let Ok(k) = player.single() {
-            screen.center = k.body.pos / CELLS as f32;
+            screen.center = Vec2::new(sim.world.canon_f(k.body.pos.x), k.body.pos.y) / CELLS as f32;
         }
         screen.labels_made = None;
         keys.reset(KeyCode::KeyM);
@@ -263,6 +267,8 @@ fn mouse(
         return;
     }
     let size = screen_size(&window);
+    let wide = world_wide(&sim);
+    hold(&mut screen, size, wide);
     let Some(cursor) = window.single().ok().and_then(|w| w.cursor_position()) else { return };
     let to_map = |s: &MapScreen, c: Vec2| Vec2::new(s.center.x + (c.x - size.x / 2.0) / s.scale, s.center.y - (c.y - size.y / 2.0) / s.scale);
     // Zoom, keeping the map under the pointer where it is.
@@ -270,13 +276,14 @@ fn mouse(
         MouseScrollUnit::Line => scroll.delta.y,
         MouseScrollUnit::Pixel => scroll.delta.y / 40.0,
     };
+    let scales = scales(size, wide);
     let notches = wheel.trunc();
     if notches != 0.0 {
         *wheel -= notches;
-        let i = SCALES.iter().position(|&s| s >= screen.scale - 1e-4).unwrap_or(SCALES.len() - 1) as i32;
-        let j = (i + notches as i32).clamp(0, SCALES.len() as i32 - 1) as usize;
+        let i = scales.iter().position(|&s| s >= screen.scale - 1e-4).unwrap_or(scales.len() - 1) as i32;
+        let j = (i + notches as i32).clamp(0, scales.len() as i32 - 1) as usize;
         let under = to_map(&screen, cursor);
-        screen.scale = SCALES[j];
+        screen.scale = scales[j];
         let now = to_map(&screen, cursor);
         screen.center += under - now;
     }
@@ -289,23 +296,32 @@ fn mouse(
         let moved = moved || d.length() > CLICK;
         screen.center = if moved { center + Vec2::new(-d.x, d.y) / screen.scale } else { center };
         screen.drag = Some((from, center, moved));
+        hold(&mut screen, size, wide);
         if buttons.just_released(MouseButton::Left) {
             screen.drag = None;
             if !moved && mode.dev() {
-                let to = to_map(&screen, cursor) * CELLS as f32;
+                let mut to = to_map(&screen, cursor) * CELLS as f32;
+                if let Ok(k) = player.single() {
+                    // (Round a wrapping world, to the copy of the spot
+                    // nearest you.)
+                    if let Some(w) = sim.world.wraps() {
+                        let half = w as f32 / 2.0;
+                        to.x = k.body.pos.x + (to.x - k.body.pos.x + half).rem_euclid(w as f32) - half;
+                    }
+                }
                 if let Ok(mut k) = player.single_mut()
                     && let Some(at) = super::standing_room(&sim, to, k.body.half, 400)
                 {
                     k.body.pos = at;
                     k.prev_pos = at;
                     k.body.vel = Vec2::ZERO;
-                    screen.center = at / CELLS as f32;
                     screen.open = false;
                     info!("map: to ({:.0}, {:.0})", at.x, at.y);
                 }
             }
         }
     }
+    hold(&mut screen, size, wide);
     // A pin: picked up if there's one under the pointer, else dropped.
     if buttons.just_pressed(MouseButton::Right) {
         let s = &*screen;
@@ -359,7 +375,7 @@ fn seeds(mut screen: ResMut<MapScreen>, sim: Res<SimWorld>, window: Query<&Windo
     let (lo, hi) = view_tiles(&screen, screen_size(&window));
     let (b0, b1) = sim.generator.bounds();
     let (w0, w1) = (IVec2::new(b0.x * 64, b0.y * 64) / (TILE * CELLS), IVec2::new(b1.x * 64 + 63, b1.y * 64 + 63) / (TILE * CELLS));
-    let (x0, x1) = if laps.is_some() { (lo.x, hi.x) } else { (lo.x.max(w0.x), hi.x.min(w1.x)) };
+    let (x0, x1) = (lo.x.max(w0.x), hi.x.min(w1.x));
     let mid = (screen.center / TILE as f32).floor().as_ivec2();
     let mut want: Vec<(IVec2, IVec2)> = (lo.y.max(w0.y)..=hi.y.min(w1.y)).flat_map(|y| (x0..=x1).map(move |x| IVec2::new(x, y))).map(|k| (k, key(k))).filter(|(_, k)| !screen.seeds.contains_key(k) && !screen.making.contains_key(k)).collect();
     want.sort_by_key(|(k, _)| (*k - mid).length_squared());
@@ -385,6 +401,28 @@ fn seeds(mut screen: ResMut<MapScreen>, sim: Res<SimWorld>, window: Query<&Windo
         });
         screen.making.insert(k, task);
     }
+}
+
+/// The world's width in map pixels.
+fn world_wide(sim: &SimWorld) -> f32 {
+    let (b0, b1) = sim.generator.bounds();
+    ((b1.x - b0.x + 1) * platypus_sim::CHUNK) as f32 / CELLS as f32
+}
+
+/// The zoom steps: furthest out, the whole world's width across the
+/// screen; then those of `SCALES` closer in than that.
+fn scales(size: Vec2, wide: f32) -> Vec<f32> {
+    let whole = size.x / wide;
+    std::iter::once(whole).chain(SCALES.iter().copied().filter(|&s| s > whole * 1.01)).collect()
+}
+
+/// The view kept on the world: zoomed out no further than its whole width,
+/// and panned no further than its edges (the whole of it in the middle
+/// when it's all in view).
+fn hold(screen: &mut MapScreen, size: Vec2, wide: f32) {
+    screen.scale = screen.scale.max(size.x / wide);
+    let half = size.x / (2.0 * screen.scale);
+    screen.center.x = if half * 2.0 >= wide - 0.5 { wide / 2.0 } else { screen.center.x.clamp(half, wide - half) };
 }
 
 /// The tiles the screen shows (lowest, highest).
@@ -438,8 +476,11 @@ fn place(
     let small = screen.scale < SMALL_BELOW;
     let (scale, center) = (screen.scale, screen.center);
     let mut in_view = Vec::new();
+    // (The world laid flat: nothing past its edges, round a wrapping one
+    // too.)
+    let (x0, x1) = map.laps.map_or((lo.x, hi.x), |n| (lo.x.max(0), hi.x.min(n - 1)));
     for ty in lo.y..=hi.y {
-        for tx in lo.x..=hi.x {
+        for tx in x0..=x1 {
             let k = IVec2::new(tx, ty);
             if !(map.tile(k).is_some() || (fog_off && screen.seeds.contains_key(&map.key(k)))) {
                 continue;
@@ -815,7 +856,10 @@ fn labels(
     let size = screen_size(&window);
     let you = player.single().map(|k| k.body.pos).unwrap_or_default();
     for (l, mut n, mut v, computed) in &mut placed {
+        // (Round a wrapping world, where it is as stored: the map's the
+        // world laid flat, its edges the seam.)
         let at = if l.you { you } else { l.at };
+        let at = Vec2::new(sim.world.canon_f(at.x), at.y);
         let m = at / CELLS as f32;
         let mut x = (m.x - screen.center.x) * screen.scale + size.x / 2.0;
         let y = (screen.center.y - m.y) * screen.scale + size.y / 2.0;

@@ -16850,7 +16850,9 @@ fn ward_script(
 /// (10 s), and it walks back west (12 s to 18 s). Logs where it is (and as
 /// stored), the zombie's distance, what's loaded either side, and the
 /// water either side of the seam. (`PLATYPUS_SEAM_SWIM=1`: in the great
-/// ocean instead, swimming across the seam at its surface.)
+/// ocean instead, swimming across the seam at its surface;
+/// `PLATYPUS_SEAM_MAP=1`: the map opened, fog off, as far out as it goes,
+/// once over the seam, 9.5 s.)
 fn seam_script(
     mut commands: Commands,
     s: Res<Scenario>,
@@ -16860,6 +16862,7 @@ fn seam_script(
     mut player: Query<&mut Kinematics, With<LocalPlayer>>,
     others: Query<(&crate::creatures::Creature, &Kinematics), Without<LocalPlayer>>,
     mut state: Local<(u8, f32, i32)>,
+    mut screen: ResMut<crate::map::MapScreen>,
 ) {
     if s.name != "seam" {
         return;
@@ -16900,6 +16903,11 @@ fn seam_script(
         3 if t > 9.0 => {
             keys.release(KeyCode::KeyD);
             *step = 4;
+        }
+        4 if (9.5..9.52).contains(&t) && std::env::var("PLATYPUS_SEAM_MAP").is_ok() => {
+            screen.fog_off = true;
+            screen.show(k.body.pos, 0.001);
+            info!("seam: the map open on the whole world, the player at x {:.0}", k.body.pos.x);
         }
         4 if t > 10.0 && !swim => {
             if let Some(water) = sim.materials().id("water") {
