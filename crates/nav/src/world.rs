@@ -49,6 +49,8 @@ impl WorldGrid<'_> {
         }
         match self.0.materials().phys(c.material) {
             p if p.platform => Occupancy::Platform,
+            // (Cloud: waded and swum through like water.)
+            p if p.wade => Occupancy::Liquid,
             p => match p.kind {
                 Kind::Powder if c.vy > 0 => Occupancy::Empty,
                 Kind::Static | Kind::Powder => Occupancy::Solid,

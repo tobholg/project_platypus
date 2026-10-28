@@ -38,6 +38,14 @@ impl Island {
         self.cells[(ly * self.w + lx) as usize]
     }
 
+    /// Moved up (or down) `dy` cells.
+    pub fn lift(&mut self, dy: i32) {
+        self.y0 += dy;
+        for t in self.top.iter_mut().flatten() {
+            *t += dy;
+        }
+    }
+
     /// First air cell above the island's grass at column `x`.
     pub fn top_at(&self, x: i32) -> Option<i32> {
         let lx = x - self.x0;

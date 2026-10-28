@@ -248,6 +248,10 @@ pub struct MaterialDef {
     /// sides, and open underfoot to one that wants to drop.
     #[serde(default)]
     pub platform: bool,
+    /// Held in place, but creatures wade and sink through it as through
+    /// water, and swim in it (and don't drown: it isn't a liquid): cloud.
+    #[serde(default)]
+    pub wade: bool,
     /// A wall: built into the background (behind you), never the playfield
     /// (a house's back wall: the game's business).
     #[serde(default)]
@@ -486,6 +490,8 @@ pub struct MatPhys {
     pub brittle: bool,
     /// See `MaterialDef::platform`.
     pub platform: bool,
+    /// See `MaterialDef::wade`.
+    pub wade: bool,
     /// See `MaterialDef::sticky`.
     pub sticky: bool,
     /// See `MaterialDef::slippery`.
@@ -716,6 +722,7 @@ impl MaterialTable {
                 object: d.object,
                 brittle: d.brittle,
                 platform: d.platform,
+                wade: d.wade,
                 sticky: d.sticky,
                 slippery: d.slippery,
                 latent: d.latent,

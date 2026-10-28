@@ -74,6 +74,10 @@
         (name: "stone",    kind: Static, density: 2600, hardness: 60,  crumbles_into: "gravel", above: (1400, "magma"), colors: [(92, 92, 100), (122, 120, 128), (104, 104, 112)]),
         (name: "dirt",     kind: Static, soaks: 150, density: 1500, hardness: 20,  crumbles_into: "soil", colors: [(96, 62, 36), (118, 78, 44), (104, 68, 40)]),
         (name: "grass",    kind: Static, soaks: 190, living: true, density: 1400, hardness: 10,  flammability: 2, ignites_at: 250, burn_time: 10, burns_into: "soil", crumbles_into: "soil", chars_at: 1.0, colors: [(58, 140, 44), (82, 170, 56)]),
+        // The cloud deck the sky islands rise out of (the sky arc): held in
+        // place, waded and swum through, sinking slowly; light through it
+        // dims, so its underside is grey.
+        (name: "cloud",    kind: Static, wade: true, density: 20, hardness: 4, opacity: 1, colors: [(226, 232, 242), (232, 237, 245), (238, 242, 249), (222, 229, 240)]),
         (name: "snow",     kind: Static, density: 400,  hardness: 5,   heat: -10, above: (1, "water"), conductivity: 15, coats: "wet", latent: 40, colors: [(226, 232, 240), (246, 248, 252)]),
         // Hard to get going: a small fire on a trunk often fizzles (fizzles:
         // a lone flame goes out), a crown or a blaze takes it (SPEC §3.8).

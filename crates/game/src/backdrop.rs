@@ -53,6 +53,10 @@ impl Plugin for BackdropPlugin {
 const PARALLAX: (f32, f32) = (0.01, 0.04);
 const PARALLAX_Y: (f32, f32) = (0.004, 0.015);
 const FEET_STEP: f32 = 18.0;
+/// The layers (and the far clouds) keep up with the camera only this far
+/// over the ground (cells): higher (up in the sky, on the cloud deck),
+/// they fall away under you.
+const FOLLOW_UP: f32 = 420.0;
 
 /// Layer `k` of `n`: its share of the camera's motion across and up and
 /// down, its feet over the ground.
@@ -308,15 +312,17 @@ impl Backdrops {
         let (w, h) = (w as f32, h as f32);
         let x = (key.tx as f32 + 0.5) * w + self.scroll(key.part, key.v, key.k, cam);
         let ground = self.ground.unwrap_or(cam.y);
+        // (How far over the ground they keep up with you.)
+        let up = (cam.y - ground).min(FOLLOW_UP);
         let y = match key.part {
             // Its foot (the layer's base row) a little above the ground; it
             // hardly moves as you climb.
             Part::Land => {
                 let (_, py, feet) = layer_at(key.k, self.looks[key.v].layers.len());
-                let foot = ground + feet - self.looks[key.v].layers[key.k].drop + (cam.y - ground) * (1.0 - py);
+                let foot = ground + feet - self.looks[key.v].layers[key.k].drop + up * (1.0 - py);
                 foot + self.looks[key.v].layers[key.k].base * h - h / 2.0
             }
-            Part::Clouds => ground + self.looks[key.v].clouds.foot + (cam.y - ground) * (1.0 - CLOUD_PARALLAX_Y) + h / 2.0,
+            Part::Clouds => ground + self.looks[key.v].clouds.foot + up * (1.0 - CLOUD_PARALLAX_Y) + h / 2.0,
         };
         Vec2::new(x, y)
     }

@@ -63,6 +63,12 @@ pub trait ChunkGenerator: Send + Sync {
         None
     }
 
+    /// The cloud deck over column x (its underside, its top), if the world
+    /// has one and it's there (not a sky window).
+    fn deck_over(&self, _x: i32) -> Option<(i32, i32)> {
+        None
+    }
+
     /// The ground height at x as generated (before anything was dug), for
     /// telling whether unloaded air above a column is open sky.
     fn surface_hint(&self, _x: i32) -> Option<i32> {
@@ -353,6 +359,7 @@ struct Ids {
     leaves: MaterialId,
     needles: MaterialId,
     dark_leaves: MaterialId,
+    cloud: MaterialId,
     tall_grass: MaterialId,
     ice: MaterialId,
     sandstone: MaterialId,
@@ -501,6 +508,7 @@ impl TerrainGen {
             leaves: mats.expect_id("leaves"),
             needles: mats.expect_id("needles"),
             dark_leaves: mats.expect_id("dark_leaves"),
+            cloud: mats.expect_id("cloud"),
             tall_grass: mats.expect_id("tall_grass"),
             ice: mats.expect_id("ice"),
             sandstone: mats.expect_id("sandstone"),
@@ -1183,8 +1191,13 @@ impl TerrainGen {
                     IslandCell::Grass => return if plan.climate.ambient(x, y) <= 0 { i.snow } else { i.grass },
                     IslandCell::Dirt => return i.dirt,
                     IslandCell::Stone => return i.stone,
-                    IslandCell::Cave | IslandCell::None => {}
+                    IslandCell::Cave => return i.air,
+                    IslandCell::None => {}
                 }
+            }
+            // The cloud deck the islands rise out of.
+            if plan.deck_at(x, y) {
+                return i.cloud;
             }
             return i.air;
         }
@@ -2308,6 +2321,10 @@ impl ChunkGenerator for TerrainGen {
 
     fn rain_from(&self) -> Option<i32> {
         Some(self.plan.rain_from())
+    }
+
+    fn deck_over(&self, x: i32) -> Option<(i32, i32)> {
+        self.plan.deck_over(x)
     }
 
     fn spawn_point(&self) -> CellPos {

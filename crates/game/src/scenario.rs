@@ -414,6 +414,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, fall_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, save_script)
             .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script, wardrobe_script, herbcut_script, zombiejump_script, crushcheck_script, batcount_script, airswing_script, dive_script, paint_script, firewall_script, fields_script, ward_script, seam_script))
+            .add_systems(Update, sky_script)
             .add_systems(PreUpdate, craft_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pack_script.after(bevy::ui::UiSystems::Focus).before(crate::pause::key))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
@@ -16982,6 +16983,55 @@ fn seam_script(
             loaded(300.0),
             wet(w - 120, w),
             wet(w, w + 120)
+        );
+    }
+}
+
+/// `sky` (a generated world): the player dropped onto the cloud deck at the
+/// first column from the spawn it's over (0.5 s), 60 over its top, to sink
+/// into it and wade; `PLATYPUS_SKY_UNDER=1`: 120 under its underside
+/// instead, held there, to look up at it. Logs the height against the
+/// deck's top, how far in the cloud it is, its fall and its breath.
+fn sky_script(
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    mut player: Query<(&mut Kinematics, Option<&crate::breath::Breath>), With<LocalPlayer>>,
+    mut state: Local<(Option<(Vec2, i32, i32)>, f32)>,
+) {
+    if s.name != "sky" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let Ok((mut k, breath)) = player.single_mut() else { return };
+    let under = std::env::var("PLATYPUS_SKY_UNDER").is_ok();
+    if state.0.is_none() && t > 0.5 {
+        let x0 = sim.generator.spawn_point().x;
+        let Some((x, (lo, hi))) = (0..20_000).step_by(16).find_map(|d| sim.generator.deck_over(x0 + d).map(|v| (x0 + d, v))) else { return };
+        let at = Vec2::new(x as f32, if under { lo as f32 - 120.0 } else { hi as f32 + 60.0 });
+        k.body.pos = at;
+        k.prev_pos = at;
+        k.body.vel = Vec2::ZERO;
+        state.0 = Some((at, lo, hi));
+        info!("sky: at x {x}, the deck {lo}..{hi} ({} thick)", hi - lo);
+    }
+    let Some((at, lo, hi)) = state.0 else { return };
+    if under {
+        k.body.pos = at;
+        k.prev_pos = at;
+        k.body.vel = Vec2::ZERO;
+    }
+    if t >= state.1 {
+        state.1 = t + 0.5;
+        let feet = k.body.pos.y - k.body.half.y;
+        info!(
+            "sky: t {t:.1} feet {:+.0} from the deck's top ({:.0} into it), falling {:+.0}, in it {:.2}, breath {:?}",
+            feet - hi as f32,
+            (hi as f32 - feet).clamp(0.0, (hi - lo) as f32),
+            k.body.vel.y,
+            k.loco.contacts.submerged,
+            breath.map(|b| (b.left * 10.0).round() / 10.0)
         );
     }
 }
