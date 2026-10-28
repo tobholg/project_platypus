@@ -69,6 +69,8 @@ pub struct Weather {
     /// catch up as they come back into it. (The world clock's coarse
     /// weather takes over outside it, DESIGN §13.)
     window: Option<(usize, usize)>,
+    /// How high rain and snow come in from (`rain_from`).
+    ceiling: i32,
 }
 
 /// Columns whose shape is recomputed per step: all of them every this many steps.
@@ -104,6 +106,7 @@ impl Weather {
             shapes: Vec::new(),
             bias: vec![0.0; cols],
             window: None,
+            ceiling: y0 + rows as i32 * TEXEL,
         };
         w.shapes = (0..cols).map(|c| w.shape(c, 0)).collect();
         // Start in the weather the seed has for tick 0, not a clear sky.
@@ -155,6 +158,19 @@ impl Weather {
     /// Top of the band (cell y, exclusive).
     pub fn y1(&self) -> i32 {
         self.y0 + self.rows as i32 * TEXEL
+    }
+
+    /// Rain and snow come in from as high as `y` (at least the band's top):
+    /// from the top of what's loaded under it, so however high you are
+    /// (zoomed out, up on rocket boots) it's coming down from above you.
+    pub fn rain_from(mut self, y: i32) -> Weather {
+        self.ceiling = y.max(self.y1());
+        self
+    }
+
+    /// How high rain and snow come in from (`rain_from`).
+    pub fn ceiling(&self) -> i32 {
+        self.ceiling
     }
 
     /// Column index for world x (wrapping).

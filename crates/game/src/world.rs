@@ -91,7 +91,7 @@ impl Plugin for WorldPlugin {
         if let Some((y0, height)) = generator.cloud_band() {
             let (lo, hi) = generator.bounds();
             let width = (hi.x - lo.x + 1) * CHUNK;
-            world.set_weather(Weather::new(self.seed, width, y0, height));
+            world.set_weather(Weather::new(self.seed, width, y0, height).rain_from(generator.rain_from().unwrap_or(y0 + height)));
         }
         app.insert_resource(Time::<Fixed>::from_hz(TICK_HZ))
             .insert_resource(SimWorld { world, generator, store: ChunkStore::default() })
@@ -214,8 +214,10 @@ fn stream_chunks(
     }
     // (What the world reports, it reports round the first loader: the
     // camera.)
-    if let Some((tf, _)) = loaders.iter().next() {
+    if let Some((tf, l)) = loaders.iter().next() {
         sim.world.set_focus(tf.translation().x.floor() as i32);
+        let y = tf.translation().y;
+        sim.world.set_view((y + l.half_extent.y).ceil() as i32, (y - l.half_extent.y).floor() as i32);
     }
     // Round a wrapping world, chunks are kept as stored (x in 0 … its
     // width); a loader's reach, wherever it is, finds them there.

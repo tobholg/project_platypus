@@ -749,11 +749,34 @@ fn acid_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kinem
     }
 }
 
-fn rain_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kinematics, With<LocalPlayer>>, mut step: Local<u8>) {
+fn rain_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, mut player: Query<&mut Kinematics, With<LocalPlayer>>, mut step: Local<u8>, mut held: Local<(Option<Vec2>, f32)>) {
     if s.name != "rain" {
         return;
     }
-    let Ok(p) = player.single() else { return };
+    let Ok(mut p) = player.single_mut() else { return };
+    // (`PLATYPUS_RAIN_UP=cells`: held that far up in the air from 1 s, as
+    // on rocket boots, to see the rain come down from above; logs the
+    // particles in flight each second.)
+    if let Ok(up) = std::env::var("PLATYPUS_RAIN_UP").map(|v| v.parse::<f32>().unwrap_or(600.0))
+        && s.elapsed > 1.0
+    {
+        let at = *held.0.get_or_insert(p.body.pos + Vec2::Y * up);
+        p.body.pos = at;
+        p.prev_pos = at;
+        p.body.vel = Vec2::ZERO;
+        if s.elapsed >= held.1 {
+            held.1 = s.elapsed + 1.0;
+            let rain = sim.world.particles().iter().filter(|q| matches!(q.landing, platypus_sim::Landing::Rain | platypus_sim::Landing::Snow)).count();
+            let above = sim.world.particles().iter().filter(|q| matches!(q.landing, platypus_sim::Landing::Rain | platypus_sim::Landing::Snow) && q.pos[1] > at.y).count();
+            let ys = sim.world.particles().iter().filter(|q| matches!(q.landing, platypus_sim::Landing::Rain | platypus_sim::Landing::Snow)).fold((f32::MAX, f32::MIN, f32::MAX, f32::MIN), |b, q| (b.0.min(q.pos[0] - at.x), b.1.max(q.pos[0] - at.x), b.2.min(q.pos[1] - at.y), b.3.max(q.pos[1] - at.y)));
+            info!("rain: t {:.0} {up:.0} up: {} particles, {rain} rain or snow ({above} above the player; across {:.0}..{:.0}, up {:.0}..{:.0})", s.elapsed, sim.world.particles().len(), ys.0, ys.1, ys.2, ys.3);
+            // (How many a band of 100 cells, from 300 over the player down,
+            // within 400 across.)
+            let bands: Vec<usize> = (0..7).map(|k| sim.world.particles().iter().filter(|q| q.landing == platypus_sim::Landing::Rain && (q.pos[0] - at.x).abs() < 400.0 && (300.0 - 100.0 * (k + 1) as f32..300.0 - 100.0 * k as f32).contains(&(q.pos[1] - at.y))).count()).collect();
+            info!("rain: t {:.0} by height (300 over down to 400 under, per 100): {bands:?}", s.elapsed);
+        }
+    }
+    let p = &*p;
     let x = p.body.pos.x as i32;
     match *step {
         // (`PLATYPUS_RAIN_ROOF=1`: a stone slab overhead with gaps in it,

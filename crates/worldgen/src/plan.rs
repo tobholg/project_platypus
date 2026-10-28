@@ -798,6 +798,12 @@ impl WorldPlan {
         WorldPlan { seed, preset, width, height, sea_level, band_floors, biomes, surface, plain, start, water, rugged, islands, chasms, stretches, climate, forest, island_forest, structures, caves, spires, ocean: ocean_w, ocean_floor, sunken_city }
     }
 
+    /// How high rain and snow come in from: the floor of the sky band (the
+    /// cloud deck the islands rise from).
+    pub fn rain_from(&self) -> i32 {
+        self.band_floors[0]
+    }
+
     /// The world wraps: a column's x, around into 0 … width.
     pub fn wrap(&self, x: i32) -> i32 {
         x.rem_euclid(self.width)

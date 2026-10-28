@@ -100,6 +100,13 @@ pub struct World {
     /// (particles, bodies, blasts, rain), it reports as the copy of it
     /// nearest there.
     focus: i32,
+    /// The top and bottom of what the players see (`set_view`): rain and
+    /// snow come in just over it, and go once they've fallen out under it.
+    view: Option<(i32, i32)>,
+    /// Per weather column (as stored): whether it's open to the sky from
+    /// where rain last came in there, that height, and the tick it was
+    /// looked at.
+    skies: FxHashMap<i32, (bool, i32, u64)>,
 }
 
 /// A chunk as stored in a world wrapping at `wrap` cells (if it does).
@@ -161,6 +168,8 @@ impl World {
             grounds: FxHashMap::default(),
             wrap: None,
             focus: 0,
+            view: None,
+            skies: FxHashMap::default(),
         }
     }
 
@@ -461,6 +470,14 @@ impl World {
     /// (particles, bodies, blasts, rain) as the copy nearest there.
     pub fn set_focus(&mut self, x: i32) {
         self.focus = x;
+    }
+
+    /// The top and bottom of what the players see (cells): rain and snow
+    /// come in just over it and go once they've fallen out under it (from
+    /// the top of what's loaded, the drops spent their lives falling where
+    /// nobody saw them, and the sky's worth came in waves).
+    pub fn set_view(&mut self, top: i32, bottom: i32) {
+        self.view = Some((top, bottom));
     }
 
     pub fn focus(&self) -> i32 {
@@ -1943,6 +1960,12 @@ impl World {
         self.step_bodies();
         let bodies = lap();
         self.step_weather(wind, &stats.vapour);
+        // (Rain and snow fallen out under the view, gone: they'd land
+        // unseen, and keep the sky's share from what's seen.)
+        if let Some((_, bottom)) = self.view {
+            let under = (bottom - RAIN_UNDER_VIEW) as f32;
+            self.particles.retain(|p| !(matches!(p.landing, Landing::Rain | Landing::Snow) && p.pos[1] < under));
+        }
         self.gather();
         stats.lightning = std::mem::take(&mut self.strikes);
         stats.zaps = std::mem::take(&mut self.zaps);
@@ -1958,21 +1981,34 @@ impl World {
             weather.feed(x, VAPOUR_MOISTURE);
         }
         let out = weather.step(self.tick, wind);
-        let top = weather.y1();
+        let top = weather.ceiling();
         if out.is_empty() {
             return;
         }
         let (water, snow) = (self.materials.id("water"), self.materials.id("snow"));
         let mut rng = self.rng_for(0x5A1F, CellPos::new(0, 0));
         // Rain and snow come in from above, not out of a cloud in the world
-        // (its band could sit inside a mountain): drops start at the top of
-        // what's loaded in their column, under the sky's band.
+        // (its band could sit inside a mountain): drops start just over what
+        // the players see (or the top of what's loaded under the sky's
+        // ceiling, if that's lower), where their column's open to the sky
+        // above (under a roof, or underground, none).
+        let start = self.view.map_or(top, |(v, _)| (v + RAIN_OVER_VIEW).min(top));
+        let tick = self.tick;
         let out: Vec<_> = out
             .into_iter()
             .filter_map(|mut p| {
                 p.x = self.near(p.x);
-                p.y = self.top_loaded_far(p.x, top)?;
-                Some(p)
+                p.y = self.top_loaded_far(p.x, start)?;
+                let key = self.canon(p.x);
+                let open = match self.skies.get(&key) {
+                    Some(&(open, y, at)) if (y - p.y).abs() < SKY_SAME && tick < at + SKY_STALE => open,
+                    _ => {
+                        let open = self.under_sky(CellPos::new(p.x, p.y), top - p.y);
+                        self.skies.insert(key, (open, p.y, tick));
+                        open
+                    }
+                };
+                open.then_some(p)
             })
             .collect();
         // Rain leaves room for everything else (and never makes the cap evict
@@ -2788,6 +2824,14 @@ const BOILS_RAIN: i16 = 800;
 const RAIN_QUENCH: i16 = 60;
 /// How long (ticks) a weather column's ground height is trusted.
 const GROUND_STALE: u64 = 600;
+/// Rain and snow come in this far over the top of the view, and go this
+/// far under its bottom (cells).
+const RAIN_OVER_VIEW: i32 = 40;
+const RAIN_UNDER_VIEW: i32 = 60;
+/// Whether a column's open to the sky is looked at again after this many
+/// ticks, or once rain comes in this much higher or lower there.
+const SKY_STALE: u64 = 120;
+const SKY_SAME: i32 = 32;
 /// Longest run down through a tree to the ground.
 const LIGHTNING_CHANNEL: i32 = 600;
 /// New drops stop above this many particles in flight (the cap is 67 500).

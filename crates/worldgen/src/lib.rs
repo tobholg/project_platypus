@@ -57,6 +57,12 @@ pub trait ChunkGenerator: Send + Sync {
         None
     }
 
+    /// How high rain and snow come in from, at most (above the weather's
+    /// band: the sky's cloud deck's underside). None: the band's top.
+    fn rain_from(&self) -> Option<i32> {
+        None
+    }
+
     /// The ground height at x as generated (before anything was dug), for
     /// telling whether unloaded air above a column is open sky.
     fn surface_hint(&self, _x: i32) -> Option<i32> {
@@ -2298,6 +2304,10 @@ impl ChunkGenerator for TerrainGen {
         // Above the tallest trees (lightning needs room to fall), low enough
         // to be in view from the surface; the highest peaks poke into it.
         Some((self.plan.sea_level + 225, 264))
+    }
+
+    fn rain_from(&self) -> Option<i32> {
+        Some(self.plan.rain_from())
     }
 
     fn spawn_point(&self) -> CellPos {
