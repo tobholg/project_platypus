@@ -115,15 +115,22 @@ impl Weather {
         w
     }
 
-    /// Simulate only the columns over world x `x0..=x1` (clamped to the
-    /// world); the rest wait.
+    /// Simulate only the columns over world x `x0..=x1` (round the world:
+    /// a window over its seam runs on past the last column into the first);
+    /// the rest wait.
     pub fn set_window(&mut self, x0: i32, x1: i32) {
-        let hi = self.cols as i32 - 1;
-        let (a, b) = ((x0 / TEXEL).clamp(0, hi), (x1 / TEXEL).clamp(0, hi));
-        self.window = Some((a.min(b) as usize, a.max(b) as usize));
+        let cols = self.cols as i32;
+        let (a, b) = (x0.min(x1).div_euclid(TEXEL), x0.max(x1).div_euclid(TEXEL));
+        self.window = Some(if b - a + 1 >= cols {
+            (0, self.cols - 1)
+        } else {
+            let lo = a.rem_euclid(cols);
+            (lo as usize, (lo + b - a) as usize)
+        });
     }
 
-    /// The columns simulated, as a range.
+    /// The columns simulated, as a range (its end past the last column if
+    /// it runs over the seam: `% cols`).
     fn span(&self) -> (usize, usize) {
         self.window.unwrap_or((0, self.cols - 1))
     }
@@ -272,7 +279,7 @@ impl Weather {
         let mut out = Vec::new();
         let (lo, hi) = self.span();
         let first = lo + (lane + STEP_EVERY as usize - lo % STEP_EVERY as usize) % STEP_EVERY as usize;
-        for c in (first..=hi.min(cols - 1)).step_by(STEP_EVERY as usize) {
+        for c in (first..=hi).step_by(STEP_EVERY as usize).map(|c| c % cols) {
             // Vapour rising from below spreads through the lower half of the
             // band (all into one row, it piled up as a thin bright bar).
             let fed = std::mem::take(&mut self.fed[c]);
@@ -332,7 +339,7 @@ impl Weather {
         let phase = ((tick / STEP_EVERY) % SHAPE_REFRESH) as usize;
         let (lo, hi) = self.span();
         let first = lo + (phase + SHAPE_REFRESH as usize - lo % SHAPE_REFRESH as usize) % SHAPE_REFRESH as usize;
-        for c in (first..=hi.min(cols - 1)).step_by(SHAPE_REFRESH as usize) {
+        for c in (first..=hi).step_by(SHAPE_REFRESH as usize).map(|c| c % cols) {
             self.shapes[c] = self.shape(c, tick);
         }
     }
@@ -345,13 +352,13 @@ impl Weather {
         let x = c as f32 * TEXEL as f32 - (self.offset / TEXEL as f32).floor() * TEXEL as f32;
         let t = tick as f32;
         // Fronts come and go over tens of minutes; a storm lasts minutes.
-        let broad = noise2(self.seed, 0xC10D, x / 2_400.0, t / 90_000.0);
-        let medium = noise2(self.seed, 0xC10E, x / 390.0, t / 30_000.0);
+        let broad = self.ring(0xC10D, x, 2_400.0, t / 90_000.0);
+        let medium = self.ring(0xC10E, x, 390.0, t / 30_000.0);
         let bias = self.bias[c];
         let humid = (smoothstep(0.45, 0.8, 0.72 * broad + 0.28 * medium) + bias).clamp(0.0, 1.0);
-        let heap = noise2(self.seed, 0xC10F, x / 105.0, t / 15_000.0);
+        let heap = self.ring(0xC10F, x, 105.0, t / 15_000.0);
         let rows = self.rows as f32;
-        let base = rows * 0.12 + 3.0 * noise2(self.seed, 0xC110, x / 225.0, t / 20_000.0);
+        let base = rows * 0.12 + 3.0 * self.ring(0xC110, x, 225.0, t / 20_000.0);
         // Separate heaps with clear sky between, more of them joined up the
         // more humid it is.
         let heaped = smoothstep(0.55 - 0.35 * humid, 0.85 - 0.25 * humid, heap).max(bias);
@@ -360,7 +367,7 @@ impl Weather {
         // one's severe (heavier still, the sky darkest, lightning): where a
         // slow field of its own runs high. (Forced: severe.)
         let storm = (smoothstep(0.62, 0.8, broad) * humid).max(bias);
-        let fury = noise2(self.seed, 0xC111, x / 3_000.0, t / 120_000.0);
+        let fury = self.ring(0xC111, x, 3_000.0, t / 120_000.0);
         let severe = (storm * smoothstep(FURY.0, FURY.1, fury)).max(bias);
         Shape { base, thickness, peak: 0.45 + 0.75 * humid + 0.9 * storm + 0.5 * severe, severe }
     }
@@ -399,6 +406,21 @@ fn smoothstep(a: f32, b: f32, x: f32) -> f32 {
 }
 
 /// Seeded 2D value noise in 0..1, smooth, no trig.
+impl Weather {
+    /// `noise2` round the world: its knots along x spaced about `scale`
+    /// cells, a whole number of them round, so the sky meets itself where
+    /// the world does.
+    fn ring(&self, salt: u64, x: f32, scale: f32, y: f32) -> f32 {
+        let w = self.width as f32;
+        let n = (w / scale).round().max(1.0);
+        let u = x.rem_euclid(w) * n / w;
+        let (i, f) = (u.floor(), u - u.floor());
+        let at = |i: f32| noise2(self.seed, salt, i.rem_euclid(n), y);
+        let s = f * f * (3.0 - 2.0 * f);
+        at(i) + (at(i + 1.0) - at(i)) * s
+    }
+}
+
 fn noise2(seed: u64, salt: u64, x: f32, y: f32) -> f32 {
     let (xi, yi) = (x.floor(), y.floor());
     let (fx, fy) = (x - xi, y - yi);

@@ -93,6 +93,21 @@ pub struct World {
     /// Ground height under each weather column and the tick it was found:
     /// rain or snow is decided by it, and the ground rarely moves.
     grounds: FxHashMap<i32, (i32, u64)>,
+    /// The world's width if it wraps (cells; `set_wrap`): x and x + width
+    /// are the same column, the chunks stored once, at x in 0 … width.
+    wrap: Option<i32>,
+    /// The x the players are about (`set_focus`): what the world reports
+    /// (particles, bodies, blasts, rain), it reports as the copy of it
+    /// nearest there.
+    focus: i32,
+}
+
+/// A chunk as stored in a world wrapping at `wrap` cells (if it does).
+pub(crate) fn wrap_key(pos: ChunkPos, wrap: Option<i32>) -> ChunkPos {
+    match wrap {
+        Some(w) => ChunkPos::new(pos.x.rem_euclid(w / CHUNK), pos.y),
+        None => pos,
+    }
 }
 
 /// Which grid a ground check looks at.
@@ -144,6 +159,8 @@ impl World {
             weather: None,
             strikes: Vec::new(),
             grounds: FxHashMap::default(),
+            wrap: None,
+            focus: 0,
         }
     }
 
@@ -213,7 +230,7 @@ impl World {
             let at = CellPos::new(p.x, y);
             let cp = at.chunk();
             let top = ((cp.y + 1) * CHUNK).min(end);
-            if let Some(ch) = self.chunks.get(&cp) {
+            if let Some(ch) = self.chunks.get(&self.key(cp)) {
                 let (lx, _) = at.local();
                 for yy in y..top {
                     let c = ch.get(lx, (yy - cp.y * CHUNK) as usize);
@@ -241,7 +258,7 @@ impl World {
             let at = CellPos::new(p.x, y);
             let cp = at.chunk();
             let top = ((cp.y + 1) * CHUNK).min(w.y0);
-            if let Some(ch) = self.chunks.get(&cp) {
+            if let Some(ch) = self.chunks.get(&self.key(cp)) {
                 let (lx, _) = at.local();
                 for yy in y..top {
                     let c = ch.get(lx, (yy - cp.y * CHUNK) as usize);
@@ -424,14 +441,82 @@ impl World {
         }
     }
 
+    // ---- the seam ---------------------------------------------------------
+
+    /// Make the world wrap at `width` cells (a whole, even number of chunks,
+    /// so the step's checkerboard passes hold across the seam), or not.
+    pub fn set_wrap(&mut self, width: Option<i32>) {
+        if let Some(w) = width {
+            assert!(w > 0 && w % (2 * CHUNK) == 0, "a wrapping world is an even number of chunks wide, not {w} cells");
+        }
+        self.wrap = width;
+    }
+
+    /// The world's width, if it wraps.
+    pub fn wraps(&self) -> Option<i32> {
+        self.wrap
+    }
+
+    /// Where the players are about (x): the world reports what it makes
+    /// (particles, bodies, blasts, rain) as the copy nearest there.
+    pub fn set_focus(&mut self, x: i32) {
+        self.focus = x;
+    }
+
+    pub fn focus(&self) -> i32 {
+        self.focus
+    }
+
+    /// The copy of column `x` nearest the focus (`x` itself if the world
+    /// doesn't wrap).
+    pub fn near(&self, x: i32) -> i32 {
+        match self.wrap {
+            Some(w) => x + w * (self.focus - x + w / 2).div_euclid(w),
+            None => x,
+        }
+    }
+
+    /// `near`, for a position in cells.
+    pub fn near_f(&self, x: f32) -> f32 {
+        match self.wrap {
+            Some(w) => x + w as f32 * ((self.focus as f32 - x) / w as f32).round(),
+            None => x,
+        }
+    }
+
+    /// Column `x` as stored: in 0 … width if the world wraps.
+    pub fn canon(&self, x: i32) -> i32 {
+        self.wrap.map_or(x, |w| x.rem_euclid(w))
+    }
+
+    /// A chunk as stored (`canon`).
+    fn key(&self, pos: ChunkPos) -> ChunkPos {
+        wrap_key(pos, self.wrap)
+    }
+
+    /// Everything the world holds in its own hands (particles, bodies in
+    /// flight) as the copy nearest the focus.
+    fn gather(&mut self) {
+        if self.wrap.is_none() {
+            return;
+        }
+        for i in 0..self.particles.len() {
+            self.particles[i].pos[0] = self.near_f(self.particles[i].pos[0]);
+        }
+        for i in 0..self.bodies.len() {
+            self.bodies[i].pos[0] = self.near_f(self.bodies[i].pos[0]);
+        }
+    }
+
     // ---- chunks -----------------------------------------------------------
 
-    pub fn insert_chunk(&mut self, chunk: Chunk) {
-        let pos = chunk.pos;
+    pub fn insert_chunk(&mut self, mut chunk: Chunk) {
+        let pos = self.key(chunk.pos);
+        chunk.pos = pos;
         // Neighbours just lost a wall on that side; let their edge cells re-check.
         for dy in -1..=1 {
             for dx in -1..=1 {
-                if let Some(n) = self.chunks.get(&pos.offset(dx, dy)) {
+                if let Some(n) = self.chunks.get(&self.key(pos.offset(dx, dy))) {
                     n.wake(edge_facing(-dx, -dy));
                 }
             }
@@ -440,7 +525,7 @@ impl World {
     }
 
     pub fn remove_chunk(&mut self, pos: ChunkPos) -> Option<Box<Chunk>> {
-        self.chunks.remove(&pos)
+        self.chunks.remove(&self.key(pos))
     }
 
     /// Everything loose goes (particles, bodies in flight): a world reset.
@@ -450,11 +535,11 @@ impl World {
     }
 
     pub fn chunk(&self, pos: ChunkPos) -> Option<&Chunk> {
-        self.chunks.get(&pos).map(|b| &**b)
+        self.chunks.get(&self.key(pos)).map(|b| &**b)
     }
 
     pub fn is_loaded(&self, pos: ChunkPos) -> bool {
-        self.chunks.contains_key(&pos)
+        self.chunks.contains_key(&self.key(pos))
     }
 
     pub fn chunks(&self) -> impl Iterator<Item = &Chunk> {
@@ -473,7 +558,7 @@ impl World {
 
     pub fn get(&self, p: CellPos) -> Option<Cell> {
         let (lx, ly) = p.local();
-        self.chunks.get(&p.chunk()).map(|c| c.get(lx, ly))
+        self.chunks.get(&self.key(p.chunk())).map(|c| c.get(lx, ly))
     }
 
     /// Is the cell something a body collides with? Unloaded counts as solid.
@@ -487,7 +572,7 @@ impl World {
     /// Write one cell, waking its neighbourhood across chunk borders.
     /// Returns false if the chunk is not loaded.
     pub fn set(&mut self, p: CellPos, cell: Cell) -> bool {
-        let Some(chunk) = self.chunks.get_mut(&p.chunk()) else { return false };
+        let Some(chunk) = self.chunks.get_mut(&self.key(p.chunk())) else { return false };
         let (lx, ly) = p.local();
         chunk.set(lx, ly, cell);
         let (lx, ly) = (lx as i32, ly as i32);
@@ -495,7 +580,7 @@ impl World {
             for dy in -1..=1 {
                 for dx in -1..=1 {
                     let q = p.offset(dx, dy);
-                    if let Some(n) = self.chunks.get(&q.chunk()) {
+                    if let Some(n) = self.chunks.get(&self.key(q.chunk())) {
                         let (qx, qy) = q.local();
                         n.wake(Rect { min_x: qx as i32, min_y: qy as i32, max_x: qx as i32, max_y: qy as i32 });
                     }
@@ -507,12 +592,12 @@ impl World {
 
     pub fn get_bg(&self, p: CellPos) -> Option<Cell> {
         let (lx, ly) = p.local();
-        self.chunks.get(&p.chunk()).map(|c| c.get_bg(lx, ly))
+        self.chunks.get(&self.key(p.chunk())).map(|c| c.get_bg(lx, ly))
     }
 
     /// Write one background cell, waking its neighbourhood across chunk borders.
     pub fn set_bg(&mut self, p: CellPos, cell: Cell) -> bool {
-        let Some(chunk) = self.chunks.get_mut(&p.chunk()) else { return false };
+        let Some(chunk) = self.chunks.get_mut(&self.key(p.chunk())) else { return false };
         let (lx, ly) = p.local();
         chunk.set_bg(lx, ly, cell);
         let (lx, ly) = (lx as i32, ly as i32);
@@ -520,7 +605,7 @@ impl World {
             for dy in -1..=1 {
                 for dx in -1..=1 {
                     let q = p.offset(dx, dy);
-                    if let Some(n) = self.chunks.get(&q.chunk()) {
+                    if let Some(n) = self.chunks.get(&self.key(q.chunk())) {
                         let (qx, qy) = q.local();
                         n.wake(Rect { min_x: qx as i32, min_y: qy as i32, max_x: qx as i32, max_y: qy as i32 });
                     }
@@ -1813,7 +1898,15 @@ impl World {
         let edits = lap();
         self.tick += 1;
         let wind = self.wind();
-        let mut stats = step_chunks(&mut self.chunks, &self.materials, self.seed, self.tick, self.climate, wind);
+        let mut stats = step_chunks(&mut self.chunks, &self.materials, self.seed, self.tick, self.climate, wind, self.wrap);
+        // (The chunks are stepped where they're stored: what they made, as
+        // the copy nearest the focus.)
+        if self.wrap.is_some() {
+            let near = |p: &mut CellPos| p.x = self.near(p.x);
+            stats.explosions.iter_mut().for_each(|(p, _)| near(p));
+            stats.flashed.iter_mut().chain(&mut stats.broken).chain(&mut stats.broken_bg).for_each(near);
+            stats.particles.iter_mut().for_each(|p| p.pos[0] = self.near_f(p.pos[0]));
+        }
         let cells = lap();
         stats.detonated = detonated;
         let mut flashed = std::mem::take(&mut self.flashes);
@@ -1835,6 +1928,7 @@ impl World {
         self.step_bodies();
         let bodies = lap();
         self.step_weather(wind, &stats.vapour);
+        self.gather();
         stats.lightning = std::mem::take(&mut self.strikes);
         stats.zaps = std::mem::take(&mut self.zaps);
         stats.phases = [edits, cells, broken, particles, bodies, lap()];
@@ -1861,6 +1955,7 @@ impl World {
         let out: Vec<_> = out
             .into_iter()
             .filter_map(|mut p| {
+                p.x = self.near(p.x);
                 p.y = self.top_loaded_far(p.x, top)?;
                 Some(p)
             })
@@ -1885,11 +1980,11 @@ impl World {
         for p in out {
             // Snow or rain: whatever it would be when it lands. (The cloud
             // itself is nearly always below freezing.)
-            let ground = match self.grounds.get(&p.x) {
+            let ground = match self.grounds.get(&self.canon(p.x)) {
                 Some(&(g, at)) if g < p.y && self.tick < at + GROUND_STALE => g,
                 _ => {
                     let g = self.ground_below(p.x, p.y);
-                    self.grounds.insert(p.x, (g, self.tick));
+                    self.grounds.insert(self.canon(p.x), (g, self.tick));
                     g
                 }
             };

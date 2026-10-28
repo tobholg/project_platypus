@@ -395,7 +395,9 @@ pub(crate) fn step_chunks(
     tick: u64,
     climate: Climate,
     wind: f32,
+    wrap: Option<i32>,
 ) -> StepStats {
+    let key = |p: ChunkPos| crate::world::wrap_key(p, wrap);
     let clock = tick as u8;
     let mut raws: FxHashMap<ChunkPos, ChunkRaw> = FxHashMap::default();
     raws.reserve(chunks.len());
@@ -419,7 +421,7 @@ pub(crate) fn step_chunks(
         let mut hood = Hood {
             chunks: std::array::from_fn(|s| {
                 let (dx, dy) = (s as i32 % 3 - 1, s as i32 / 3 - 1);
-                raws.get(&pos.offset(dx, dy)).copied()
+                raws.get(&key(pos.offset(dx, dy))).copied()
             }),
             dirty: [Rect::EMPTY; 9],
             touched: 0,
@@ -438,7 +440,7 @@ pub(crate) fn step_chunks(
             vapour: Vec::new(),
             wind,
             pressure: [None; 2],
-            busy: [(-2, 0), (2, 0), (0, -2), (0, 2)].map(|(dx, dy)| in_pass[pos.parity()].contains(&pos.offset(dx, dy))),
+            busy: [(-2, 0), (2, 0), (0, -2), (0, 2)].map(|(dx, dy)| in_pass[pos.parity()].contains(&key(pos.offset(dx, dy)))),
         };
         update_rect(&mut hood, rect);
         hood.finish()

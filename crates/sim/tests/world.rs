@@ -2888,3 +2888,59 @@ fn kelp_stands_in_still_water() {
     run_until_asleep(&mut w, 3_000);
     assert_eq!(count(&w, kelp), before, "the kelp's all there");
 }
+
+/// A world wrapping `w` chunks round (one tall): a stone floor, no walls.
+fn ring_world(w: i32, seed: u64) -> World {
+    let m = mats();
+    let stone = Cell::new(m.expect_id("stone"), 0);
+    let mut world = World::new(seed, m);
+    world.set_wrap(Some(w * CHUNK));
+    for cx in 0..w {
+        world.insert_chunk(Chunk::filled(ChunkPos::new(cx, 0), Cell::AIR));
+    }
+    for x in 0..w * CHUNK {
+        world.set(CellPos::new(x, 0), stone);
+    }
+    world
+}
+
+#[test]
+fn a_wrapping_world_is_one_world_round_its_seam() {
+    let mut w = ring_world(4, 1);
+    let width = 4 * CHUNK;
+    let sand = w.materials().expect_id("sand");
+    // x and x + width are one column, either way round.
+    w.set(CellPos::new(width + 3, 10), Cell::new(sand, 0));
+    assert_eq!(w.get(CellPos::new(3, 10)).unwrap().material, sand);
+    assert_eq!(w.get(CellPos::new(3 - 2 * width, 10)).unwrap().material, sand);
+    assert!(w.is_loaded(ChunkPos::new(-1, 0)) && w.is_loaded(ChunkPos::new(4, 0)));
+    w.set(CellPos::new(3, 10), Cell::AIR);
+    // Water poured just before the seam runs on over it and levels out
+    // either side, all of it kept.
+    let water = w.materials().expect_id("water");
+    w.apply_edit(&WorldEdit::Paint { center: CellPos::new(width - 6, 30), radius: 12, material: water, overwrite: false });
+    let before = count(&w, water);
+    run_until_asleep(&mut w, 6_000);
+    assert_eq!(count(&w, water), before, "water is conserved");
+    let wet = |x: i32| w.get(CellPos::new(x, 1)).unwrap().material == water;
+    let past = (0..CHUNK).take_while(|&x| wet(x)).count();
+    let before_seam = (1..CHUNK).take_while(|&d| wet(width - d)).count();
+    assert!(past > 20 && before_seam > 20, "the water spread {before_seam} before the seam and {past} past it");
+}
+
+#[test]
+fn a_wrapping_world_reports_near_its_focus() {
+    let mut w = ring_world(4, 2);
+    let width = 4 * CHUNK;
+    w.set_focus(width - 10);
+    assert_eq!(w.near(5), width + 5);
+    assert_eq!(w.near(width - 30), width - 30);
+    assert_eq!(w.near(5 - width), width + 5);
+    // Debris thrown past the seam is drawn where the focus is, not a
+    // world away.
+    let stone = w.materials().expect_id("stone");
+    w.emit(Particle::new([3.0, 40.0], [0.5, 0.0], Cell::new(stone, 0), 60, Landing::Settle));
+    w.step();
+    let x = w.particles()[0].pos[0];
+    assert!((x - (width as f32 + 3.0)).abs() < 3.0, "a particle at {x}");
+}
