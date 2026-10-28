@@ -2,21 +2,107 @@
 
 Each phase ends with something playable or measurable. See SPEC.md for the design.
 
-**Next:** the prologue (PR, agreed 2026-10-15, below): a real start to
-play the game from, not the dev world: play mode and a structured dev
-mode, authored sites in the generated world, interactables, story state
-and scripting, dialogue, waterfalls and drowning, the escape from the
-dungeons under a wizard's tower through the sewers to the start valley,
-and the first nights' survival loop. The bestiary arc (BE) is paused with
-`roster` mostly done (mimic, chain wraith, dread knight, bloat toad,
-necromancer, watcher; extras Jan Willy, Olmer the Defiler, the Fallen
-Templar; zombies and slimes earlier) and `bosses`, `creature-editor` and
-`powder` (blight done, with the watcher) still ahead; it resumes after the
-prologue. On `main` as of 2026-10-15 (d88b38b): everything through the
-necromancer, the heat model (soaking, magma, heat as energy), the easier
-pogo and dash attacks. The watcher is on `roster-3`; `play-mode` (on top
-of it, unmerged) has the play/dev modes, the kits, death and checkpoints,
-the dev menu and the title screen.
+**Now (2026-10-28):** the world and the sky (WS, below): a world that
+loops round, a sky of layers up to space, zero gravity, and a black hole.
+On `main` (c816ff8) since the prologue was planned: `play-mode` and
+`starter`, building (`blocks`), the enemies pass, physics caves, the hero
+art, the combat loop (`rats`), painted spells (`painting`), the waters
+(sealed flooded caverns, great halls, underground seas with tubes, mild
+caverns, glowfish shoals, the drowned, the angler, the cave eel, the
+diving helmet) and the swimmers (stroke-by-stroke swimming for sea
+creatures, the leviathan rebuilt, the repulsor ward, Q as the right
+button). The prologue (PR) has its first branch built (`play-mode`);
+`sites` through onboarding are still ahead. The bestiary (BE) is paused
+with `roster` mostly done (shield orc, orc sapper and bat swarm left) and
+`bosses`, `creature-editor` and `powder` ahead.
+
+## The world and the sky: implementation plan (WS, agreed 2026-10-28)
+
+The world loops: walk west far enough and you come back from the east.
+The two edge oceans are one great ocean across the seam, sailed or swum
+across without a join; under it, and everywhere underground, the world
+runs on across the seam as anywhere else. Above, the sky is layered: the
+cloudsea with the sky islands rising out of it, the high air, and space,
+gravity fading through the high air to none. Space is late game (a suit,
+a jetpack, stabilisers), but a clever player can get there mid-game
+(an updraft, rocket boots, the diving helmet's air) and struggle there.
+Five ores beyond mithril, and one black hole.
+
+Decided (2026-10-28):
+- The loop is a world that wraps at the storage level (cells, generation
+  and the sim work modulo its width; a chunk's neighbour across the seam
+  is just a neighbour), with game positions unbounded and recentred:
+  crossing the seam, everything loaded (the player, creatures, items,
+  particles, the camera) shifts by one world width in the same frame
+  (floating-origin rebasing); what's saved is stored modulo the width and
+  spawns on the side nearest the player. The few systems that remember
+  positions across frames (swimmers' ways, legs' trails, navigation, the
+  camera's glide, cloth) take the shift.
+- Generation wraps: per-column plans (biomes, the surface, lakes, water
+  tables, chasms, structures) wrap; noise meets itself at the seam;
+  caves link across it; the stretch at the seam's two sides keep a dam
+  between them like any two.
+- The sky islands and the cloudsea are one layer: the islands are rock
+  rising out of a deck of cloud (a new half-solid material: you wade and
+  sink in it, light things float on it, cloud creatures swim in it); rain
+  forms in the deck and falls from its underside; holes in it (sky
+  windows) look down on the world far below.
+- The high air: jet-stream currents, then thinning, freezing air (breath
+  runs down; an aurora); gravity fades from full to none through it
+  (jumps get higher, falls slower).
+- Zero gravity is fully Newtonian without space gear: no drag, momentum
+  real, every push has its push back (a jump off rock, a thrown bomb, a
+  force spell, a grappling hook, a heavy swing, rocket boots thrusting
+  out of the feet wherever they point), and the player tumbles (off-centre
+  pushes spin it; nothing but a surface stops the spin). Space gear tames
+  it: a suit (air, cold, vacuum), a jetpack (thrust any way, fuel),
+  stabilisers (spin cancelled, damped control), magnetic boots (walk on
+  any rock, the climbers' movement), a tether.
+- Ores beyond mithril, each a property not only numbers: aerolite (sky
+  islands: feather-light gear), fulgurite (stormglass, where lightning
+  strikes near the storm: storm-charged, it zaps you wet), starmetal
+  (asteroid cores: the densest plain gear), solarite (sunlit asteroid
+  faces, hot: radiant, self-lit), nullstone (only in the black hole's
+  disk: gravity itself; the endgame metal).
+- One black hole, fixed in space, modelled on Gargantua: the horizon
+  (~120 cells across), the photon ring, the accretion disk near edge-on
+  with its far side lensed over and under, Doppler-bright on one side,
+  the stars and what's near bent round it (the warp pass's kind of bend);
+  the whole ~700-900 cells, most of it on screen at the widest zoom.
+  Nearing it: gravity growing, time slowing (the slow field's kind),
+  tidal hurt near the horizon; the disk is the mine (nullstone, wrecks).
+  Crossing the horizon kills, for now (the tesseract, a time jump and an
+  ending kept as ideas, the choice left for later).
+
+Branches in order; each merges to `main` when it holds.
+
+**1. `wrap`: the world loops.** Generation that wraps (per-column plans,
+noise, caves, water tables, structures and chasms away from or across
+the seam); the sim's storage modulo the width (chunks, neighbours,
+particles, bodies, weather); unbounded positions recentred on crossing;
+the save modulo the width; the map wraps.
+Done when: walking, swimming and digging across the seam is seamless
+(the cells either side meet; water flows across; a creature chases you
+over it); the great ocean joins; tests of the generation's seam and the
+sim across it.
+
+**2. `sky`: the cloudsea and the high air.** The cloud material and the
+deck, the islands rising from it, sky windows, rain from its underside;
+the high air's currents and cold; gravity fading with altitude (creatures
+and cells); aerolite and fulgurite.
+
+**3. `zerog`: weightless.** Newtonian zero gravity for the player and
+creatures, recoil from every tool, tumbling; cells that don't fall above
+the line (water in blobs, drifting dust); breath and cold in vacuum.
+
+**4. `space`: the asteroids.** Asteroid fields, starmetal and solarite,
+sun and shade (scorching and freezing), meteor showers down through the
+layers (craters, meteorite ore), the space gear, a creature or two, the
+planet seen curving below (the world's own map).
+
+**5. `singularity`: the black hole.** Its look (lensing, the disk, the
+ring), its pull, slowed time, tidal hurt, the disk's nullstone and
+wrecks; crossing kills.
 
 ## The prologue: implementation plan (PR, agreed 2026-10-15)
 
