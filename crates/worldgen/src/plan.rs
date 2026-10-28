@@ -504,8 +504,9 @@ impl WorldPlan {
         let mut surface: Vec<f64> = (0..width)
             .map(|x| {
                 let xf = x as f64;
-                let mut h = sea + lift[x as usize] + hills.get([xf, 0.0]) * hill[x as usize] * 2.0;
-                let c = cliffs.get([xf / 210.0, 3.7]);
+                // (Meeting itself at the seam: the world wraps.)
+                let mut h = sea + lift[x as usize] + seam(width as f64, xf, |xf| hills.get([xf, 0.0])) * hill[x as usize] * 2.0;
+                let c = seam(width as f64, xf, |xf| cliffs.get([xf / 210.0, 3.7]));
                 if c.abs() > 0.55 {
                     h += c.signum() * (c.abs() - 0.55) * 180.0 * (hill[x as usize] / 135.0).min(1.0);
                 }
@@ -756,40 +757,47 @@ impl WorldPlan {
     }
 
     /// First air cell above the ground at a world column.
+    /// The world wraps: a column's x, around into 0 … width.
+    pub fn wrap(&self, x: i32) -> i32 {
+        x.rem_euclid(self.width)
+    }
+
     pub fn surface_at(&self, x: i32) -> i32 {
-        self.surface[x.clamp(0, self.width - 1) as usize]
+        self.surface[self.wrap(x) as usize]
     }
 
     pub fn biome_at(&self, x: i32) -> Biome {
-        self.biomes[x.clamp(0, self.width - 1) as usize]
+        self.biomes[self.wrap(x) as usize]
     }
 
     /// The water surface over a column (first air above it), if any.
     pub fn water_at(&self, x: i32) -> Option<i32> {
-        let w = self.water[x.clamp(0, self.width - 1) as usize];
+        let w = self.water[self.wrap(x) as usize];
         (w > 0).then_some(w)
     }
 
     /// 0 … 1: how mountainous a column is.
     pub fn rugged_at(&self, x: i32) -> f32 {
-        self.rugged[x.clamp(0, self.width - 1) as usize]
+        self.rugged[self.wrap(x) as usize]
     }
 
     /// Is a cell in a crystal spire?
     pub fn spire_at(&self, x: i32, y: i32) -> bool {
-        let xf = x as f32 + 0.5;
+        let xf = self.wrap(x) as f32 + 0.5;
         let from = self.spires.partition_point(|s| s.x < xf - SPIRE_REACH);
         self.spires[from..].iter().take_while(|s| s.x <= xf + SPIRE_REACH).any(|s| s.holds(xf, y as f32 + 0.5))
     }
 
     /// The sky island over a column, if any.
     pub fn island_at(&self, x: i32) -> Option<&Island> {
+        let x = self.wrap(x);
         let i = self.islands.partition_point(|i| i.x0 + i.w <= x);
         self.islands.get(i).filter(|i| x >= i.x0)
     }
 
     /// Is a cell inside a chasm?
     pub fn chasm_at(&self, x: i32, y: i32) -> bool {
+        let x = self.wrap(x);
         self.chasms.iter().any(|c| c.open(x, y))
     }
 
@@ -803,8 +811,10 @@ impl WorldPlan {
     /// deep, rising and falling (so it's no ruler's line across the world):
     /// the rock changes there, the flooded basins have their bottom there.
     pub fn caverns_floor(&self, x: i32) -> i32 {
-        let t = x as f64 / FLOOR_WAVE.1;
-        let wave = 0.7 * wave(self.seed ^ 0xF100, t) + 0.3 * wave(self.seed ^ 0xF101, t * 3.1);
+        let wave = seam(self.width as f64, self.wrap(x) as f64, |xf| {
+            let t = xf / FLOOR_WAVE.1;
+            0.7 * wave(self.seed ^ 0xF100, t) + 0.3 * wave(self.seed ^ 0xF101, t * 3.1)
+        });
         self.band_floors[4] + (wave * self.floor_wave() as f64) as i32
     }
 
@@ -832,14 +842,18 @@ impl WorldPlan {
     /// In the dam of rock between two stretches of the water table (so
     /// neither's water stands beside the other's air, or above its level).
     pub fn dam_at(&self, x: i32, y: i32) -> bool {
+        let x = self.wrap(x);
         let i = self.stretch_index(x);
         let st = self.stretches[i];
         let reach = DAM.0 + DAM.1;
-        // (The line it's nearest: its own stretch's left end or right.)
-        let (line, other) = if x - st.x0 <= reach && i > 0 {
-            (st.x0, self.stretches[i - 1])
-        } else if st.x1 - x <= reach && i + 1 < self.stretches.len() {
-            (st.x1, self.stretches[i + 1])
+        let n = self.stretches.len();
+        // (The line it's nearest: its own stretch's left end or right; the
+        // first's left and the last's right are one line, the seam, between
+        // them: the world wraps.)
+        let (line, other) = if x - st.x0 <= reach && n > 1 {
+            (st.x0, self.stretches[(i + n - 1) % n])
+        } else if st.x1 - x <= reach && n > 1 {
+            (st.x1, self.stretches[(i + 1) % n])
         } else {
             return false;
         };
@@ -859,6 +873,7 @@ impl WorldPlan {
     }
 
     fn stretch_index(&self, x: i32) -> usize {
+        let x = self.wrap(x);
         self.stretches.partition_point(|s| s.x1 <= x).min(self.stretches.len() - 1)
     }
 
@@ -1186,6 +1201,22 @@ fn wave(seed: u64, t: f64) -> f64 {
 fn smoothstep(a: f64, b: f64, x: f64) -> f64 {
     let t = ((x - a) / (b - a)).clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
+}
+
+/// The band before the seam (cells) where the world's noise meets itself.
+pub(crate) const SEAM_BAND: f64 = 1_024.0;
+
+/// Noise along x that meets itself at the seam: the world wraps, so the
+/// last `SEAM_BAND` cells ease from `f(x)` into `f(x - width)`, what lies
+/// just before x = 0 (rescaled so the blend keeps the noise's roll and
+/// doesn't flatten it midway).
+pub(crate) fn seam(width: f64, x: f64, f: impl Fn(f64) -> f64) -> f64 {
+    if x < width - SEAM_BAND {
+        return f(x);
+    }
+    let s = smoothstep(width - SEAM_BAND, width, x);
+    let (a, b) = (f(x), f(x - width));
+    (a * (1.0 - s) + b * s) / ((1.0 - s).powi(2) + s * s).sqrt()
 }
 
 /// Water over each column: oceans up to sea level from the edges inward;

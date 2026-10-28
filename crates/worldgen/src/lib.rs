@@ -31,8 +31,16 @@ pub use plan::{Band, Preset, WorldPlan};
 /// Anything that can fill a chunk. The game streams through this trait, so
 /// a test world, a flat sandbox or the real generator are interchangeable.
 pub trait ChunkGenerator: Send + Sync {
-    /// World size in chunks; chunks outside are never generated (the edge is a wall).
+    /// World size in chunks; chunks outside are never generated (the edge is
+    /// a wall, unless the world wraps).
     fn bounds(&self) -> (ChunkPos, ChunkPos);
+
+    /// The world's width in cells if it wraps: walk off its right edge and
+    /// you're back at its left (x and x + width the same column; chunks
+    /// are only ever generated at x in 0 … width). None: its edges are walls.
+    fn wraps(&self) -> Option<i32> {
+        None
+    }
     fn generate(&self, pos: ChunkPos) -> Chunk;
 
     /// Where players start: standing on the ground in the middle of the world.
@@ -448,6 +456,11 @@ pub struct TerrainGen {
 }
 
 impl TerrainGen {
+    /// Noise along x that meets itself at the seam (`plan::seam`).
+    fn seam(&self, x: f64, f: impl Fn(f64) -> f64) -> f64 {
+        plan::seam(self.plan.width as f64, x, f)
+    }
+
     pub fn new(seed: u64, preset: Preset, mats: &MaterialTable) -> Self {
         Self::from_plan(Arc::new(WorldPlan::new(seed, preset)), mats)
     }
@@ -697,6 +710,7 @@ impl TerrainGen {
     /// What generation puts at a cell, front and back, without shades: for
     /// looking at the world from far away (`platypus-worldview`).
     pub fn sample(&self, x: i32, y: i32) -> (MaterialId, MaterialId) {
+        let x = self.plan.wrap(x);
         let mut front = self.material_at(x, y);
         if front == self.ids.air && self.grass_at(x, y) {
             front = self.ids.tall_grass;
@@ -1105,7 +1119,7 @@ impl TerrainGen {
         if ground != self.ids.grass {
             return false;
         }
-        let m = self.meadow.get([x as f64 / 105.0, 3.3]);
+        let m = self.seam(x as f64, |xf| self.meadow.get([xf / 105.0, 3.3]));
         let blade = (hash(&[self.plan.seed, 0x6A55, x as u64]) % 100) as f64 / 100.0;
         // (A clump's height, eased into the next one's across it: most
         // between 0.65 and 1.25 of the meadow's, one in twelve a tall stand
@@ -1142,7 +1156,7 @@ impl TerrainGen {
         // full wander shifted the ground hundreds of cells and left shreds
         // and floating blobs.)
         let wander = (OVERHANG * rugged * ((slope - 0.8) / 0.8).clamp(0.0, 1.0)).min(OVERHANG_RISE / slope.max(1.0));
-        let ground = if wander > 0.5 { plan.surface_at(x + (self.overhang.get([xf, yf * 0.8]) * wander) as i32) } else { surface };
+        let ground = if wander > 0.5 { plan.surface_at(x + (self.seam(xf, |xf| self.overhang.get([xf, yf * 0.8])) * wander) as i32) } else { surface };
         let depth = ground - y;
         // The ground's own temperature: snow and ice where it's freezing.
         let cold = plan.climate.ambient(x, surface) <= 0;
@@ -1181,14 +1195,14 @@ impl TerrainGen {
         let under_water = plan.water_at(x).is_some();
 
         let biome = plan.biome_at(x);
-        let soil = 12 + (self.strata.get([xf / 60.0, 0.5]) * 7.5) as i32;
+        let soil = 12 + (self.seam(xf, |xf| self.strata.get([xf / 60.0, 0.5])) * 7.5) as i32;
         if under_water {
             // Lake and sea beds: sand over the usual ground.
             if depth <= 8 + soil / 2 {
                 return i.sand;
             }
         } else if matches!(biome, Biome::Ocean | Biome::Desert) && slope < 1.2 {
-            let sand = if biome == Biome::Desert { 45 + (self.strata.get([xf / 135.0, 2.5]) * 21.0) as i32 } else { 18 };
+            let sand = if biome == Biome::Desert { 45 + (self.seam(xf, |xf| self.strata.get([xf / 135.0, 2.5])) * 21.0) as i32 } else { 18 };
             if depth <= sand {
                 return i.sand;
             }
@@ -1217,17 +1231,17 @@ impl TerrainGen {
             if depth <= soil {
                 return i.dirt;
             }
-            if rugged > 0.3 && depth <= 5 && self.pockets.get([xf / 18.0, yf / 18.0, 5.5]) > 0.3 {
+            if rugged > 0.3 && depth <= 5 && self.seam(xf, |xf| self.pockets.get([xf / 18.0, yf / 18.0, 5.5])) > 0.3 {
                 return i.gravel;
             }
         }
         // Sealed gas bubbles deep in the rock: bomb or dig into one with fire nearby.
-        if depth > 135 && self.pockets.get([xf / 51.0, yf / 33.0, 23.3]) > 0.66 {
+        if depth > 135 && self.seam(xf, |xf| self.pockets.get([xf / 51.0, yf / 33.0, 23.3])) > 0.66 {
             return i.methane;
         }
         let shallow = matches!(band, Band::Sky | Band::Peaks | Band::Surface | Band::Underground);
         // Pockets inside rock: sand and gravel up high, rarer below.
-        let p = self.pockets.get([xf / 67.5, yf / 67.5, 7.1]);
+        let p = self.seam(xf, |xf| self.pockets.get([xf / 67.5, yf / 67.5, 7.1]));
         if p > if shallow { 0.55 } else { 0.7 } && depth > 18 {
             return i.sand;
         }
@@ -1702,9 +1716,9 @@ impl TerrainGen {
     fn mineral(&self, x: i32, y: i32, band: Band) -> Option<MaterialId> {
         let (xf, yf) = (x as f64, y as f64);
         for g in self.gems.iter().filter(|g| g.band == band) {
-            let n = self.minerals.get([xf / minerals::GEM_SCALE, yf / minerals::GEM_SCALE, g.salt]);
+            let n = self.seam(xf, |xf| self.minerals.get([xf / minerals::GEM_SCALE, yf / minerals::GEM_SCALE, g.salt]));
             if n > minerals::GEM_THRESHOLD
-                && self.minerals.get([xf / minerals::GEM_ZONE_SCALE, yf / minerals::GEM_ZONE_SCALE, g.salt + 0.5]) > minerals::GEM_ZONE
+                && self.seam(xf, |xf| self.minerals.get([xf / minerals::GEM_ZONE_SCALE, yf / minerals::GEM_ZONE_SCALE, g.salt + 0.5])) > minerals::GEM_ZONE
                 && self.open_near(x, y, minerals::GEM_REACH)
             {
                 return Some(g.material);
@@ -1715,7 +1729,7 @@ impl TerrainGen {
         let mut exposed = None;
         for o in &self.ores {
             let Some(threshold) = o.threshold_at(y) else { continue };
-            let n = self.minerals.get([xf / o.scale.0, yf / o.scale.1, o.salt]);
+            let n = self.seam(xf, |xf| self.minerals.get([xf / o.scale.0, yf / o.scale.1, o.salt]));
             if n > threshold || (n > threshold - minerals::EXPOSED_BONUS && *exposed.get_or_insert_with(|| self.open_near(x, y, minerals::EXPOSED_REACH))) {
                 return Some(o.material);
             }
@@ -1997,14 +2011,14 @@ impl TerrainGen {
         let i = &self.ids;
         let (xf, yf) = (x as f64, y as f64);
         let deep_lo = self.plan.band_span(Band::Deep).0;
-        let jitter = (self.strata.get([xf / 45.0, yf / 45.0]) * 90.0) as i32;
+        let jitter = (self.seam(xf, |xf| self.strata.get([xf / 45.0, yf / 45.0])) * 90.0) as i32;
         if band == Band::Underworld || y + jitter < deep_lo {
             return i.basalt;
         }
         let floor = if self.plan.near_floor(y, 600) { self.plan.caverns_floor(x) } else { self.plan.band_span(Band::Caverns).0 };
-        let tongues = if (y - floor).abs() < 600 { (self.strata.get([xf / 260.0, yf / 140.0 + 31.0]) * 260.0) as i32 } else { 0 };
+        let tongues = if (y - floor).abs() < 600 { (self.seam(xf, |xf| self.strata.get([xf / 260.0, yf / 140.0 + 31.0])) * 260.0) as i32 } else { 0 };
         if y + jitter + tongues < floor {
-            if self.strata.get([xf / 105.0, yf / 105.0]) > 0.5 {
+            if self.seam(xf, |xf| self.strata.get([xf / 105.0, yf / 105.0])) > 0.5 {
                 return i.obsidian;
             }
             return i.slate;
@@ -2127,15 +2141,15 @@ impl TerrainGen {
         let table = plan.water_table(x) as f64;
         let great = GREAT_CHAMBER.0 * self.grand;
         let base = |y: f64| {
-            let plain = self.caverns.get([xf / 1.6, y]);
+            let plain = self.seam(xf, |xf| self.caverns.get([xf / 1.6, y]));
             let wet = if band == Band::Caverns { ((table + GREAT_CHAMBER.2 - y) / (2.0 * GREAT_CHAMBER.2)).clamp(0.0, 1.0) } else { 0.0 };
-            let big = if wet > 0.0 { (self.great.get([xf / (1.6 * great) + 5_000.0, y / great + 7_000.0]) - GREAT_CHAMBER.1) * wet } else { -1.0 };
+            let big = if wet > 0.0 { (self.seam(xf, |xf| self.great.get([xf / (1.6 * great) + 5_000.0, y / great + 7_000.0])) - GREAT_CHAMBER.1) * wet } else { -1.0 };
             plain.max(big) * fade(y)
         };
         if base(yf) <= 0.22 {
             return None;
         }
-        let long = ((self.drips.get([xf / 9.0, 0.3, 7.7]).abs() - 0.35) * 165.0).max(0.0);
+        let long = ((self.seam(xf, |xf| self.drips.get([xf / 9.0, 0.3, 7.7])).abs() - 0.35) * 165.0).max(0.0);
         // How far up the ceiling is, from how fast the chamber closes going
         // up (smooth, so a stalactite has no gaps in it).
         let chamber = long < 1.0 || {
@@ -2161,12 +2175,12 @@ impl TerrainGen {
         let h = (hi - lo) as f64;
         // One level, so the sea is asleep on load.
         let lava = (lo as f64 + h * 0.2).floor();
-        let roof = hi as f64 - h * 0.15 + self.vault.get([xf, 3.3]) * h * 0.12 - self.drips.get([xf / 13.5, yf / 75.0, 1.7]).abs() * h * 0.05;
+        let roof = hi as f64 - h * 0.15 + self.seam(xf, |xf| self.vault.get([xf, 3.3])) * h * 0.12 - self.seam(xf, |xf| self.drips.get([xf / 13.5, yf / 75.0, 1.7])).abs() * h * 0.05;
         if yf > roof {
             return self.rock(x, y, Band::Underworld);
         }
         // Islands: blobs of basalt, crusted with obsidian near the lava.
-        let island = self.vault.get([xf / 1.3, yf * 1.1 + 900.0]);
+        let island = self.seam(xf, |xf| self.vault.get([xf / 1.3, yf * 1.1 + 900.0]));
         if island > 0.3 {
             return if yf < lava + 45.0 { i.obsidian } else { i.basalt };
         }
@@ -2178,6 +2192,10 @@ impl ChunkGenerator for TerrainGen {
     fn bounds(&self) -> (ChunkPos, ChunkPos) {
         let (w, h) = self.plan.preset.chunks();
         (ChunkPos::new(0, 0), ChunkPos::new(w - 1, h - 1))
+    }
+
+    fn wraps(&self) -> Option<i32> {
+        Some(self.plan.width)
     }
 
     fn climate(&self) -> Climate {
@@ -2241,11 +2259,11 @@ impl ChunkGenerator for TerrainGen {
     }
 
     fn material_hint(&self, x: i32, y: i32) -> Option<MaterialId> {
-        ((0..self.plan.width).contains(&x) && (0..self.plan.height).contains(&y)).then(|| self.material_at(x, y))
+        (0..self.plan.height).contains(&y).then(|| self.material_at(self.plan.wrap(x), y))
     }
 
     fn water_hint(&self, x: i32) -> Option<i32> {
-        (0..self.plan.width).contains(&x).then(|| self.plan.water_at(x)).flatten()
+        self.plan.water_at(x)
     }
 
     fn biome_hint(&self, x: i32) -> Option<&'static str> {
@@ -2672,11 +2690,13 @@ mod tests {
             }
             // Across the dam between two stretches: from under the lower
             // table to the higher (where one side's flooded, the other not).
-            // (Every third line, and every sea's.)
+            // (Every third line, every sea's, and the seam's: the first
+            // stretch's left end is the last's right, the world wrapping.)
             let st = g.plan.stretches();
-            for k in (1..st.len()).filter(|&k| k % 3 == 1 || st[k].sea || st[k - 1].sea) {
+            let n = st.len();
+            for k in (0..n).filter(|&k| k % 3 == 1 || k == 0 || st[k].sea || st[(k + n - 1) % n].sea) {
                 let line = st[k].x0;
-                let (a, b) = (st[k - 1].table, st[k].table);
+                let (a, b) = (st[(k + n - 1) % n].table, st[k].table);
                 for x in (line - 700..line + 700).step_by(2) {
                     for y in a.min(b).max(g.plan.caverns_floor(x)) - 100..a.max(b) {
                         look(x, y);
@@ -2684,6 +2704,30 @@ mod tests {
                 }
             }
             assert!(leaks.is_empty(), "seed {seed}: {} cells of water on or beside air, e.g. {:?} (the caverns' floor at {floor})", leaks.len(), &leaks[..leaks.len().min(6)]);
+        }
+    }
+
+    /// The world wraps: its right edge runs on into its left as any column
+    /// into the next (the ground, the rock, the caves and the water), no
+    /// line where it meets itself.
+    #[test]
+    fn the_world_meets_itself_at_the_seam() {
+        let m = mats();
+        for preset in [Preset::Small, Preset::Large] {
+            let g = TerrainGen::new(3, preset, &m);
+            let (w, h) = (g.plan.width, g.plan.height);
+            assert_eq!(g.wraps(), Some(w));
+            let rise = |a: i32, b: i32| (g.plan.surface_at(a) - g.plan.surface_at(b)).abs();
+            assert!(rise(w - 1, 0) <= 3, "{preset:?}: the ground steps {} at the seam", rise(w - 1, 0));
+            assert_eq!(g.sample(-5, 100), g.sample(w - 5, 100), "x wraps");
+            // Cells differing from their neighbour across: at the seam, and
+            // between columns elsewhere (as often, give or take).
+            let differ = |a: i32, b: i32| (0..h).filter(|&y| g.sample(a, y).0 != g.sample(b, y).0).count();
+            let seam = differ(w - 1, 0);
+            let elsewhere: Vec<usize> = [w / 7, w / 3, w / 2 + 211, w * 4 / 5, 60, w - 60].iter().map(|&x| differ(x, x + 1)).collect();
+            let most = *elsewhere.iter().max().unwrap();
+            eprintln!("{preset:?}: {seam} cells differ across the seam, {elsewhere:?} elsewhere (of {h})");
+            assert!(seam <= most + h as usize / 100, "{preset:?}: {seam} cells differ across the seam, at most {most} elsewhere");
         }
     }
 
