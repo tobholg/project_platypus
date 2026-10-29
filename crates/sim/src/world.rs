@@ -182,6 +182,12 @@ impl World {
         self.climate
     }
 
+    /// How much gravity there is at a height (1: the ground's … 0: the
+    /// void's none).
+    pub fn gravity(&self, y: f32) -> f32 {
+        self.climate.gravity_f(y)
+    }
+
     pub fn set_climate(&mut self, climate: Climate) {
         self.climate = climate;
     }
@@ -2393,7 +2399,7 @@ impl World {
                 let world = &*self;
                 let hinge = body.hinge;
                 let solid = |p: CellPos| world.body_surface(p, hinge);
-                body.step(&solid)
+                body.step(&solid, world.climate.gravity_f(body.pos[1]))
             };
             if ev.shed {
                 let mut rng = self.rng_for(0x1EAF, CellPos::new(body.id as i32, 0));
@@ -2916,6 +2922,10 @@ impl particles::ParticleView for ParticleView<'_> {
 
     fn ambient(&self, x: i32, y: i32) -> i32 {
         self.world.climate.ambient(x, y)
+    }
+
+    fn gravity(&self, y: f32) -> f32 {
+        self.world.climate.gravity_f(y)
     }
 
     fn water(&self) -> Option<Cell> {

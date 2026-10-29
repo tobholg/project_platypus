@@ -680,7 +680,6 @@ pub(crate) fn move_creatures(
     coatings: Res<body::elements::Coatings>,
 ) {
     let grid = WorldGrid(&sim.world);
-    let sky = sim.generator.sky_layers();
     for (entity, mut k, stats, controls, (chilled, coated, gooey, phasing, tug, slowed), track, web_walker, rope, player, ease, faltering) in &mut q {
         // Frozen until the ground under it is loaded.
         if !sim.world.is_loaded(CellPos::from_world(k.body.pos.x, k.body.pos.y).chunk()) {
@@ -715,7 +714,7 @@ pub(crate) fn move_creatures(
         // slower, and a jump (as fast off the ground as ever) goes higher;
         // all but gone, it floats (`Locomotion::float`).
         let light;
-        let g = sky.map_or(1.0, |s| s.gravity(k.body.pos.y));
+        let g = crate::zerog::gravity_at(&sim, k.body.pos.y);
         let weightless = g < crate::zerog::WEIGHTLESS;
         let stats = if g < 1.0 {
             light = platypus_physics::MovementStats { gravity: stats.gravity * g, jump_height: stats.jump_height / g.max(0.05), weightless, ..stats.clone() };

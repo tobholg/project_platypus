@@ -120,6 +120,8 @@ pub(crate) trait ParticleView: Sync {
     fn mats(&self) -> &MaterialTable;
     fn wind(&self) -> f32;
     fn ambient(&self, x: i32, y: i32) -> i32;
+    /// How much gravity there is at a height (1 … 0: the void).
+    fn gravity(&self, y: f32) -> f32;
     fn water(&self) -> Option<Cell>;
     /// Rain passing here: is there fire to douse in the strip (the cell and
     /// its neighbours across), and would the drop be spent on it (burning
@@ -209,7 +211,7 @@ fn fly_one(p: &mut Particle, world: &impl ParticleView) -> Flight {
     if p.landing == Landing::Ember && crate::rng::hash(&[p.pos[0].to_bits() as u64, p.pos[1].to_bits() as u64, p.life as u64]).is_multiple_of(EMBER_FADE) {
         return dead(None, None);
     }
-    p.vel[1] -= GRAVITY * p.gravity;
+    p.vel[1] -= GRAVITY * p.gravity * world.gravity(p.pos[1]);
     // (Rain keeps the slant it came in at, the wind's when it started: it
     // fell nearly straight once drag took its lean.)
     let lean = p.vel[0];

@@ -458,7 +458,7 @@ fn throw_arc(
         let grid = crate::creatures::WorldGrid(&sim.world);
         let mut out = vec![body.pos];
         for _ in 0..(ARC_SECS / DT) as usize {
-            body.vel.y -= crate::props::GRAVITY * DT;
+            body.vel.y -= crate::props::GRAVITY * sim.world.gravity(body.pos.y) * DT;
             let c = platypus_physics::move_and_collide(&grid, &mut body, DT);
             out.push(body.pos);
             if c.ground || c.ceiling || c.wall_left || c.wall_right {

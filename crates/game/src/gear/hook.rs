@@ -261,7 +261,7 @@ pub fn toss_path(rope: &Rope, eq: &Equipment, items: &Items, k: &Kinematics, to:
     let mut vel = def.launch(tip, to);
     let (mut paid, mut out) = (0.0, vec![tip]);
     while paid < def.thrown() && out.len() < 400 {
-        vel -= Vec2::Y * def.gravity * DT;
+        vel -= Vec2::Y * def.gravity * world.gravity(tip.y) * DT;
         let go = vel.length() * DT;
         let steps = go.ceil().max(1.0) as i32;
         for _ in 0..steps {
@@ -441,7 +441,7 @@ pub fn rope(
             Line::Out { tip, vel, paid } => {
                 rope.prev_tip = tip;
                 // (Tossed: falling as it flies.)
-                let vel = vel - Vec2::Y * def.gravity * DT;
+                let vel = vel - Vec2::Y * def.gravity * sim.world.gravity(tip.y) * DT;
                 let go = vel.length() * DT;
                 let steps = go.ceil().max(1.0) as i32;
                 let step = vel * DT / steps as f32;

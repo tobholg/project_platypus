@@ -364,7 +364,9 @@ pub(crate) fn drift(
         let t = d.phase;
         let rest = d.rest + BOB * (t * 0.7).sin();
         let held = if lift < FALLS { lift } else { lift * (1.0 + (rest - d.pos.y) / SPAN).clamp(0.0, 2.0) };
-        let mut acc = Vec2::new(0.0, -GRAVITY + GRAVITY * held * mass / (mass + load) - BOB_DAMP * d.vel.y);
+        // (Over the void's edge gravity fades: so does what holds it up.)
+        let g = sim.world.gravity(d.pos.y) * GRAVITY;
+        let mut acc = Vec2::new(0.0, -g + g * held * mass / (mass + load) - BOB_DAMP * d.vel.y);
         // (In the jet stream, carried off with it: it wanders about where
         // it's got to.)
         let jet = crate::sky::jet_at(&sim, d.pos.y);

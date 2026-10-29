@@ -3003,3 +3003,34 @@ fn a_spring_pours_a_waterfall_for_ever() {
     let cols = (71..80).filter(|&x| (200..330).any(|y| w.get(CellPos::new(x, y)).is_some_and(|c| c.material == spray))).count();
     assert!(cols >= 3, "falling {cols} wide");
 }
+
+/// In the void (no gravity, no air, bitterly cold: `Climate::weightless`):
+/// sand and water hang where they're put, a lone speck of sand drifts,
+/// fire goes out, and the water freezes where it hangs.
+#[test]
+fn in_the_void_nothing_falls_and_nothing_burns() {
+    let mut w = boxed_world(2, 2, 7);
+    w.set_climate(platypus_sim::Climate { weightless: (-200, -100), ..Default::default() });
+    let id = |w: &World, n: &str| w.materials().expect_id(n);
+    let (sand, water, ice, fire) = (id(&w, "sand"), id(&w, "water"), id(&w, "ice"), id(&w, "fire"));
+    fill(&mut w, "sand", 20, 30, 60, 70);
+    fill(&mut w, "water", 60, 70, 60, 70);
+    fill(&mut w, "fire", 40, 44, 100, 104);
+    let speck = CellPos::new(100, 90);
+    w.set(speck, Cell::new(sand, 0));
+    for _ in 0..120 {
+        w.step();
+    }
+    let within = |w: &World, m: MaterialId, x0: i32, x1: i32| (x0..x1).flat_map(|x| (60..70).map(move |y| CellPos::new(x, y))).filter(|&p| w.get(p).is_some_and(|c| c.material == m)).count();
+    assert_eq!(within(&w, sand, 20, 30), 100, "the sand hangs as it was put");
+    assert_eq!(within(&w, water, 60, 70) + within(&w, ice, 60, 70), 100, "the water hangs as a blob (freezing), not spreading");
+    assert_eq!(count(&w, fire), 0, "no air: the fire's out");
+    assert!(w.get(speck).is_some_and(|c| c.is_air()), "the lone speck drifted off");
+    let near = (-12..=12).flat_map(|dy| (-12..=12).map(move |dx| speck.offset(dx, dy))).any(|p| w.get(p).is_some_and(|c| c.material == sand));
+    assert!(near, "but not far: it drifts, not falls");
+    for _ in 0..600 {
+        w.step();
+    }
+    assert!(count(&w, ice) > 50, "the cold froze the blob ({} ice, {} water)", count(&w, ice), count(&w, water));
+    assert_eq!(within(&w, ice, 60, 70) + within(&w, water, 60, 70), 100, "where it hung");
+}

@@ -354,8 +354,9 @@ impl Body {
         self.still = 0;
     }
 
-    /// One tick. `solid` says what a world cell is to the body.
-    pub(crate) fn step(&mut self, solid: &impl Fn(CellPos) -> Option<Surface>) -> BodyEvents {
+    /// One tick. `solid` says what a world cell is to the body; `g`, how
+    /// much gravity there is where it is (1: the ground's).
+    pub(crate) fn step(&mut self, solid: &impl Fn(CellPos) -> Option<Surface>, g: f32) -> BodyEvents {
         let mut ev = BodyEvents::default();
         self.age += 1;
         let n = ((self.top_speed() + GRAVITY) / MAX_SUBSTEP_TRAVEL).ceil().clamp(1.0, MAX_SUBSTEPS as f32) as u32;
@@ -363,7 +364,7 @@ impl Body {
         let mut touched = false;
         let mut contacts: Vec<([f32; 2], [f32; 2])> = Vec::new();
         for _ in 0..n {
-            self.vel[1] -= GRAVITY * h;
+            self.vel[1] -= GRAVITY * g * h;
             self.pos = [self.pos[0] + self.vel[0] * h, self.pos[1] + self.vel[1] * h];
             self.rot = turn(self.rot, self.omega * h);
 

@@ -45,7 +45,16 @@ pub struct Climate {
     /// catch fire (`MatPhys::living`).
     pub wet: [u8; WET_COLUMNS],
     pub wet_bits: u32,
+    /// Over this height gravity fades, to none at the second (and over
+    /// it: the void, where there's no air either), and the cold comes on,
+    /// down to `VOID_COLD` °C in the void.
+    pub weightless: (i32, i32),
 }
+
+/// °C in the void (no air, nothing to keep warm).
+pub const VOID_COLD: i32 = -120;
+/// Gravity (of 256) under which nothing falls: weightless.
+pub const WEIGHTLESS: u32 = 43;
 
 impl Default for Climate {
     /// Same temperature everywhere (tests, flat sandbox).
@@ -63,6 +72,7 @@ impl Default for Climate {
             cells_per_degree_inversion: i32::MAX,
             wet: [WET_DEFAULT; WET_COLUMNS],
             wet_bits: 16,
+            weightless: (i32::MAX, i32::MAX),
         }
     }
 }
@@ -87,9 +97,53 @@ impl Climate {
         (width.max(1) as usize).div_ceil(CLIMATE_COLUMNS).next_multiple_of(CHUNK as usize) as i32
     }
 
+    /// How far up through the weightless band a height is (0 … 256: the
+    /// void), eased in and out.
+    #[inline]
+    fn into_void(&self, y: i32) -> i32 {
+        let (a, b) = self.weightless;
+        if y <= a {
+            return 0;
+        }
+        if y >= b {
+            return 256;
+        }
+        let t = ((y - a) as i64 * 256 / (b - a).max(1) as i64) as i32;
+        t * t * (768 - 2 * t) / 65_536
+    }
+
+    /// How much gravity there is at a height, of 256 (none in the void).
+    #[inline]
+    pub fn gravity(&self, y: i32) -> u32 {
+        (256 - self.into_void(y)) as u32
+    }
+
+    /// The same as a share (1: the ground's … 0).
+    #[inline]
+    pub fn gravity_f(&self, y: f32) -> f32 {
+        let (a, b) = (self.weightless.0 as f32, self.weightless.1 as f32);
+        let t = ((y - a) / (b - a).max(1.0)).clamp(0.0, 1.0);
+        1.0 - t * t * (3.0 - 2.0 * t)
+    }
+
+    /// No air here (the void): nothing burns.
+    #[inline]
+    pub fn airless(&self, y: i32) -> bool {
+        y >= self.weightless.1
+    }
+
     /// Ambient °C at a world cell.
     #[inline]
     pub fn ambient(&self, x: i32, y: i32) -> i32 {
+        let air = self.air_temp(x, y);
+        let v = self.into_void(y);
+        if v == 0 { air } else { air + (VOID_COLD - air) * v / 256 }
+    }
+
+    /// Ambient °C at a world cell, as the air has it (the void's cold
+    /// aside).
+    #[inline]
+    fn air_temp(&self, x: i32, y: i32) -> i32 {
         let column = self.columns[((x.max(0) / self.column_width.max(1)) as usize).min(CLIMATE_COLUMNS - 1)] as i32;
         let height = if y >= self.warm_above {
             // (Back up to sea level's warmth, no further.)

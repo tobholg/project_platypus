@@ -251,6 +251,18 @@ impl<'a> Hood<'a> {
         self.climate.ambient(self.origin.x + lx, self.origin.y + ly)
     }
 
+    /// Gravity at a local row, of 256 (none in the void).
+    #[inline(always)]
+    pub fn gravity(&self, ly: i32) -> u32 {
+        self.climate.gravity(self.origin.y + ly)
+    }
+
+    /// No air at a local row (the void): nothing burns.
+    #[inline(always)]
+    pub fn airless(&self, ly: i32) -> bool {
+        self.climate.airless(self.origin.y + ly)
+    }
+
     /// The temperature a material catches fire at, here: a living plant's
     /// rises with the land's wetness (`WET_IGNITION` °C more, soaked).
     #[inline(always)]

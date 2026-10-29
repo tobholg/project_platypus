@@ -976,7 +976,7 @@ fn fly(
             if drag > 0.0 {
                 s.vel *= (1.0 - drag * dt).max(0.0);
             }
-            s.vel.y -= GRAVITY * s.fall * dt;
+            s.vel.y -= GRAVITY * s.fall * sim.world.gravity(s.pos.y) * dt;
             let travel = s.vel * dt;
             let steps = travel.length().ceil().max(1.0) as i32;
             let step = travel / steps as f32;

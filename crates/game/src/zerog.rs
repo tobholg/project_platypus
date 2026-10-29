@@ -47,7 +47,7 @@ pub struct Turning {
 
 /// How much gravity there is at `y` (1: the ground's … 0: none).
 pub fn gravity_at(sim: &SimWorld, y: f32) -> f32 {
-    sim.generator.sky_layers().map_or(1.0, |s| s.gravity(y))
+    sim.world.gravity(y)
 }
 
 /// Recoils and blows push their maker, weightless and holding on to

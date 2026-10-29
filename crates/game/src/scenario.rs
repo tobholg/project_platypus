@@ -17138,7 +17138,7 @@ fn high_script(
             "high: t {t:.1} y {y:.0} (jet {:.0}..{:.0}, thin from {}, weightless {:.0}..{:.0}) going {:+.0},{:+.0}; gravity {:.2}, air thin {:.2}, jet {:+.0}; breath {:?}",
             sky.jet.0, sky.jet.1, sky.thin_from, sky.weightless.0, sky.weightless.1,
             k.body.vel.x, k.body.vel.y,
-            sky.gravity(y), sky.thin(y), crate::sky::jet_at(&sim, y),
+            crate::zerog::gravity_at(&sim, y), sky.thin(y), crate::sky::jet_at(&sim, y),
             breath.map(|b| (b.left * 10.0).round() / 10.0)
         );
     }
@@ -17151,8 +17151,9 @@ fn high_script(
 /// off it at 6 s. `PLATYPUS_ZEROG=bow` / `jet`: instead put floating 40
 /// over the slab, shooting arrows down to the left / holding the flame
 /// jet to the left from 3 s to 8 s; `pick`: floating by the slab's side,
-/// striking it with the pickaxe from 3 s. Logs where it is against the
-/// slab, its speed, what it holds, how it's turned, the gravity, its
+/// striking it with the pickaxe from 3 s; `cells`: sand, water, a fire,
+/// wood and lone specks of sand put over it too. Logs where it is against
+/// the slab, its speed, what it holds, how it's turned, the gravity, its
 /// breath and health.
 fn zerog_script(
     s: Res<Scenario>,
@@ -17196,7 +17197,25 @@ fn zerog_script(
                     }
                 }
             }
-            info!("zerog: the slab at {x},{y} (void from {}, gravity {:.3} there)", sky.weightless.1, sky.gravity(at.y));
+            info!("zerog: the slab at {x},{y} (void from {}, gravity {:.3} there)", sky.weightless.1, crate::zerog::gravity_at(&sim, at.y));
+            // (`cells`: what falls, put over the slab: a block of sand, one
+            // of water, a fire, specks of sand on their own.)
+            if mode == "cells" {
+                let mats = sim.materials().clone();
+                for (name, x0, y0, w, h) in [("sand", x - 50, y + 20, 14, 10), ("water", x - 20, y + 20, 14, 10), ("fire", x + 10, y + 20, 6, 6), ("wood", x + 30, y + 20, 10, 10)] {
+                    let Some(m) = mats.id(name) else { continue };
+                    for cy in y0..y0 + h {
+                        for cx in x0..x0 + w {
+                            sim.world.set(CellPos::new(cx, cy), platypus_sim::Cell::new(m, (cx * 7 + cy * 3) as u8));
+                        }
+                    }
+                }
+                if let Some(sand) = mats.id("sand") {
+                    for i in 0..12 {
+                        sim.world.set(CellPos::new(x - 50 + i * 9, y + 50), platypus_sim::Cell::new(sand, 0));
+                    }
+                }
+            }
             *step = match mode.as_str() {
                 "bow" | "jet" => {
                     k.body.pos = Vec2::new(at.x, at.y + 40.0);
@@ -17281,7 +17300,7 @@ fn zerog_script(
             holds.join(", "),
             turning.map_or(0.0, |t| t.angle.to_degrees()),
             turning.map_or(0.0, |t| t.omega),
-            sky.gravity(k.body.pos.y),
+            crate::zerog::gravity_at(&sim, k.body.pos.y),
             breath.map(|b| (b.left * 10.0).round() / 10.0),
             health.hp
         );

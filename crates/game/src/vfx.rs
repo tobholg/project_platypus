@@ -163,7 +163,7 @@ fn make_halo(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     commands.insert_resource(Halo(images.add(image)));
 }
 
-fn step_sparks(time: Res<Time>, mut sparks: ResMut<Sparks>) {
+fn step_sparks(time: Res<Time>, sim: Res<crate::world::SimWorld>, mut sparks: ResMut<Sparks>) {
     let dt = time.delta_secs().min(0.05);
     let sparks = &mut *sparks;
     let rng = &mut sparks.rng;
@@ -172,7 +172,7 @@ fn step_sparks(time: Res<Time>, mut sparks: ResMut<Sparks>) {
         if s.age >= s.life {
             return false;
         }
-        s.vel.y -= s.gravity * dt;
+        s.vel.y -= s.gravity * sim.world.gravity(s.pos.y) * dt;
         s.vel *= (1.0 - s.drag * dt).max(0.0);
         if s.jitter > 0.0 {
             let j = Vec2::new(rng.next_u32() as f32 / u32::MAX as f32 - 0.5, rng.next_u32() as f32 / u32::MAX as f32 - 0.5);

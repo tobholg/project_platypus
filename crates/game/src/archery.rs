@@ -281,7 +281,7 @@ fn fly(
             commands.entity(e).despawn();
             continue;
         }
-        a.vel.y -= def.gravity * dt;
+        a.vel.y -= def.gravity * sim.world.gravity(tf.translation.y) * dt;
         let step = a.vel * dt;
         let n = step.length().ceil().max(1.0) as usize;
         let mut pos = tf.translation.truncate();

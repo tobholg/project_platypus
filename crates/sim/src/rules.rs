@@ -67,6 +67,11 @@ pub(crate) fn update_cell(h: &mut Hood, x: i32, y: i32, mut c: Cell) {
     if c.heat != 0 || p.heat_source || p.climate_sensitive && effective(c.heat, &p, h.ambient(x, y)) != 0 {
         conduct(h, x, y, &mut c, &p);
     }
+    // (No air in the void: what was burning goes out.)
+    if c.flags & flags::BURNING != 0 && h.airless(y) {
+        c.flags &= !flags::BURNING;
+        h.set(x, y, c);
+    }
     if c.flags & flags::BURNING != 0 && burn(h, x, y, &mut c, &p) {
         return;
     }
@@ -92,7 +97,7 @@ pub(crate) fn update_cell(h: &mut Hood, x: i32, y: i32, mut c: Cell) {
     let kind = if p.kind == Kind::Static && c.flags & flags::LOOSE != 0 { Kind::Powder } else { p.kind };
     match kind {
         Kind::Powder => {
-            let _ = fall(h, x, y, c, &p) || slide(h, x, y, c, &p) || settle(h, x, y, c);
+            let _ = floating(h, x, y, c, true) || fall(h, x, y, c, &p) || slide(h, x, y, c, &p) || settle(h, x, y, c);
         }
         Kind::Liquid => {
             // (A liquid that doesn't last ages as a gas does, still or
@@ -107,7 +112,7 @@ pub(crate) fn update_cell(h: &mut Hood, x: i32, y: i32, mut c: Cell) {
                 }
                 h.wake(x, y);
             }
-            let _ = fall(h, x, y, c, &p) || slide(h, x, y, c, &p) || flow(h, x, y, c, &p) || settle(h, x, y, c);
+            let _ = floating(h, x, y, c, false) || fall(h, x, y, c, &p) || slide(h, x, y, c, &p) || flow(h, x, y, c, &p) || settle(h, x, y, c);
         }
         Kind::Gas => gas(h, x, y, c, &p),
         Kind::Fire => fire(h, x, y, c, &p),
@@ -115,6 +120,45 @@ pub(crate) fn update_cell(h: &mut Hood, x: i32, y: i32, mut c: Cell) {
         Kind::Empty | Kind::Static => {}
     }
 }
+
+/// Weightless (`Climate::gravity`), a cell that would fall doesn't: it
+/// hangs where it is, a liquid as it was put (a blob), a speck of powder
+/// on its own drifting a cell now and then (dust in the void; clumped, it
+/// keeps still). Where gravity's fading, over open air it falls only now
+/// and then (as often as there's gravity), hanging between. True: it's
+/// done this tick.
+fn floating(h: &mut Hood, x: i32, y: i32, mut c: Cell, drifts: bool) -> bool {
+    let g = h.gravity(y);
+    if g >= 256 {
+        return false;
+    }
+    let open = |h: &Hood, dx: i32, dy: i32| h.get(x + dx, y + dy).is_some_and(|t| t.is_air());
+    if g >= crate::climate::WEIGHTLESS {
+        if !open(h, 0, -1) || h.rng.next_u32() % 256 < g {
+            return false;
+        }
+        h.wake(x, y);
+        return true;
+    }
+    if drifts && open(h, 0, -1) && open(h, 0, 1) && open(h, -1, 0) && open(h, 1, 0) {
+        let roll = h.rng.next_u32();
+        let (dx, dy) = NEIGHBOURS8[(roll >> 8) as usize % 8];
+        if roll % DRIFT == 0 && h.get(x + dx, y + dy).is_some_and(|t| t.is_air()) {
+            c.vy = 0;
+            swap_to(h, x, y, x + dx, y + dy, c);
+            return true;
+        }
+        h.wake(x, y);
+    }
+    if c.vy != 0 {
+        c.vy = 0;
+        h.set(x, y, c);
+    }
+    true
+}
+
+/// Weightless powder drifts a cell one tick in this many.
+const DRIFT: u32 = 24;
 
 /// Can a cell with physics `mover` move into `target`?
 #[inline(always)]
@@ -1079,8 +1123,8 @@ fn gas(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) {
     let free = |h: &Hood, tx: i32, ty: i32| h.get(tx, ty).is_some_and(|t| t.is_air());
     // (A gas that drifts neither rises nor sinks: now and then a step any
     // way that's open, so a cloud spreads and thins where it was let out.
-    // Awake either way: it ages.)
-    if p.drifts {
+    // Awake either way: it ages. Weightless, every gas does.)
+    if p.drifts || h.gravity(y) < crate::climate::WEIGHTLESS {
         let roll = h.rng.next_u32();
         let (dx, dy) = NEIGHBOURS8[(roll >> 3) as usize % 8];
         if roll & 3 == 0 && free(h, x + dx, y + dy) {
@@ -1145,6 +1189,11 @@ fn gas(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) {
 }
 
 fn fire(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) {
+    // (No air in the void: out at once.)
+    if h.airless(y) {
+        h.set(x, y, Cell::AIR);
+        return;
+    }
     if !age(h, x, y, &mut c, p) {
         return;
     }

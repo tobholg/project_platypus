@@ -112,7 +112,7 @@ pub fn fly(sim: Res<SimWorld>, mut q: Query<(&mut Kinematics, &Thrown, Option<&c
         let k = &mut *k;
         k.prev_pos = k.body.pos;
         let dt = DT * crate::magic::field::share(slowed);
-        k.body.vel.y -= GRAVITY * dt;
+        k.body.vel.y -= GRAVITY * sim.world.gravity(k.body.pos.y) * dt;
         let before = k.body.vel;
         let c = move_and_collide(&grid, &mut k.body, dt);
         let e = thrown.bounce;

@@ -130,6 +130,13 @@ impl Scale {
 /// Sea level and the floors of the bands (`Band::ALL` order) for a world
 /// this tall: the reference's scaled down, or, taller, the reference's with
 /// the extra height shared out (`EXTRA_SKY`, `EXTRA_BELOW`).
+/// The high air's layers over a sky band from `floor` to the world's top.
+fn sky_layers(floor: i32, height: i32) -> crate::SkyLayers {
+    let (lo, span) = (floor as f64, (height - 1 - floor) as f64);
+    let at = |share: f64| (lo + share * span) as i32;
+    crate::SkyLayers { jet: (at(JET.0), at(JET.1)), thin_from: at(THIN_FROM), weightless: (at(WEIGHTLESS.0), at(WEIGHTLESS.1)), top: height - 1 }
+}
+
 fn bands(height: i32, sy: f64) -> (i32, [i32; 7]) {
     let extra = (height as f64 - REF_HEIGHT).max(0.0);
     let above = REF_HEIGHT * (1.0 - SEA_LEVEL) * sy + extra * EXTRA_SKY;
@@ -553,6 +560,7 @@ impl WorldPlan {
             cells_per_degree_inversion: (INVERSION * sh).max(1.0) as i32,
             wet,
             wet_bits,
+            weightless: sky_layers(band_floors[0], height).weightless,
         };
 
         // The land: rolling hills and cliffs on each biome's lift; oceans
@@ -847,9 +855,7 @@ impl WorldPlan {
 
     /// The high air's layers.
     pub fn sky_layers(&self) -> crate::SkyLayers {
-        let (lo, span) = (self.band_floors[0] as f64, (self.height - 1 - self.band_floors[0]) as f64);
-        let at = |share: f64| (lo + share * span) as i32;
-        crate::SkyLayers { jet: (at(JET.0), at(JET.1)), thin_from: at(THIN_FROM), weightless: (at(WEIGHTLESS.0), at(WEIGHTLESS.1)), top: self.height - 1 }
+        sky_layers(self.band_floors[0], self.height)
     }
 
     /// The world wraps: a column's x, around into 0 … width.

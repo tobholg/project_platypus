@@ -790,7 +790,7 @@ pub fn step_all(sim: Res<SimWorld>, mut q: Query<(&mut Limp, &mut Kinematics)>) 
             limp.throw(v);
             k.body.vel = Vec2::ZERO;
         }
-        limp.step(&grid, crate::props::GRAVITY);
+        limp.step(&grid, crate::props::GRAVITY * sim.world.gravity(k.body.pos.y));
         let (from, to) = limp.root_pos();
         k.prev_pos = from;
         k.body.pos = to;
