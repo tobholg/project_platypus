@@ -253,6 +253,10 @@ pub struct MaterialDef {
     /// it a drifter).
     #[serde(default)]
     pub lifts: bool,
+    /// A spring (a sky island's waterfall): pours this liquid, this many
+    /// cells a tick, into what's open beside or under it, for ever.
+    #[serde(default)]
+    pub springs: Option<(String, u8)>,
     /// A wall: built into the background (behind you), never the playfield
     /// (a house's back wall: the game's business).
     #[serde(default)]
@@ -493,6 +497,8 @@ pub struct MatPhys {
     pub platform: bool,
     /// See `MaterialDef::lifts`.
     pub lifts: bool,
+    /// See `MaterialDef::springs`.
+    pub springs: Option<(MaterialId, u8)>,
     /// See `MaterialDef::sticky`.
     pub sticky: bool,
     /// See `MaterialDef::slippery`.
@@ -675,6 +681,10 @@ impl MaterialTable {
                 Some((t, n)) => (*t, lookup(n, &format!("{}.above", d.name))?),
                 None => (i16::MAX, MaterialId::AIR),
             };
+            let springs = match &d.springs {
+                Some((n, chance)) => Some((lookup(n, &format!("{}.springs", d.name))?, *chance)),
+                None => None,
+            };
             let (below_at, below_into) = match &d.below {
                 Some((t, n)) => (*t, lookup(n, &format!("{}.below", d.name))?),
                 None => (i16::MIN, MaterialId::AIR),
@@ -724,6 +734,7 @@ impl MaterialTable {
                 brittle: d.brittle,
                 platform: d.platform,
                 lifts: d.lifts,
+                springs,
                 sticky: d.sticky,
                 slippery: d.slippery,
                 latent: d.latent,
@@ -778,6 +789,7 @@ impl MaterialTable {
         for (p, rs) in phys.iter_mut().zip(&reactions) {
             p.interacts |= !rs.is_empty();
             p.active = p.interacts
+                || p.springs.is_some()
                 || p.climate_sensitive
                 || p.heat_source
                 || matches!(p.kind, Kind::Powder | Kind::Liquid | Kind::Gas | Kind::Fire | Kind::Plant);

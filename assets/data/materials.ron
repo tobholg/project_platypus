@@ -138,6 +138,10 @@
         // white-blue threads through it, glimmering; past aerolite.
         (name: "fulgurite", loot: Ore, kind: Static, charges: true, density: 2400, hardness: 140, crumbles_into: "gravel", opacity: 40, glow: (18, 26, 44), shimmer: 200, sparkle: true, luster: (150, 200, 255),
             colors: [(44, 46, 60), (70, 74, 92), (110, 120, 146), (190, 214, 250), (232, 244, 255)]),
+        // A sky island's spring: wet rock in its side, under its lake,
+        // pouring a waterfall over the edge for ever (the sim: `springs`).
+        (name: "spring",   kind: Static, density: 2600, hardness: 60, crumbles_into: "gravel", springs: ("spray", 12),
+            colors: [(70, 96, 112), (86, 116, 134), (60, 84, 100)]),
         // A fallen star's heart (world-events: events.rs): dark, glassy,
         // flecked with light, shining a cold blue in yours; an iron pick
         // takes it.
@@ -382,6 +386,11 @@
 
         // ---- liquids ------------------------------------------------------
         (name: "water",    kind: Liquid, density: 1000, charges: true, dispersion: 9, above: (100, "steam"), below: (0, "ice"), coats: "wet", opacity: 6, optics: (ior: 1.33, reflect: 0.02, tint: (150, 205, 245)), latent: 300, latent_below: 60, capacity: 2.0, colors: [(38, 92, 196), (48, 110, 214)]),
+        // A waterfall's water (a sky island's spring): white water, falling
+        // so far it's blown to spray on the way down (falling slowly: a
+        // sheet, `viscosity`), gone to mist before it reaches the ground
+        // (it would flood the world under it).
+        (name: "spray",    kind: Liquid, density: 1000, charges: true, dispersion: 9, viscosity: 200, coats: "wet", opacity: 6, lifetime: (80, 130), decay_every: 1, decays_into: "spray_mist", decays_into_chance: 90, optics: (ior: 1.33, reflect: 0.02, tint: (150, 205, 245)), capacity: 2.0, colors: [(214, 232, 252), (244, 250, 255), (160, 200, 244), (110, 160, 230)]),
         // Floats on water and burns on it (a burning liquid isn't put out by
         // what it floats on). A poor heat conductor, so a burning slick
         // doesn't boil away the lake under it.
@@ -452,6 +461,9 @@
         // nor sinking, so it hangs where it was let out a while, thinning,
         // before it's gone. Lit, it goes up.
         (name: "swamp_gas", kind: Gas, drifts: true, density: 2, dispersion: 3, lifetime: (120, 200), decay_every: 4, flammability: 255, ignites_at: 400, explodes: (radius: 9, power: 50, chance: 60), opacity: 8, colors: [(150, 170, 90), (166, 184, 104), (136, 158, 80)]),
+        // A waterfall's spray thinned to mist: a pale haze, drifting, soon
+        // gone.
+        (name: "spray_mist", kind: Gas, drifts: true, density: 1, dispersion: 4, lifetime: (30, 90), decay_every: 3, opacity: 4, colors: [(214, 226, 240), (232, 240, 250), (200, 214, 232)]),
         // Blight's mist: a purple haze that hangs about (drifts) and hurts
         // what breathes it, thinning away.
         (name: "blight_mist", kind: Gas, drifts: true, density: 2, dispersion: 3, lifetime: (60, 140), decay_every: 4, corrosive: 5, glow: (40, 12, 60), opacity: 10, colors: [(120, 60, 150), (100, 40, 130), (140, 80, 170)]),

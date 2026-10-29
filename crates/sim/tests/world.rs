@@ -2967,3 +2967,39 @@ fn a_piece_with_aerolite_in_it_floats_free() {
     assert!(!loose(26), "it holds itself up");
     assert!(loose(86), "the other falls");
 }
+
+/// A spring (a sky island's waterfall) pours its spray out of a rock face
+/// for ever, falling as a sheet, gone to mist on the way down; it never
+/// sleeps.
+#[test]
+fn a_spring_pours_a_waterfall_for_ever() {
+    let mut w = boxed_world(3, 6, 5);
+    let (stone, spring, spray, mist) = {
+        let m = w.materials();
+        (m.expect_id("stone"), m.expect_id("spring"), m.expect_id("spray"), m.expect_id("spray_mist"))
+    };
+    // A rock hanging high up, its right face a spring six cells tall.
+    for y in 330..350 {
+        for x in 40..70 {
+            w.set(CellPos::new(x, y), Cell::new(stone, 0));
+        }
+    }
+    for y in 336..342 {
+        w.set(CellPos::new(70, y), Cell::new(spring, 0));
+    }
+    // (Falling: what's in the air under it, not what's landed.)
+    let falling = |w: &World| (71..80).flat_map(|x| (60..336).map(move |y| CellPos::new(x, y))).filter(|&p| w.get(p).is_some_and(|c| c.material == spray)).count();
+    for tick in 0..300 {
+        w.step();
+        if tick % 50 == 49 {
+            eprintln!("tick {tick}: {} spray falling, {} mist", falling(&w), count(&w, mist));
+        }
+        if tick >= 100 {
+            assert!(falling(&w) > 300, "a sheet of spray falling at tick {tick}: {}", falling(&w));
+        }
+    }
+    assert!(count(&w, mist) > 0, "and mist under it");
+    // (Its columns: out to the spout's reach.)
+    let cols = (71..80).filter(|&x| (200..330).any(|y| w.get(CellPos::new(x, y)).is_some_and(|c| c.material == spray))).count();
+    assert!(cols >= 3, "falling {cols} wide");
+}

@@ -73,6 +73,9 @@ pub(crate) fn update_cell(h: &mut Hood, x: i32, y: i32, mut c: Cell) {
     if p.interacts && interact(h, x, y, c, &p) {
         return;
     }
+    if let Some((liquid, chance)) = p.springs {
+        spring(h, x, y, liquid, chance);
+    }
     // (Held by something living: it stays where it's put. Its `life` is
     // how many ticks more it's held unless it's put back: what held it
     // gone, it's let go, and runs.)
@@ -994,6 +997,34 @@ fn flow(h: &mut Hood, x: i32, y: i32, mut c: Cell, p: &MatPhys) -> bool {
 
 /// A plant needs something under it: ground, or more plant. Otherwise it
 /// withers (and the one above it will notice next tick).
+/// How far out of a spring its liquid spouts (cells, at most).
+const SPOUT: i32 = 6;
+
+/// A spring's liquid comes out falling this fast (`Cell::vy`): gushing,
+/// it clears the spout for more.
+const GUSH: i8 = 12;
+
+/// A spring pours `rate` cells of its liquid a tick out into what's open
+/// beside and under it (air, or a gas it pushes through: its own mist): a
+/// spout, up to `SPOUT` cells out, so it falls as a sheet, not a thread.
+/// It never sleeps.
+fn spring(h: &mut Hood, x: i32, y: i32, liquid: MaterialId, rate: u8) {
+    let open = |h: &Hood, x: i32, y: i32| h.get(x, y).is_some_and(|n| n.is_air() || h.mats.phys(n.material).kind == Kind::Gas);
+    for _ in 0..rate {
+        let (dx, dy) = [(-1, 0), (1, 0), (0, -1)][(h.rng.next_u32() % 3) as usize];
+        let out = 1 + (h.rng.next_u32() % SPOUT as u32) as i32;
+        // (Out through what it's poured already, to the first open cell.)
+        let path = (1..=out).take_while(|&k| open(h, x + dx * k, y + dy * k) || h.get(x + dx * k, y + dy * k).is_some_and(|n| n.material == liquid));
+        let far = path.filter(|&k| open(h, x + dx * k, y + dy * k)).last();
+        if let Some(k) = far {
+            let mut c = spawn(h, liquid);
+            c.vy = GUSH;
+            h.set(x + dx * k, y + dy * k, c);
+        }
+    }
+    h.wake(x, y);
+}
+
 fn plant(h: &mut Hood, x: i32, y: i32) {
     // Held from below by ground or a plant standing on it; a hanging plant
     // also from above, by ground or the hanging plant it hangs from. (So a
