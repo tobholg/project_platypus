@@ -71,14 +71,15 @@ fn in_the_sun(sim: &SimWorld, from: Vec2, toward: Vec2) -> bool {
     })
 }
 
-/// Up in space: in the sun, baked; in shade, chilled.
-fn sun_and_shade(mut commands: Commands, time: Res<Time>, sim: Res<SimWorld>, day: Res<crate::light::Daylight>, mut q: Query<(Entity, &Kinematics, &mut Health, Option<&mut Sunlit>, Option<&Chilled>)>) {
+/// Up in space: in the sun, baked (as fire: fire resistance takes some
+/// off); in shade, chilled (frost resistance keeps some out).
+fn sun_and_shade(mut commands: Commands, time: Res<Time>, sim: Res<SimWorld>, day: Res<crate::light::Daylight>, mut q: Query<(Entity, &Kinematics, &mut Health, Option<&mut Sunlit>, Option<&Chilled>, Option<&crate::gear::Stats>)>) {
     let dt = time.delta_secs();
     let look = sim.world.tick() % LOOK_EVERY == 0;
     let up = sun_up(day.time);
     let d = crate::light::sun_dir(day.time);
     let toward = -Vec2::new(d[0], d[1]);
-    for (e, k, mut health, sunlit, chilled) in &mut q {
+    for (e, k, mut health, sunlit, chilled, stats) in &mut q {
         let space = crate::sky::space_at(&sim, k.body.pos.y);
         if space < SPACE_FROM {
             if sunlit.is_some() {
@@ -95,7 +96,10 @@ fn sun_and_shade(mut commands: Commands, time: Res<Time>, sim: Res<SimWorld>, da
             health.linger(SCORCH * s.heat * s.heat * dt, crate::creatures::Harm::Fire, || crate::death::Cause::new("The sun", "baked"));
         } else {
             s.heat = (s.heat - dt / COOL_SECS).max(0.0);
-            crate::creatures::body::elements::chill(&mut commands, e, &health.nature, chilled, SHADE_CHILL * space, SHADE_CHILL_SECS);
+            // (Kept warm: frost resistance keeps out the cold, a void suit's
+            // most of it.)
+            let warm = stats.map_or(0.0, |s| s.share(crate::gear::Stat::FrostResist, 0.9));
+            crate::creatures::body::elements::chill(&mut commands, e, &health.nature, chilled, SHADE_CHILL * space * (1.0 - warm), SHADE_CHILL_SECS);
         }
         match sunlit {
             Some(mut now) => *now = s,

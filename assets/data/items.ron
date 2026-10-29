@@ -53,6 +53,7 @@
         (id: "silver_pickaxe", name: "Silver pickaxe", color: (222, 228, 240), use: Mine(back: false, power: 42, tier: 105, speed: 5.0, reach: 6.8, area: 9.8)),
         (id: "gold_pickaxe",   name: "Gold pickaxe",   color: (236, 196, 72), use: Mine(back: false, power: 50, tier: 115, speed: 5.5, reach: 7.0, area: 10.5)),
         (id: "mithril_pickaxe", name: "Mithril pickaxe", color: (110, 220, 228), use: Mine(back: false, power: 75, tier: 150, speed: 7.0, reach: 7.5, area: 13.5)),
+        (id: "starmetal_pickaxe", name: "Starmetal pickaxe", color: (196, 204, 226), use: Mine(back: false, power: 95, tier: 170, speed: 8.0, reach: 8.0, area: 15.0)),
         // A builder's hammer: shapes built blocks (half, slopes) for roofs
         // and arches.
         (id: "hammer",         name: "Hammer",         color: (150, 140, 130), use: Hammer(reach: 6.0)),
@@ -256,6 +257,8 @@
         (id: "gold_bar",       name: "Gold bar",       stack: 99, color: (236, 196, 72)),
         (id: "mithril_bar",    name: "Mithril bar",    stack: 99, color: (110, 220, 228)),
         (id: "aerolite_bar",   name: "Aerolite bar",   stack: 99, color: (160, 110, 236), about: "Lighter than air: it pulls up."),
+        (id: "starmetal_bar",  name: "Starmetal bar",  stack: 99, color: (196, 204, 226), about: "Iron from between the stars: heavy, cold, bright."),
+        (id: "sunstone",       name: "Sunstone",       stack: 99, color: (250, 176, 60), about: "Solarite, cut: warm in the hand, glowing."),
         (id: "stormglass",     name: "Stormglass",     stack: 99, color: (190, 214, 250), about: "Lightning, fused into glass. It hums."),
     ],
     // Kits: what a new player starts with (`play` in a new game, `dev` in
@@ -296,9 +299,14 @@
                 ("mithril_boots", 1), ("cloud_boots", 1), ("storm_boots", 1), ("chain_hook", 1), ("iron_shield", 1), ("repulsor_ward", 1), ("mining_helmet", 1),
                 ("diving_helmet", 1), ("flippers", 1), ("ember_amulet", 1), ("frost_charm", 1), ("storm_ring", 1),
                 ("hammer", 1), ("copper_axe", 1), ("glowstick", 30), ("block:platform", 200), ("bow", 1), ("arrow", 198),
+                // (For the void.)
+                ("void_helm", 1), ("void_suit", 1), ("thruster_pack", 1), ("starmetal_pickaxe", 1),
                 ("door", 2), ("table", 1), ("chair", 2), ("bed", 1), ("hanging_lantern", 4), ("block:firebrick", 60), ("bucket", 1), ("flask", 1),
             ],
             wear: ["mithril_helm", "mithril_mail", "mithril_gauntlets", "mithril_greaves", "rocket_boots", "silk_line", "dread_cloak", "ring_of_vigour", "lucky_coin", "flashlight"]),
+        (name: "spacer", about: "For the void: the void suit and helm, a thruster pack, a starmetal pick, a bow, stone to build with",
+            carry: [("starmetal_pickaxe", 1), ("bow", 1), ("arrow", 200), ("fire_staff", 1), ("block:stone", 200), ("torch", 40), ("small_health_potion", 10)],
+            wear: ["void_helm", "void_suit", "thruster_pack"]),
         (name: "miner", about: "A gold pick, bombs, a mining helmet and a lantern, and a way back up",
             carry: [("gold_pickaxe", 1), ("bomb", 20), ("torch", 60), ("glowstick", 20), ("block:platform", 200), ("small_health_potion", 5)],
             wear: ["rocket_boots", "grappling_hook", "mining_helmet", "lantern"]),

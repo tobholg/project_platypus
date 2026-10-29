@@ -757,6 +757,8 @@
         (makes: "gold_bar", needs: [("block:gold_ore", 4)], at: "furnace"),
         (makes: "mithril_bar", needs: [("block:mithril_ore", 5)], at: "furnace"),
         (makes: "aerolite_bar", needs: [("block:aerolite_ore", 5)], at: "furnace"),
+        (makes: "starmetal_bar", needs: [("block:starmetal_ore", 5)], at: "furnace"),
+        (makes: "sunstone", needs: [("block:solarite_ore", 4)], at: "furnace"),
         (makes: "stormglass", needs: [("block:fulgurite", 5)], at: "furnace"),
         // Vessels: the ladle for molten metal, a bucket, a glass flask.
         (makes: "ladle", needs: [("iron_bar", 4)], at: "anvil"),
@@ -790,6 +792,10 @@
         (makes: "silver_pickaxe", needs: [("silver_bar", 9), ("block:planks", 2)], at: "anvil"),
         (makes: "gold_pickaxe", needs: [("gold_bar", 10), ("block:planks", 2)], at: "anvil"),
         (makes: "mithril_pickaxe", needs: [("mithril_bar", 12)], at: "anvil", locked: true),
+        (makes: "starmetal_pickaxe", needs: [("starmetal_bar", 12)], at: "anvil"),
+        (makes: "void_helm", needs: [("starmetal_bar", 8), ("block:glass", 6)], at: "anvil"),
+        (makes: "void_suit", needs: [("starmetal_bar", 14), ("sunstone", 4)], at: "anvil"),
+        (makes: "thruster_pack", needs: [("starmetal_bar", 10), ("sunstone", 6)], at: "anvil"),
         (makes: "copper_axe", needs: [("copper_bar", 5), ("block:planks", 2)], at: "anvil"),
         // Swords and armour, a set of each metal: copper first (the anvil's
         // copper), then iron, silver, gold, mithril, each a step up.
