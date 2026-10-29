@@ -593,6 +593,9 @@ pub(crate) fn update_daylight(
         let rain = (0..n).map(|i| w.rain_at(x - hw + i * hw * 2 / (n - 1))).sum::<f32>() / n as f32;
         let rain = (rain / platypus_sim::weather::STORM_RAIN).clamp(0.0, 1.0);
         let severe = (0..n).map(|i| w.severe_at(x - hw + i * hw * 2 / (n - 1))).sum::<f32>() / n as f32;
+        // (Up in space the weather's far below: no gloom from it.)
+        let over = 1.0 - crate::sky::space_at(&sim, tf.translation.y);
+        let (cover, rain, severe) = (cover * over, rain * over, severe * over);
         let k = (time.delta_secs() / GLOOM_EASE).min(1.0);
         gloom.cover += (cover - gloom.cover) * k;
         gloom.rain += (rain - gloom.rain) * k;

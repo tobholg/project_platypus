@@ -1723,6 +1723,8 @@ fn slam(
 /// 21 cells (it was 78), an orc 13 (55), a raptor 37 (130). Killing blows
 /// throw from that too.
 pub(crate) const KNOCK_TAKEN: f32 = 0.55;
+/// A pogo, weightless: up off what it struck at least this fast (cells/s).
+const POGO_FLOAT: f32 = 120.0;
 pub(crate) const KNOCK_MOST: f32 = 240.0;
 const DEATH_KNOCK: f32 = 1.25;
 const DEATH_LIFT: f32 = 45.0;
@@ -1747,15 +1749,21 @@ fn apply_hits(
     parts: Query<&crate::creatures::body::parts::Parts>,
     mut tumbles: Query<&mut crate::creatures::body::tumble::Tumble>,
     (bodies, mut masks, who): (Query<&Animator>, ResMut<crate::creatures::body::wounds::LayerMasks>, crate::death::Who),
-    (mut guards, items): (Query<(&mut crate::gear::shield::Guard, &mut Stamina, &crate::gear::Equipment)>, Option<Res<crate::hands::items::Items>>),
+    (mut guards, items, sim): (Query<(&mut crate::gear::shield::Guard, &mut Stamina, &crate::gear::Equipment)>, Option<Res<crate::hands::items::Items>>, Res<crate::world::SimWorld>),
 ) {
     let Some(weapons) = weapons else { return };
     for r in recoils.read() {
         let Ok((mut k, _, _, stats, _, player)) = q.get_mut(r.who) else { continue };
         k.body.vel += r.add;
         if let Some(share) = r.pogo {
-            // (Up to that share of its own jump's height, at the tempo.)
-            k.body.vel.y = tempo.apply(&stats.0, player).bounce_speed() * share.sqrt();
+            // (Up to that share of its own jump's height, at the tempo;
+            // weightless, nothing to climb against: it bounces back off
+            // what it struck, as fast as it came down at, or `POGO_FLOAT`.)
+            k.body.vel.y = if crate::zerog::gravity_at(&sim, k.body.pos.y) < crate::zerog::WEIGHTLESS {
+                k.body.vel.y.abs().max(POGO_FLOAT) * share.sqrt()
+            } else {
+                tempo.apply(&stats.0, player).bounce_speed() * share.sqrt()
+            };
             k.loco.refresh_air(&stats.0);
             sounds.write(crate::sound::PlaySound::at("bounce", k.body.pos - Vec2::Y * k.body.half.y));
         }

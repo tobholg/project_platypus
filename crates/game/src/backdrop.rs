@@ -996,7 +996,10 @@ fn sky(
         // the stars are out by day too.)
         let sun_h = -(d.time * std::f32::consts::TAU).cos();
         let night = ((0.05 - sun_h) / 0.3).clamp(0.0, 1.0).max(crate::sky::space_at(&sim, c.y)) * surface;
-        let cloud = |x: f32| world.weather().map_or(0.0, |w| ((w.overcast(x as i32 - 4, x as i32 + 4) - 0.2) / 0.4).clamp(0.0, 1.0));
+        // (The weather's clouds hide the sky by column; up in space
+        // they're far below, hiding nothing.)
+        let over = 1.0 - crate::sky::space_at(&sim, c.y);
+        let cloud = |x: f32| world.weather().map_or(0.0, |w| ((w.overcast(x as i32 - 4, x as i32 + 4) - 0.2) / 0.4).clamp(0.0, 1.0)) * over;
         let cover = bd.cover(c);
         let sky_open = |p: Vec2| open(p) && !cover.covers(p);
         // A disc crossing the sky, the sun by day, the moon by night.

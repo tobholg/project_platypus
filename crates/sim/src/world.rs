@@ -266,7 +266,8 @@ impl World {
 
     pub fn rained_on(&self, p: CellPos) -> bool {
         let Some(w) = &self.weather else { return false };
-        if w.rain_at(p.x) <= 0.0 {
+        // (Over where rain comes from: up in space, it's all below.)
+        if w.rain_at(p.x) <= 0.0 || p.y >= w.ceiling() {
             return false;
         }
         // (A chunk at a time up the column, not a lookup a cell: every

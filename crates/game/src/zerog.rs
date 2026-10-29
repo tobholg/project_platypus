@@ -29,6 +29,9 @@ pub const KICK_PICK: f32 = 3_000.0;
 /// Struck (a sword, a fist), the striker's pushed back this share of the
 /// blow's knock (no more than the knock itself, whatever it struck).
 const BLOW_BACK: f32 = 0.5;
+/// A blow going down more steeply than this (its direction's share down)
+/// is a down-strike: no blow-back, its pogo bounces it.
+const DOWNWARD: f32 = 0.7;
 /// A kick from off its middle (the hand's out to one side) sets it
 /// turning: this share of what it would as a stiff rod its height.
 const TORQUE: f32 = 0.25;
@@ -56,7 +59,8 @@ pub fn gravity_at(sim: &SimWorld, y: f32) -> f32 {
 fn kick(mut commands: Commands, sim: Res<SimWorld>, mut recoils: MessageReader<Recoil>, mut hits: MessageReader<crate::combat::Hit>, riders: Res<crate::drift::Riders>, mut q: Query<(&mut Kinematics, Option<&mut Turning>)>) {
     let mut pushes: Vec<(Entity, Vec2, Vec2)> = recoils.read().map(|r| (r.who, r.from, r.push)).collect();
     for h in hits.read() {
-        let Some(by) = h.by else { continue };
+        // (A strike downward is a pogo: that's its bounce, `combat`.)
+        let Some(by) = h.by.filter(|_| h.dir.y > -DOWNWARD) else { continue };
         let Ok([(striker, _), (struck, _)]) = q.get_many([by, h.target]) else { continue };
         let share = (crate::drift::weight(&struck.body) / crate::drift::weight(&striker.body)).min(1.0);
         pushes.push((by, h.at, -h.knock * share * BLOW_BACK * crate::drift::weight(&striker.body)));

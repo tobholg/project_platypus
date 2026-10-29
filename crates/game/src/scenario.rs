@@ -414,7 +414,8 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, fall_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, save_script)
             .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script, wardrobe_script, herbcut_script, zombiejump_script, crushcheck_script, batcount_script, airswing_script, dive_script, paint_script, firewall_script, fields_script, ward_script, seam_script))
-            .add_systems(Update, (sky_script, drift_script, high_script, zerog_script, space_script))
+            .add_systems(Update, (sky_script, drift_script, high_script, zerog_script))
+            .add_systems(PreUpdate, space_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, craft_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pack_script.after(bevy::ui::UiSystems::Focus).before(crate::pause::key))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
@@ -17323,26 +17324,32 @@ fn zerog_script(
 /// `metal`, `icy`, `sunstone`; any) and at least `PLATYPUS_SPACE_R` (40)
 /// across its radius, `PLATYPUS_SPACE_OFF` (30) out from its edge (to its
 /// right; `PLATYPUS_SPACE_SIDE=sun`: on the sun's side, `shade`: in its
-/// shadow), held there till its chunks are in (`PLATYPUS_SHOWER=1`: a
+/// shadow; `PLATYPUS_SPACE_AT=x,y`: put there instead), held there till
+/// its chunks are in; `PLATYPUS_SPACE_STORM=1`: a storm in the weather
+/// under it at 1 s; `PLATYPUS_SPACE_POGO=1`: a dummy under the player,
+/// struck down at with the sword from 2 s (a pogo) (`PLATYPUS_SHOWER=1`: a
 /// meteor shower on; `PLATYPUS_SPACE_KIT=spacer`: that kit handed out). Logs the rock, how much of it's in, and
 /// the creatures about the player.
 fn space_script(
+    mut commands: Commands,
     s: Res<Scenario>,
-    sim: Res<SimWorld>,
+    mut sim: ResMut<SimWorld>,
     day: Res<crate::light::Daylight>,
     mut menu: ResMut<crate::devmenu::DevMenu>,
-    mut player: Query<(&mut Kinematics, &crate::creatures::Health, Option<&crate::space::Sunlit>, Option<&crate::creatures::body::elements::Chilled>, &mut crate::hands::items::Inventory, &mut crate::gear::Equipment, Option<&crate::breath::Breath>), With<LocalPlayer>>,
+    mut player: Query<(&mut Kinematics, &crate::creatures::Health, Option<&crate::space::Sunlit>, Option<&crate::creatures::body::elements::Chilled>, &mut crate::hands::items::Inventory, &mut crate::gear::Equipment, Option<&crate::breath::Breath>, Option<&crate::combat::Swing>), With<LocalPlayer>>,
     others: Query<(&Kinematics, &Name), (Without<LocalPlayer>, With<crate::creatures::Creature>)>,
     meteors: Query<&crate::space::Meteor>,
     items: Option<Res<crate::hands::items::Items>>,
+    (mut keys, mut mouse, mut cursor, mut hand): (ResMut<ButtonInput<KeyCode>>, ResMut<ButtonInput<MouseButton>>, ResMut<CursorOverride>, ResMut<crate::hands::Hand>),
     mut state: Local<(Option<(Vec2, f32)>, f32, bool)>,
+    mut spawned: Local<bool>,
 ) {
     if s.name != "space" {
         return;
     }
     menu.open = false;
     let t = s.elapsed;
-    let Ok((mut k, health, sunlit, chilled, mut inv, mut eq, breath)) = player.single_mut() else { return };
+    let Ok((mut k, health, sunlit, chilled, mut inv, mut eq, breath, swing)) = player.single_mut() else { return };
     if t < 0.3 {
         return;
     }
@@ -17358,6 +17365,10 @@ fn space_script(
         info!("space: the {name} kit handed out; wearing {}", worn.join(", "));
     }
     let (at, r) = *rock.get_or_insert_with(|| {
+        // (PLATYPUS_SPACE_AT=x,y: there, no rock looked for.)
+        if let Some((x, y)) = std::env::var("PLATYPUS_SPACE_AT").ok().and_then(|v| v.split_once(',').and_then(|(x, y)| Some((x.parse::<f32>().ok()?, y.parse::<f32>().ok()?)))) {
+            return (Vec2::new(x, y), 0.01);
+        }
         let want = std::env::var("PLATYPUS_SPACE_ROCK").unwrap_or_default();
         let most: f32 = std::env::var("PLATYPUS_SPACE_R").ok().and_then(|v| v.parse().ok()).unwrap_or(40.0);
         let sx = sim.generator.spawn_point().x;
@@ -17382,20 +17393,40 @@ fn space_script(
         Ok("shade") => Vec2::new(d[0], d[1]),
         _ => Vec2::X,
     };
-    let spot = at + way * (r * 1.3 + off);
+    let spot = if r < 0.1 { at } else { at + way * (r * 1.3 + off) };
     if !sim.world.is_loaded(CellPos::from_world(at.x, at.y).chunk()) || t < 1.0 {
         k.body.pos = spot;
         k.prev_pos = spot;
         k.body.vel = Vec2::ZERO;
     }
+    // (PLATYPUS_SPACE_POGO=1: a training dummy 30 under the player at 1.5
+    // s; from 2 s, S held and the sword swung down at it, twice.)
+    if std::env::var("PLATYPUS_SPACE_POGO").is_ok() {
+        if t > 1.5 && !*spawned {
+            *spawned = true;
+            crate::creatures::def::spawn_creature(&mut commands, "dummy", k.body.pos - Vec2::new(0.0, 40.0), |_| {});
+            (hand.bar, hand.slot) = (0, 1);
+        }
+        if t > 2.0 {
+            cursor.0 = Some(k.body.pos - Vec2::new(0.0, 30.0));
+            keys.press(KeyCode::KeyS);
+            if ((t - 2.0) * 4.0) as i32 % 2 == 0 { mouse.press(MouseButton::Left) } else { mouse.release(MouseButton::Left) }
+        }
+    }
+    // (PLATYPUS_SPACE_STORM=1: a storm over the column at 1 s, far below.)
+    if std::env::var("PLATYPUS_SPACE_STORM").is_ok() && (1.0..1.05).contains(&t) {
+        sim.queue(platypus_sim::WorldEdit::Weather { x: k.body.pos.x as i32, radius: 600, storm: true });
+    }
     if t >= *next {
-        *next = t + 1.0;
+        *next = t + 0.25;
         let solid = (-60..=60).flat_map(|dy| (-60..=60).map(move |dx| (dx, dy))).filter(|&(dx, dy)| sim.world.get(CellPos::new(at.x as i32 + dx * 2, at.y as i32 + dy * 2)).is_some_and(|c| !c.is_air())).count();
         let near: Vec<String> = others.iter().filter(|(o, _)| o.body.pos.distance(k.body.pos) < 900.0).map(|(o, n)| format!("{n} {:.0} off", o.body.pos.distance(k.body.pos))).collect();
         info!(
-            "space: t {t:.1} at {:+.0},{:+.0} from the rock's middle; {solid} of its cells about it solid (a 2-cell sample); near it: {}; time {:.2}, {}, health {:.0}{}; {} meteors; breath {:?}",
+            "space: t {t:.1} at {:+.0},{:+.0} from the rock's middle (going {:+.0},{:+.0}); {solid} of its cells about it solid (a 2-cell sample); near it: {}; time {:.2}, {}, health {:.0}{}; {} meteors; breath {:?}",
             k.body.pos.x - at.x,
             k.body.pos.y - at.y,
+            k.body.vel.x,
+            k.body.vel.y,
             near.join(", "),
             day.time,
             sunlit.map_or("no sun or shade".to_string(), |s| format!("{} (heat {:.2})", if s.lit { "in the sun" } else { "in shade" }, s.heat)),
@@ -17404,6 +17435,9 @@ fn space_script(
             meteors.iter().count(),
             breath.map(|b| (b.left * 10.0).round() / 10.0)
         );
+        if std::env::var("PLATYPUS_SPACE_POGO").is_ok() {
+            info!("space: pogo: swinging {} (down {}), holding {:?}", swing.is_some(), swing.is_some_and(|s| s.downward()), (k.loco.contacts.ground, k.loco.state));
+        }
     }
 }
 
