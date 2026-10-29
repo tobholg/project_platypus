@@ -163,28 +163,32 @@ const BREEZE: f32 = 40.0;
 const PASSES: usize = 8;
 const JUMP: f32 = 40.0;
 
-fn pin_at(def: &ClothDef, pos: Vec2, half: Vec2, facing: f32, i: usize) -> Vec2 {
+/// (`turn`: the wearer turned, weightless (`zerog::Turning`), as a unit
+/// vector: the span across its shoulders turned with it.)
+fn pin_at(def: &ClothDef, pos: Vec2, turn: Vec2, facing: f32, i: usize) -> Vec2 {
     let u = if def.cols > 1 { i as f32 / (def.cols - 1) as f32 } else { 0.5 };
     let x = def.pin.0 + (def.pin.1 - def.pin.0) * u;
-    let _ = half;
-    pos + Vec2::new(x * facing, def.pin.2)
+    pos + turn.rotate(Vec2::new(x * facing, def.pin.2))
 }
 
-/// Each drape falls, swings and settles, pinned to its wearer.
-fn hang(sim: Res<SimWorld>, time: Res<Time>, mut q: Query<(&mut Drapes, &Kinematics)>) {
+/// Each drape falls, swings and settles, pinned to its wearer (weightless,
+/// it floats, nothing to blow it: `zerog`).
+fn hang(sim: Res<SimWorld>, time: Res<Time>, mut q: Query<(&mut Drapes, &Kinematics, Option<&crate::zerog::Turning>)>) {
     let t = time.elapsed_secs();
     let solid = |p: Vec2| sim.world.get(CellPos::from_world(p.x, p.y)).is_some_and(|c| !c.is_air() && matches!(sim.world.materials().phys(c.material).kind, Kind::Static | Kind::Powder));
-    for (mut drapes, k) in &mut q {
-        let (pos, half, facing) = (k.body.pos, k.body.half, k.loco.facing);
+    for (mut drapes, k, turning) in &mut q {
+        let (pos, facing) = (k.body.pos, k.loco.facing);
+        let turn = Vec2::from_angle(turning.map_or(0.0, |t| t.angle));
+        let g = crate::zerog::gravity_at(&sim, pos.y);
         // (Rushing through the air, it flaps: as hard as it goes.)
         let rush = (k.body.vel.length() / FLUTTER.0).min(1.5);
         for d in drapes.0.iter_mut() {
             let def = d.def.clone();
             let (cols, rows, gap) = (def.cols, def.rows, def.gap);
             let idx = |i: usize, j: usize| j * cols + i;
-            let fresh = d.pts.len() != cols * rows || d.pts.first().is_some_and(|p| p.distance(pin_at(&def, pos, half, facing, 0)) > JUMP);
+            let fresh = d.pts.len() != cols * rows || d.pts.first().is_some_and(|p| p.distance(pin_at(&def, pos, turn, facing, 0)) > JUMP);
             if fresh {
-                d.pts = (0..rows).flat_map(|j| (0..cols).map(move |i| (i, j))).map(|(i, j)| pin_at(&def, pos, half, facing, i) - Vec2::Y * gap * j as f32).collect();
+                d.pts = (0..rows).flat_map(|j| (0..cols).map(move |i| (i, j))).map(|(i, j)| pin_at(&def, pos, turn, facing, i) - Vec2::Y * gap * j as f32).collect();
                 d.prev = d.pts.clone();
             }
             d.facing = facing;
@@ -198,7 +202,7 @@ fn hang(sim: Res<SimWorld>, time: Res<Time>, mut q: Query<(&mut Drapes, &Kinemat
                     let away = -facing * def.behind * (j as f32 / rows as f32);
                     let up = (j as f32 / rows as f32) * rush * FLUTTER.1;
                     let flap = Vec2::new((t * 19.0 + j as f32 * 1.3 + i as f32 * 0.7).sin(), (t * 23.0 + j as f32 * 0.9).cos() * 0.5) * up;
-                    d.pts[n] += v + (Vec2::new(breeze + away, -FALL * def.weight) + flap) * DT * DT;
+                    d.pts[n] += v + (Vec2::new(breeze * g + away, -FALL * def.weight * g) + flap) * DT * DT;
                 }
             }
             // Ties pulled true; the top row held where it's pinned.
@@ -218,7 +222,7 @@ fn hang(sim: Res<SimWorld>, time: Res<Time>, mut q: Query<(&mut Drapes, &Kinemat
             };
             for _ in 0..PASSES {
                 for i in 0..cols {
-                    d.pts[idx(i, 0)] = pin_at(&def, pos, half, facing, i);
+                    d.pts[idx(i, 0)] = pin_at(&def, pos, turn, facing, i);
                 }
                 // (Out of rock as it's pulled true, too: what lies on the
                 // ground slides along it.)
@@ -254,7 +258,8 @@ fn hang(sim: Res<SimWorld>, time: Res<Time>, mut q: Query<(&mut Drapes, &Kinemat
                     let hi = (def.arc.1 - (i as f32) * FAN).to_radians();
                     let n = idx(i, j);
                     let o = d.pts[idx(i, 0)];
-                    let v = d.pts[n] - o;
+                    // (Its down: the wearer's, turned as it's turned.)
+                    let v = Vec2::new(turn.x, -turn.y).rotate(d.pts[n] - o);
                     let len = v.length();
                     if len < 1e-3 {
                         continue;
@@ -263,7 +268,7 @@ fn hang(sim: Res<SimWorld>, time: Res<Time>, mut q: Query<(&mut Drapes, &Kinemat
                     let a = (-v.x * facing).atan2(-v.y);
                     if a < lo || a > hi {
                         let a = a.clamp(lo, hi);
-                        let p = o + Vec2::new(-a.sin() * facing, -a.cos()) * len;
+                        let p = o + turn.rotate(Vec2::new(-a.sin() * facing, -a.cos())) * len;
                         d.pts[n] = p;
                         d.prev[n] = p;
                     }

@@ -161,7 +161,7 @@ impl Plugin for AnimationPlugin {
     }
 }
 
-type Animated<'a> = (&'a Kinematics, &'a mut Animator, &'a Children, Option<&'a mut Aiming>, Option<&'a mut HandPos>, Option<&'a mut Soles>, Option<&'a super::tumble::Tumble>, Option<&'a super::parts::Severed>, Option<&'a Hug>, Option<&'a crate::magic::field::Slowed>);
+type Animated<'a> = (&'a Kinematics, &'a mut Animator, &'a Children, Option<&'a mut Aiming>, Option<&'a mut HandPos>, Option<&'a mut Soles>, Option<&'a super::tumble::Tumble>, Option<&'a super::parts::Severed>, Option<&'a Hug>, Option<&'a crate::magic::field::Slowed>, Option<&'a crate::zerog::Turning>);
 type BodySprites = (With<CreatureSprite>, Without<ArmSprite>, Without<CreatureEyes>);
 type EyeSprites = (With<CreatureEyes>, Without<CreatureSprite>, Without<ArmSprite>);
 type Arms<'a> = (&'a mut Sprite, &'a mut Transform, &'a mut Visibility);
@@ -178,7 +178,7 @@ pub fn animate(
     mut arms: Query<Arms, With<ArmSprite>>,
     mut eyes: Query<(&mut Sprite, &mut Transform), EyeSprites>,
 ) {
-    for (k, mut anim, children, mut aiming, hand, soles, tumble, severed, hug, slowed) in &mut creatures {
+    for (k, mut anim, children, mut aiming, hand, soles, tumble, severed, hug, slowed, turning) in &mut creatures {
         let anim = &mut *anim;
         let def = anim.def.clone();
         let dt = time.delta_secs() * crate::magic::field::share(slowed);
@@ -246,8 +246,11 @@ pub fn animate(
             && let Some(&bare) = rig.without.get(&(index, FRONT_ARM.to_string()))
             && let Some(&(sx, sy)) = rig.anchors.get(FRONT_ARM).and_then(|m| m.get(&index))
         {
-            let shoulder = k.body.pos + local(sx as f32, sy as f32).truncate();
-            let d = a.at - shoulder;
+            // (Weightless and turned, the whole of it is: the aim as it
+            // sees it, from its turned shoulder.)
+            let turned = turning.map_or(0.0, |t| t.angle);
+            let shoulder = k.body.pos + Vec2::from_angle(turned).rotate(local(sx as f32, sy as f32).truncate());
+            let d = Vec2::from_angle(-turned).rotate(a.at - shoulder);
             let angle = d.y.atan2(d.x.abs()).to_degrees();
             if let Some(f) = rig.fan_frame(FRONT_ARM, angle) {
                 let (px, py) = rig.fan_pivot;

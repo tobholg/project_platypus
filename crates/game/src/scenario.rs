@@ -17152,13 +17152,14 @@ fn high_script(
 /// over the slab, shooting arrows down to the left / holding the flame
 /// jet to the left from 3 s to 8 s; `pick`: floating by the slab's side,
 /// striking it with the pickaxe from 3 s. Logs where it is against the
-/// slab, its speed, what it holds, the gravity, its breath and health.
+/// slab, its speed, what it holds, how it's turned, the gravity, its
+/// breath and health.
 fn zerog_script(
     s: Res<Scenario>,
     mut sim: ResMut<SimWorld>,
     mut menu: ResMut<crate::devmenu::DevMenu>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
-    mut player: Query<(&mut Kinematics, &mut crate::hands::items::Inventory, &crate::creatures::Health, Option<&crate::breath::Breath>), With<LocalPlayer>>,
+    mut player: Query<(&mut Kinematics, &mut crate::hands::items::Inventory, &crate::creatures::Health, Option<&crate::breath::Breath>, Option<&crate::zerog::Turning>), With<LocalPlayer>>,
     items: Option<Res<crate::hands::items::Items>>,
     (mut hand, mut cursor, mut mouse): (ResMut<crate::hands::Hand>, ResMut<CursorOverride>, ResMut<ButtonInput<MouseButton>>),
     mut state: Local<(u8, f32, Option<Vec2>)>,
@@ -17168,7 +17169,7 @@ fn zerog_script(
     }
     menu.open = false;
     let t = s.elapsed;
-    let Ok((mut k, mut inv, health, breath)) = player.single_mut() else { return };
+    let Ok((mut k, mut inv, health, breath, turning)) = player.single_mut() else { return };
     let Some(sky) = sim.generator.sky_layers() else { return };
     let mode = std::env::var("PLATYPUS_ZEROG").unwrap_or_default();
     let (step, next, slab) = &mut *state;
@@ -17272,12 +17273,14 @@ fn zerog_script(
         let c = k.loco.contacts;
         let holds: Vec<&str> = [(c.ground, "floor"), (c.ceiling, "roof"), (c.wall_left, "wall left"), (c.wall_right, "wall right")].into_iter().filter(|h| h.0).map(|h| h.1).collect();
         info!(
-            "zerog: t {t:.2} at {:+.1},{:+.1} going {:+.1},{:+.1} holding [{}] gravity {:.3}; breath {:?} health {:.0}",
+            "zerog: t {t:.2} at {:+.1},{:+.1} going {:+.1},{:+.1} holding [{}] turned {:+.0}° spinning {:+.2}; gravity {:.3}; breath {:?} health {:.0}",
             k.body.pos.x - at.x,
             k.body.pos.y - k.body.half.y - at.y,
             k.body.vel.x,
             k.body.vel.y,
             holds.join(", "),
+            turning.map_or(0.0, |t| t.angle.to_degrees()),
+            turning.map_or(0.0, |t| t.omega),
             sky.gravity(k.body.pos.y),
             breath.map(|b| (b.left * 10.0).round() / 10.0),
             health.hp
