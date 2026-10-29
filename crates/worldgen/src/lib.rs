@@ -14,6 +14,7 @@ pub mod biome;
 pub mod caves;
 pub mod flora;
 pub mod islands;
+pub mod space;
 pub mod lairs;
 pub mod minerals;
 pub mod plan;
@@ -72,6 +73,11 @@ pub trait ChunkGenerator: Send + Sync {
     /// The sky islands as the seed made them (bottom-left and top-right
     /// cells of each).
     fn sky_islands(&self) -> Vec<(CellPos, CellPos)> {
+        Vec::new()
+    }
+
+    /// The asteroids in space as the seed made them: middle, radius, kind.
+    fn asteroids(&self) -> Vec<(CellPos, f32, space::Kind)> {
         Vec::new()
     }
 
@@ -410,6 +416,9 @@ struct Ids {
     aerolite: MaterialId,
     fulgurite: MaterialId,
     spring: MaterialId,
+    regolith: MaterialId,
+    starmetal: MaterialId,
+    solarite: MaterialId,
     tall_grass: MaterialId,
     ice: MaterialId,
     sandstone: MaterialId,
@@ -561,6 +570,9 @@ impl TerrainGen {
             aerolite: mats.expect_id("aerolite_ore"),
             fulgurite: mats.expect_id("fulgurite"),
             spring: mats.expect_id("spring"),
+            regolith: mats.expect_id("regolith"),
+            starmetal: mats.expect_id("starmetal_ore"),
+            solarite: mats.expect_id("solarite_ore"),
             tall_grass: mats.expect_id("tall_grass"),
             ice: mats.expect_id("ice"),
             sandstone: mats.expect_id("sandstone"),
@@ -1156,6 +1168,11 @@ impl TerrainGen {
         {
             return (i.stone, None);
         }
+        // (An asteroid's rock behind it, mined out or hollow.)
+        if y >= self.plan.asteroids.floor {
+            let c = self.plan.asteroids.at(self.plan.wrap(x), y);
+            return (if c == space::Cell::None { i.air } else { i.basalt }, None);
+        }
         let depth = self.surface_at(x) - y;
         if depth > 24
             && let Some((m, foot)) = self.plan.caves.mushroom_at(x, y)
@@ -1205,6 +1222,19 @@ impl TerrainGen {
     fn material_at(&self, x: i32, y: i32) -> MaterialId {
         let i = &self.ids;
         let plan = &*self.plan;
+        // Up in space: an asteroid, or nothing.
+        if y >= plan.asteroids.floor {
+            return match plan.asteroids.at(plan.wrap(x), y) {
+                space::Cell::None | space::Cell::Hollow => i.air,
+                space::Cell::Stone => i.stone,
+                space::Cell::Basalt => i.basalt,
+                space::Cell::Regolith => i.regolith,
+                space::Cell::Ice => i.ice,
+                space::Cell::Grit => i.gravel,
+                space::Cell::Starmetal => i.starmetal,
+                space::Cell::Solarite => i.solarite,
+            };
+        }
         if y < 9 + (hash(&[plan.seed, 77, x as u64]) % 6) as i32 {
             return i.bedrock;
         }
@@ -2393,6 +2423,10 @@ impl ChunkGenerator for TerrainGen {
         Some(self.plan.sky_layers())
     }
 
+    fn asteroids(&self) -> Vec<(CellPos, f32, space::Kind)> {
+        self.plan.asteroids.rocks().iter().map(|r| (CellPos::new(r.x, r.y), r.r, r.kind)).collect()
+    }
+
     fn sky_islands(&self) -> Vec<(CellPos, CellPos)> {
         self.plan.islands.iter().map(|i| (CellPos::new(i.x0, i.y0), CellPos::new(i.x0 + i.w - 1, i.y0 + i.h - 1))).collect()
     }
@@ -3360,6 +3394,46 @@ mod tests {
 
     /// The great islands: many, some wide enough for a castle, a wood and
     /// a lake; their lakes held in, each with a spring open to the sky.
+    #[test]
+    fn space_is_full_of_asteroids() {
+        let m = mats();
+        let t = std::time::Instant::now();
+        let g = TerrainGen::new(1, Preset::Large, &m);
+        let p = g.plan();
+        let rocks = p.asteroids.rocks();
+        let of = |k: space::Kind| rocks.iter().filter(|r| r.kind == k).count();
+        let big = rocks.iter().filter(|r| r.r > 60.0).count();
+        eprintln!("{} asteroids (planned with the rest in {:?}): {} stony, {} metal, {} icy, {} sunstone; {big} over 120 across; space {}..{}", rocks.len(), t.elapsed(), of(space::Kind::Stony), of(space::Kind::Metal), of(space::Kind::Icy), of(space::Kind::Sunstone), p.asteroids.floor, p.asteroids.top);
+        assert!(rocks.len() > 3_000 && big > 20, "{} asteroids, {big} big", rocks.len());
+        for k in [space::Kind::Stony, space::Kind::Metal, space::Kind::Icy, space::Kind::Sunstone] {
+            assert!(of(k) > 50, "{k:?}: {}", of(k));
+        }
+        assert!(rocks.iter().all(|r| r.y as f32 - r.r > p.asteroids.floor as f32 && (r.y as f32) < p.asteroids.top as f32 - 400.0), "all in space, clear of the top");
+        // What's in them: a stony one's middle is rock under a skin of
+        // dust; a metal one's heart starmetal; a sunstone one glitters.
+        let (regolith, starmetal, solarite) = (m.expect_id("regolith"), m.expect_id("starmetal_ore"), m.expect_id("solarite_ore"));
+        let count = |r: &space::Asteroid, mat: MaterialId| {
+            let n = r.r as i32;
+            (-n..=n).flat_map(|dy| (-n..=n).map(move |dx| (r.x + dx, r.y + dy))).filter(|&(x, y)| g.material_at(x, y) == mat).count()
+        };
+        let pick = |k: space::Kind| rocks.iter().filter(|r| r.kind == k && r.r > 25.0).take(3).collect::<Vec<_>>();
+        for r in pick(space::Kind::Stony) {
+            assert!(count(r, regolith) > 0 && count(r, MaterialId::AIR) < (r.r * r.r * 2.4) as usize, "a stony rock at {},{} r {}: dust on it, mostly rock", r.x, r.y, r.r);
+        }
+        for r in pick(space::Kind::Metal) {
+            assert!(count(r, starmetal) > (r.r * r.r) as usize / 2, "a metal rock's starmetal heart at {},{}", r.x, r.y);
+        }
+        for r in pick(space::Kind::Sunstone) {
+            assert!(count(r, solarite) > (r.r * r.r) as usize / 4, "a sunstone rock's solarite at {},{}", r.x, r.y);
+        }
+        // A chunk of space makes quickly.
+        let r = rocks.iter().find(|r| r.r > 40.0).unwrap();
+        let t = std::time::Instant::now();
+        let c = g.generate(ChunkPos::new(r.x.div_euclid(CHUNK), r.y.div_euclid(CHUNK)));
+        eprintln!("a chunk through a rock made in {:?}", t.elapsed());
+        assert!(c.cells().iter().filter(|c| !c.is_air()).count() > 1_000, "the chunk through it holds rock");
+    }
+
     #[test]
     fn great_islands_hold_a_lake_and_a_waterfall() {
         let m = mats();

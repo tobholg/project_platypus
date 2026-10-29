@@ -142,6 +142,23 @@
         // pouring a waterfall over the edge for ever (the sim: `springs`).
         (name: "spring",   kind: Static, density: 2600, hardness: 60, crumbles_into: "gravel", springs: ("spray", 12),
             colors: [(70, 96, 112), (86, 116, 134), (60, 84, 100)]),
+        // Starmetal (the space arc): the metal asteroids' heart, nickel-iron
+        // from the void, dark and heavy, flecked silver-white and shining a
+        // cold white-blue in your light. Past fulgurite: the hardest ore.
+        (name: "starmetal_ore", loot: Ore, kind: Static, charges: true, density: 5200, hardness: 150, crumbles_into: "gravel",
+            nuggets: (spacing: 5, size: 3.4, fill: 0.9), sparkle: true, luster: (150, 170, 220),
+            colors: [(22, 22, 28), (46, 46, 54), (58, 58, 68), (186, 196, 220), (240, 246, 255)]),
+        // Solarite (the space arc): sunstone, crystals grown on the
+        // sun-baked asteroids, amber-gold and glowing of itself (sunlight
+        // drunk and given back).
+        (name: "solarite_ore", loot: Ore, kind: Static, density: 2600, hardness: 145, crumbles_into: "gravel", glow: (90, 52, 10), shimmer: 160,
+            nuggets: (spacing: 6, size: 3.4, fill: 0.9), sparkle: true, luster: (255, 190, 80),
+            colors: [(46, 30, 18), (70, 58, 50), (86, 72, 62), (250, 170, 50), (255, 236, 150)]),
+        // Regolith: the dust of the asteroids, ground fine by small strikes
+        // over ages; it lies on them as a skin and hangs where it's knocked
+        // off (nothing to fall to).
+        (name: "regolith", kind: Powder, density: 1500, hardness: 8, above: (1300, "glass"),
+            colors: [(92, 88, 86), (110, 106, 102), (78, 76, 76), (124, 118, 112)]),
         // A fallen star's heart (world-events: events.rs): dark, glassy,
         // flecked with light, shining a cold blue in yours; an iron pick
         // takes it.

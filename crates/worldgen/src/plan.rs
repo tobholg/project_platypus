@@ -325,6 +325,8 @@ pub struct WorldPlan {
     pub width: i32,
     pub height: i32,
     pub space: i32,
+    /// The asteroids in it.
+    pub asteroids: crate::space::Space,
     pub sea_level: i32,
     /// The lowest y of each band, in `Band::ALL` order (the underworld's is 0).
     band_floors: [i32; 7],
@@ -857,7 +859,8 @@ impl WorldPlan {
             let (a, b) = ((SUNKEN_CITY.0 * ocean_w as f64) as i32, (SUNKEN_CITY.1 * ocean_w as f64) as i32);
             (a, b, surface[a as usize..b as usize].iter().copied().max().unwrap_or(sea_level))
         };
-        WorldPlan { seed, preset, width, height, space, sea_level, band_floors, biomes, surface, plain, start, water, rugged, islands, chasms, stretches, climate, forest, island_forest, structures, caves, spires, ocean: ocean_w, ocean_floor, sunken_city, drifters, cloud_sea: (band_floors[0] as f64 + CLOUD_SEA_AT * (height - 1 - band_floors[0]) as f64) as i32 }
+        let asteroids = crate::space::Space::plan(seed, width, sky_layers(band_floors[0], height, space).weightless.1, height + space - 1, (sw, sh), cw);
+        WorldPlan { seed, preset, width, height, space, asteroids, sea_level, band_floors, biomes, surface, plain, start, water, rugged, islands, chasms, stretches, climate, forest, island_forest, structures, caves, spires, ocean: ocean_w, ocean_floor, sunken_city, drifters, cloud_sea: (band_floors[0] as f64 + CLOUD_SEA_AT * (height - 1 - band_floors[0]) as f64) as i32 }
     }
 
     /// How high rain and snow come in from: the sky band's floor (the

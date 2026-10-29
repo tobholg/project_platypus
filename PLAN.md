@@ -166,6 +166,32 @@ sun and shade (scorching and freezing), meteor showers down through the
 layers (craters, meteorite ore), the space gear, a creature or two, the
 planet seen curving below (the world's own map).
 
+Design (2026-10-29, started on `space`, off `zerog`): the space over the
+sky (16 384 cells on a large world) in three reaches: the shallows just
+over the void's edge (sparse debris, ice), the belts (asteroid fields,
+dense, across the world, some wide, some tight clusters), high space over
+them (sparse; the black hole's, later). Stages, a commit or more each:
+- *Asteroids* (worldgen, like the islands: planned once, chunks read
+  them): lumpy rocks, a cell to a few hundred across, cratered; kinds:
+  stony (stone, basalt, a skin of regolith dust that hangs), icy (ice,
+  frozen through with grit), metal (starmetal ore through a dark core),
+  sunstone (solarite crystals, glowing, warm); a big one has hollows.
+  Mined out, the hole shows its rock behind.
+- *The look of space*: over the void the sky darkens to black, stars
+  come out (day and night), the sun a hard white disc; under you the
+  sea of clouds and, far down, the planet's curve.
+- *Sun and shade*: in space, in the sun's light you're scorched (slowly,
+  more the longer), in a rock's shadow you freeze; the line between is
+  where to be. Ice in the sun steams away, slowly.
+- *Meteor showers*: some nights streaks cross space, fast, straight,
+  smashing what they hit (an asteroid chipped, you hurt), a few going on
+  down to land as falling stars do (craters, meteorite).
+- *Gear*: starmetal (smelted at a furnace) and solarite make a void suit
+  (air for a while, warm in shade, shaded in sun), a thruster pack
+  (steered pushes, fuel refilled by solarite), starmetal tools.
+- *Creatures*: one or two of space's own (grazers on the asteroids'
+  regolith; something that hunts by the light).
+
 **5. `singularity`: the black hole.** Its look (lensing, the disk, the
 ring), its pull, slowed time, tidal hurt, the disk's nullstone and
 wrecks; crossing kills.

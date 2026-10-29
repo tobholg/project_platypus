@@ -414,7 +414,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, fall_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, save_script)
             .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script, wardrobe_script, herbcut_script, zombiejump_script, crushcheck_script, batcount_script, airswing_script, dive_script, paint_script, firewall_script, fields_script, ward_script, seam_script))
-            .add_systems(Update, (sky_script, drift_script, high_script, zerog_script))
+            .add_systems(Update, (sky_script, drift_script, high_script, zerog_script, space_script))
             .add_systems(PreUpdate, craft_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pack_script.after(bevy::ui::UiSystems::Focus).before(crate::pause::key))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
@@ -17315,6 +17315,54 @@ fn zerog_script(
             breath.map(|b| (b.left * 10.0).round() / 10.0),
             health.hp
         );
+    }
+}
+
+/// `space` (a generated world): the player put floating beside the
+/// asteroid nearest the spawn of the kind `PLATYPUS_SPACE_ROCK` (`stony`,
+/// `metal`, `icy`, `sunstone`; any) and at least `PLATYPUS_SPACE_R` (40)
+/// across its radius, `PLATYPUS_SPACE_OFF` (30) out from its edge, held
+/// there till its chunks are in. Logs the rock, how much of it's in, and
+/// the creatures about it.
+fn space_script(s: Res<Scenario>, sim: Res<SimWorld>, mut menu: ResMut<crate::devmenu::DevMenu>, mut player: Query<&mut Kinematics, With<LocalPlayer>>, others: Query<(&Kinematics, &Name), (Without<LocalPlayer>, With<crate::creatures::Creature>)>, mut state: Local<(Option<(Vec2, f32)>, f32)>) {
+    if s.name != "space" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let Ok(mut k) = player.single_mut() else { return };
+    if t < 0.3 {
+        return;
+    }
+    let (rock, next) = &mut *state;
+    let (at, r) = *rock.get_or_insert_with(|| {
+        let want = std::env::var("PLATYPUS_SPACE_ROCK").unwrap_or_default();
+        let most: f32 = std::env::var("PLATYPUS_SPACE_R").ok().and_then(|v| v.parse().ok()).unwrap_or(40.0);
+        let sx = sim.generator.spawn_point().x;
+        let kind = |k: platypus_worldgen::space::Kind| want.is_empty() || format!("{k:?}").eq_ignore_ascii_case(&want);
+        let rocks = sim.generator.asteroids();
+        let Some((c, r, kind)) = rocks.iter().filter(|(_, r, k)| *r >= most && kind(*k)).min_by_key(|(c, _, _)| (c.x - sx).abs()).copied() else {
+            info!("space: no such rock ({} in all)", rocks.len());
+            return (k.body.pos, 0.0);
+        };
+        info!("space: a {kind:?} rock at {},{} radius {r:.0} ({} rocks in all)", c.x, c.y, rocks.len());
+        (Vec2::new(c.x as f32, c.y as f32), r)
+    });
+    if r == 0.0 {
+        return;
+    }
+    let off: f32 = std::env::var("PLATYPUS_SPACE_OFF").ok().and_then(|v| v.parse().ok()).unwrap_or(30.0);
+    let spot = at + Vec2::new(r * 1.3 + off, 0.0);
+    if !sim.world.is_loaded(CellPos::from_world(at.x, at.y).chunk()) || t < 1.0 {
+        k.body.pos = spot;
+        k.prev_pos = spot;
+        k.body.vel = Vec2::ZERO;
+    }
+    if t >= *next {
+        *next = t + 1.0;
+        let solid = (-60..=60).flat_map(|dy| (-60..=60).map(move |dx| (dx, dy))).filter(|&(dx, dy)| sim.world.get(CellPos::new(at.x as i32 + dx * 2, at.y as i32 + dy * 2)).is_some_and(|c| !c.is_air())).count();
+        let near: Vec<String> = others.iter().filter(|(o, _)| o.body.pos.distance(at) < r * 2.0 + 200.0).map(|(o, n)| format!("{n} {:+.0},{:+.0}", o.body.pos.x - at.x, o.body.pos.y - at.y)).collect();
+        info!("space: t {t:.1} at {:+.0},{:+.0} from the rock's middle; {solid} of its cells about it solid (a 2-cell sample); near it: {}", k.body.pos.x - at.x, k.body.pos.y - at.y, near.join(", "));
     }
 }
 
