@@ -205,7 +205,10 @@ const SPAWN_TREES: i32 = 450;
 /// The village (structures.rs): not in the world for now.
 pub(crate) const VILLAGE: bool = false;
 const LAKE_BOWLS: f64 = 3.0;
-const ISLANDS: f64 = 12.0;
+const ISLANDS: f64 = 24.0;
+/// The islands' half-widths (reference cells): most middling, a few great
+/// enough for a castle, a wood and a lake (`islands::plan`).
+const ISLAND_RX: (f64, f64) = (160.0, 1_000.0);
 /// The sea of clouds drawn in the backdrop (far off: under you when you're
 /// up among the high islands, over you lower down): this far up the sky
 /// band (a share of it).
@@ -224,10 +227,13 @@ const JET: (f64, f64) = (0.62, 0.72);
 const THIN_FROM: f64 = 0.7;
 const WEIGHTLESS_FROM: f64 = 0.74;
 const ISLAND_CLEAR: f64 = 300.0;
-/// Drifters about each island (fewest, most), their half-width at most
-/// (reference cells).
-const DRIFTERS: (u32, u32) = (2, 4);
-const DRIFTER_RX: f64 = 36.0;
+/// Drifters about each island (fewest, most, and one more for each this
+/// much of its width), their half-width at most, and how far out from it
+/// across and up or down they float (reference cells).
+const DRIFTERS: (u32, u32) = (3, 6);
+const DRIFTERS_EVERY: i32 = 220;
+const DRIFTER_RX: f64 = 44.0;
+const DRIFTER_REACH: (f64, f64) = (300.0, 240.0);
 /// How far either side a lake's rims are looked for (large world): wider
 /// valleys are dry land, not one giant lake.
 const LAKE_REACH: f64 = 1_800.0;
@@ -689,12 +695,12 @@ impl WorldPlan {
             (ISLANDS * cw).round().max(2.0) as usize,
             (ocean_w, width - ocean_w),
             ((band_floors[1] as f64 + ISLANDS_FROM * (sky_lo - band_floors[1]) as f64) as i32, (sky_lo as f64 + ISLANDS_TO * (sky_hi - sky_lo) as f64) as i32),
-            (135.0 * sw.max(0.5), 360.0 * sw.max(0.5)),
+            (ISLAND_RX.0 * sw.max(0.5), ISLAND_RX.1 * sw.max(0.5)),
             |x0, x1, bottom| (x0..=x1).step_by(8).all(|x| surface[x.clamp(0, width - 1) as usize] + clear < bottom),
         );
         // Drifters about them: small rocks with aerolite hearts, floating
         // free.
-        let drifters = islands::drifters(seed, &islands, DRIFTERS, (12.0, DRIFTER_RX * sw.max(0.5)), ((180.0 * sw.max(0.5)) as i32, (160.0 * sh.max(0.5)) as i32), |x0, x1, bottom| {
+        let drifters = islands::drifters(seed, &islands, DRIFTERS, DRIFTERS_EVERY, (14.0, DRIFTER_RX * sw.max(0.5)), ((DRIFTER_REACH.0 * sw.max(0.5)) as i32, (DRIFTER_REACH.1 * sh.max(0.5)) as i32), |x0, x1, bottom| {
             (x0..=x1).step_by(4).all(|x| surface[x.clamp(0, width - 1) as usize] + clear < bottom)
         });
 
@@ -805,10 +811,10 @@ impl WorldPlan {
                 seed ^ 0x15F0,
                 width,
                 |x| island(x).and_then(|i| i.top_at(x)).unwrap_or(0),
-                |_| 0.3,
+                |_| 0.45,
                 |x| {
                     island(x).is_some_and(|i| {
-                        (x - i.x0 - i.w / 2).abs() < i.w / 3 && i.top_at(x).is_some_and(|top| climate.ambient(x, top) >= TREE_LINE)
+                        (x - i.x0 - i.w / 2).abs() < i.w * 2 / 5 && i.top_at(x).is_some_and(|top| climate.ambient(x, top) >= TREE_LINE)
                     })
                 },
                 |_| (Species::Broadleaf, false, 1.0),

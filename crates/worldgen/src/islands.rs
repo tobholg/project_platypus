@@ -20,6 +20,10 @@ pub enum IslandCell {
     Aerolite,
     /// An old lightning strike's scar: fulgurite, down from its top.
     Fulgurite,
+    /// A big island's lake, on its top.
+    Water,
+    /// Where its waterfall springs from, in its side under the lake.
+    Spring,
 }
 
 pub struct Island {
@@ -77,6 +81,21 @@ const DRIFTER_AEROLITE: f64 = 0.75;
 const DRIFTER_DEPTH: f64 = 1.0;
 /// Old lightning scars on an island, at most (and one at least).
 const SCARS: u32 = 3;
+/// An island this wide (half-width) or wider has a lake on its top, out
+/// towards one end, and a waterfall springing from its side under it: the
+/// lake this share of its half-width across (at most `LAKE_MOST`), this
+/// share of that deep; the spring this many cells tall.
+const LAKE_RX: f64 = 420.0;
+const LAKE_SHARE: (f64, f64) = (0.12, 0.2);
+const LAKE_MOST: f64 = 150.0;
+const LAKE_DEPTH: f64 = 0.22;
+const SPRING_TALL: i32 = 6;
+/// An island's depth (under its top) against its half-width: a small one
+/// half as deep as it's wide; past `DEEP_FROM`, deeper by this share only
+/// (a great one is a plateau, not a mountain upside down).
+const DEPTH: f64 = 0.5;
+const DEEP_FROM: f64 = 300.0;
+const DEEPER: f64 = 0.25;
 
 fn unit(rng: &mut Rng) -> f64 {
     rng.next_u32() as f64 / u32::MAX as f64
@@ -94,8 +113,9 @@ pub fn plan(seed: u64, count: usize, (x_lo, x_hi): (i32, i32), (y_lo, y_hi): (i3
     const GAP: i32 = 90;
     for _ in 0..count {
         for _try in 0..200 {
-            let rx = rx_lo + unit(&mut rng) * (rx_hi - rx_lo);
-            let depth = rx * 0.5;
+            // (Most middling, a few great.)
+            let rx = rx_lo + unit(&mut rng).powf(1.6) * (rx_hi - rx_lo);
+            let depth = if rx <= DEEP_FROM { rx * DEPTH } else { DEEP_FROM * DEPTH + (rx - DEEP_FROM) * DEEPER };
             let cx = x_lo + rx as i32 + (unit(&mut rng) * (x_hi - x_lo - 2 * rx as i32).max(1) as f64) as i32;
             let top = y_lo + depth as i32 + (unit(&mut rng) * (y_hi - y_lo - depth as i32).max(1) as f64) as i32;
             let (x0, x1) = (cx - rx as i32, cx + rx as i32);
@@ -112,19 +132,21 @@ pub fn plan(seed: u64, count: usize, (x_lo, x_hi): (i32, i32), (y_lo, y_hi): (i3
 
 /// Drifters about the islands: small rocks with an aerolite heart, free to
 /// float (the game moves them: `drift.rs`): `per` (fewest, most) about
-/// each island, half-widths `rx_lo..rx_hi`, within the island's width (and
+/// each island and one more each `every` cells of its width, half-widths `rx_lo..rx_hi`, within the island's width (and
 /// `reach` more) across and `rise` up or down of its top; none touching an
 /// island or each other, each where `clear` says it may be (from x, to x,
 /// its bottom).
-pub fn drifters(seed: u64, islands: &[Island], (per_lo, per_hi): (u32, u32), (rx_lo, rx_hi): (f64, f64), (reach, rise): (i32, i32), clear: impl Fn(i32, i32, i32) -> bool) -> Vec<Island> {
+pub fn drifters(seed: u64, islands: &[Island], (per_lo, per_hi): (u32, u32), every: i32, (rx_lo, rx_hi): (f64, f64), (reach, rise): (i32, i32), clear: impl Fn(i32, i32, i32) -> bool) -> Vec<Island> {
     let mut rng = Rng::seeded(&[seed, 0xD12F7]);
     let surf = Perlin::new((seed ^ 0xD1AF) as u32);
     let edge = Perlin::new((seed ^ 0xD1ED) as u32);
     let mut out: Vec<Island> = Vec::new();
     const GAP: i32 = 24;
-    let apart = |a: (i32, i32, i32, i32), b: &Island| a.0 > b.x0 + b.w + GAP || a.1 + GAP < b.x0 || a.2 > b.y0 + b.h + GAP || a.3 + GAP < b.y0;
+    // (Clear of an island's trees too: they stand this tall over it.)
+    const TREES: i32 = 140;
+    let apart = |a: (i32, i32, i32, i32), b: &Island, over: i32| a.0 > b.x0 + b.w + GAP || a.1 + GAP < b.x0 || a.2 > b.y0 + b.h + over + GAP || a.3 + GAP < b.y0;
     for isl in islands {
-        let n = per_lo + rng.next_u32() % (per_hi - per_lo + 1);
+        let n = per_lo + rng.next_u32() % (per_hi - per_lo + 1) + (isl.w / every) as u32;
         for _ in 0..n {
             for _try in 0..40 {
                 let rx = rx_lo + unit(&mut rng) * (rx_hi - rx_lo);
@@ -134,7 +156,7 @@ pub fn drifters(seed: u64, islands: &[Island], (per_lo, per_hi): (u32, u32), (rx
                 let top = isl.y0 + isl.h - 9 + ((unit(&mut rng) - 0.5) * 2.0 * rise as f64) as i32;
                 let h = (depth * 1.4) as i32 + 18;
                 let (x0, x1, y0, y1) = (cx - rx as i32, cx + rx as i32, top - h + 9, top + 9);
-                if !islands.iter().all(|i| apart((x0, x1, y0, y1), i)) || !out.iter().all(|i| apart((x0, x1, y0, y1), i)) || !clear(x0, x1, y0) {
+                if !islands.iter().all(|i| apart((x0, x1, y0, y1), i, TREES)) || !out.iter().all(|i| apart((x0, x1, y0, y1), i, 0)) || !clear(x0, x1, y0) {
                     continue;
                 }
                 out.push(carve(&mut rng, &surf, &edge, cx, top, rx, depth, DRIFTER_AEROLITE));
@@ -185,6 +207,10 @@ fn carve(rng: &mut Rng, surf: &Perlin, edge: &Perlin, cx: i32, top: i32, rx: f64
         }
         isl.top[lx as usize] = Some(crest);
     }
+    // A great island's lake, and its waterfall.
+    if aero < 0.5 && rx >= LAKE_RX {
+        lake(rng, &mut isl, rx);
+    }
     // Old lightning scars (an island's, not a drifter's): fulgurite in
     // forking veins down from its top.
     if aero < 0.5 {
@@ -224,7 +250,8 @@ fn carve(rng: &mut Rng, surf: &Perlin, edge: &Perlin, cx: i32, top: i32, rx: f64
                     }
                     let (lx, ly) = (px as i32 + ox, py as i32 + oy);
                     // Keep a shell: stay 5 cells inside solid rock.
-                    let shell = (-5..=5).all(|k| isl.get(lx + k, ly) != IslandCell::None && isl.get(lx, ly + k) != IslandCell::None);
+                    let inside = |c: IslandCell| !matches!(c, IslandCell::None | IslandCell::Water);
+                    let shell = (-5..=5).all(|k| inside(isl.get(lx + k, ly)) && inside(isl.get(lx, ly + k)));
                     if shell && isl.get(lx, ly) == IslandCell::Stone {
                         isl.set(lx, ly, IslandCell::Cave);
                     }
@@ -243,4 +270,46 @@ fn carve(rng: &mut Rng, surf: &Perlin, edge: &Perlin, cx: i32, top: i32, rx: f64
         }
     }
     isl
+}
+
+/// A lake on a great island's top, out towards one end (a quarter of the
+/// way in or so): a bowl, its shore flattened to its lower rim's height and
+/// filled to just under it; and a waterfall springing from the island's
+/// side at that end, a little under the lake (the spring: `Spring` cells
+/// the sim pours from).
+fn lake(rng: &mut Rng, isl: &mut Island, rx: f64) {
+    let lw = (rx * (LAKE_SHARE.0 + unit(rng) * (LAKE_SHARE.1 - LAKE_SHARE.0))).min(LAKE_MOST);
+    let ld = lw * LAKE_DEPTH;
+    let right = rng.coin();
+    let from_end = isl.w as f64 * (0.2 + unit(rng) * 0.1);
+    let lc = if right { isl.w as f64 - from_end } else { from_end };
+    let (l0, l1) = ((lc - lw) as i32, (lc + lw) as i32);
+    let (Some(a), Some(b)) = (isl.top[l0 as usize], isl.top[l1 as usize]) else { return };
+    // (Water up to two under its lower rim's top: the rim's grass holds it.)
+    let shore = a.min(b) - 1;
+    for lx in l0 + 1..l1 {
+        let dx = (lx as f64 - lc) / lw;
+        let bottom = shore - 2 - (ld * (1.0 - dx * dx).max(0.0).sqrt()) as i32;
+        let Some(crest) = isl.top[lx as usize] else { continue };
+        // (Never through the island: rock enough under its bed.)
+        if isl.get(lx, bottom - isl.y0 - 6) == IslandCell::None {
+            continue;
+        }
+        for y in bottom..crest.max(shore) {
+            isl.set(lx, y - isl.y0, if y < shore { IslandCell::Water } else { IslandCell::None });
+        }
+        isl.set(lx, bottom - 1 - isl.y0, IslandCell::Dirt);
+        isl.top[lx as usize] = None;
+    }
+    // The spring: in the outermost rock at that end, some way under the
+    // lake's level (where the edge has rolled off).
+    let ly = shore - 12 - isl.y0;
+    let mut cols: Box<dyn Iterator<Item = i32>> = if right { Box::new((0..isl.w).rev()) } else { Box::new(0..isl.w) };
+    if let Some(lx) = cols.find(|&lx| matches!(isl.get(lx, ly), IslandCell::Grass | IslandCell::Dirt | IslandCell::Stone)) {
+        for k in 0..SPRING_TALL {
+            if isl.get(lx, ly - k) != IslandCell::None {
+                isl.set(lx, ly - k, IslandCell::Spring);
+            }
+        }
+    }
 }

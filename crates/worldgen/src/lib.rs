@@ -411,6 +411,7 @@ struct Ids {
     dark_leaves: MaterialId,
     aerolite: MaterialId,
     fulgurite: MaterialId,
+    spring: MaterialId,
     tall_grass: MaterialId,
     ice: MaterialId,
     sandstone: MaterialId,
@@ -561,6 +562,7 @@ impl TerrainGen {
             dark_leaves: mats.expect_id("dark_leaves"),
             aerolite: mats.expect_id("aerolite_ore"),
             fulgurite: mats.expect_id("fulgurite"),
+            spring: mats.expect_id("spring"),
             tall_grass: mats.expect_id("tall_grass"),
             ice: mats.expect_id("ice"),
             sandstone: mats.expect_id("sandstone"),
@@ -1152,7 +1154,7 @@ impl TerrainGen {
             return (m, Some(shade));
         }
         if let Some(isl) = self.plan.island_at(x)
-            && isl.at(x, y) != IslandCell::None
+            && !matches!(isl.at(x, y), IslandCell::None | IslandCell::Water)
         {
             return (i.stone, None);
         }
@@ -1245,6 +1247,8 @@ impl TerrainGen {
                     IslandCell::Stone => return i.stone,
                     IslandCell::Aerolite => return i.aerolite,
                     IslandCell::Fulgurite => return i.fulgurite,
+                    IslandCell::Water => return if plan.climate.ambient(x, y) <= 0 { i.ice } else { i.water },
+                    IslandCell::Spring => return i.spring,
                     IslandCell::Cave => return i.air,
                     IslandCell::None => {}
                 }
@@ -3356,6 +3360,44 @@ mod tests {
         assert!(snowy * 10 >= cold.len() * 9, "{snowy} of {} cold, gentle columns are snow", cold.len());
     }
 
+    /// The great islands: many, some wide enough for a castle, a wood and
+    /// a lake; their lakes held in, each with a spring open to the sky.
+    #[test]
+    fn great_islands_hold_a_lake_and_a_waterfall() {
+        let m = mats();
+        let t = std::time::Instant::now();
+        let g = TerrainGen::new(1, Preset::Large, &m);
+        let p = g.plan();
+        let widths: Vec<i32> = p.islands.iter().map(|i| i.w).collect();
+        let great = widths.iter().filter(|&&w| w >= 840).count();
+        eprintln!("{} islands (planned in {:?}), {great} great; widths {:?}; {} drifters", p.islands.len(), t.elapsed(), widths, p.drifters.len());
+        assert!(p.islands.len() >= 70 && great >= 10, "{} islands, {great} great", p.islands.len());
+        let (water, spring) = (m.expect_id("water"), m.expect_id("spring"));
+        let mut lakes = 0;
+        for i in p.islands.iter().filter(|i| i.w >= 840) {
+            let cells = |c: IslandCell| (0..i.w).flat_map(|x| (0..i.h).map(move |y| (i.x0 + x, i.y0 + y))).filter(move |&(x, y)| i.at(x, y) == c);
+            let wet: Vec<(i32, i32)> = cells(IslandCell::Water).collect();
+            if wet.is_empty() {
+                continue;
+            }
+            lakes += 1;
+            // Held: nothing open beside or under its water.
+            for &(x, y) in &wet {
+                for (dx, dy) in [(-1, 0), (1, 0), (0, -1)] {
+                    let n = i.at(x + dx, y + dy);
+                    assert!(!matches!(n, IslandCell::None | IslandCell::Cave), "the lake at {x},{y} leaks into {:?} at {},{}", n, x + dx, y + dy);
+                }
+            }
+            assert!(matches!(g.material_at(wet[0].0, wet[0].1), w if w == water || w == m.expect_id("ice")), "the lake at {:?} is {}", wet[0], m.def(g.material_at(wet[0].0, wet[0].1)).name);
+            // Its spring, open to the sky on its outer side.
+            let springs: Vec<(i32, i32)> = cells(IslandCell::Spring).collect();
+            assert!(!springs.is_empty(), "the island at {} has a lake and no spring", i.x0);
+            assert!(springs.iter().any(|&(x, y)| i.at(x - 1, y) == IslandCell::None || i.at(x + 1, y) == IslandCell::None), "the spring at {:?} is walled in", springs[0]);
+            assert_eq!(g.material_at(springs[0].0, springs[0].1), spring);
+        }
+        assert!(lakes * 2 >= great, "{lakes} lakes on {great} great islands");
+    }
+
     /// Drifters about the islands: a few each, small, aerolite in them,
     /// made as cells, and each reported once (its corner's chunk) for the
     /// game to take over.
@@ -3368,6 +3410,12 @@ mod tests {
         eprintln!("{n} drifters about {} islands", p.islands.len());
         assert!(n >= p.islands.len() * 3 / 2, "{n} drifters about {} islands", p.islands.len());
         let aero = m.expect_id("aerolite_ore");
+        // (None among an island's trees.)
+        for d in &p.drifters {
+            for i in p.islands.iter().filter(|i| d.x0 <= i.x0 + i.w && d.x0 + d.w >= i.x0) {
+                assert!(d.y0 > i.y0 + i.h + 140 || d.y0 + d.h < i.y0, "the drifter at {},{} is among the trees of the island at {},{}", d.x0, d.y0, i.x0, i.y0);
+            }
+        }
         for d in p.drifters.iter().take(20) {
             let cells = (d.x0..d.x0 + d.w).flat_map(|x| (d.y0..d.y0 + d.h).map(move |y| (x, y))).filter(|&(x, y)| g.material_at(x, y) != MaterialId::AIR).count();
             let ore = (d.x0..d.x0 + d.w).flat_map(|x| (d.y0..d.y0 + d.h).map(move |y| (x, y))).filter(|&(x, y)| g.material_at(x, y) == aero).count();
