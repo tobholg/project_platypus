@@ -212,16 +212,29 @@ fn died(mut respawned: MessageReader<crate::respawn::Respawned>, mut map: ResMut
     }
 }
 
+/// Is a world cell solid (as the world is where it's loaded, as the seed
+/// made it where not)?
+fn solid_at(sim: &SimWorld, x: i32, y: i32) -> bool {
+    let mats = sim.world.materials();
+    match sim.world.get(CellPos::new(x, y)) {
+        Some(c) => !c.is_air() && matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder),
+        None => sim.generator.material_hint(x, y).is_some_and(|m| m != MaterialId::AIR && matches!(mats.phys(m).kind, Kind::Static | Kind::Powder)),
+    }
+}
+
+/// Is there room for a body of `half` with its middle at `at`, nothing
+/// solid in it (a spot in the open sky, ground under it or not)?
+pub fn open_at(sim: &SimWorld, at: Vec2, half: Vec2) -> bool {
+    let (lo, hi) = ((at - half).floor().as_ivec2(), (at + half).ceil().as_ivec2());
+    (lo.y..=hi.y).all(|y| (lo.x..=hi.x).all(|x| !solid_at(sim, x, y)))
+}
+
 /// Somewhere a body of `half` can stand nearest `at` (its middle): open
 /// for it, ground under it; from the world as it is where it's loaded,
 /// the seed's ground where not. In the open, straight down onto what's
 /// under it; in rock, the nearest room, out to `reach` cells.
 pub fn standing_room(sim: &SimWorld, at: Vec2, half: Vec2, reach: i32) -> Option<Vec2> {
-    let mats = sim.world.materials();
-    let solid = |x: i32, y: i32| match sim.world.get(CellPos::new(x, y)) {
-        Some(c) => !c.is_air() && matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder),
-        None => sim.generator.material_hint(x, y).is_some_and(|m| m != MaterialId::AIR && matches!(mats.phys(m).kind, Kind::Static | Kind::Powder)),
-    };
+    let solid = |x: i32, y: i32| solid_at(sim, x, y);
     let (hw, hh) = (half.x.ceil() as i32, (half.y * 2.0).ceil() as i32);
     let fits = |x: i32, feet: i32| (-hw..=hw).step_by(2).all(|dx| (0..hh).step_by(2).all(|dy| !solid(x + dx, feet + dy))) && (-hw / 2..=hw / 2).any(|dx| solid(x + dx, feet - 1));
     let (ax, ay) = (at.x.round() as i32, at.y.round() as i32);

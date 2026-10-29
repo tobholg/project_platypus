@@ -309,8 +309,10 @@ fn mouse(
                         to.x = k.body.pos.x + (to.x - k.body.pos.x + half).rem_euclid(w as f32) - half;
                     }
                 }
+                // (Nothing to stand on under it, high in the sky: there,
+                // in the open air.)
                 if let Ok(mut k) = player.single_mut()
-                    && let Some(at) = super::standing_room(&sim, to, k.body.half, 400)
+                    && let Some(at) = super::standing_room(&sim, to, k.body.half, 400).or_else(|| super::open_at(&sim, to, k.body.half).then_some(to))
                 {
                     k.body.pos = at;
                     k.prev_pos = at;
