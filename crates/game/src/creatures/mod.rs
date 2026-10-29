@@ -586,6 +586,15 @@ pub struct FallTrack {
 const SLAM_MIN: f32 = 225.0;
 /// Weightless, a body takes hold of what's this near it (cells).
 const REACH: i32 = 2;
+/// The world's top isn't a wall: within this of it (cells), a body's
+/// pushed back down, up to this hard (cells/s²) at the very top.
+const EDGE: f32 = 400.0;
+const EDGE_PUSH: f32 = 240.0;
+
+/// The push back down from the world's top, `gap` cells under it.
+fn edge(gap: f32) -> f32 {
+    if gap >= EDGE { 0.0 } else { EDGE_PUSH * (1.0 - gap.max(0.0) / EDGE) }
+}
 
 /// A creature's rocket boots fired this tick (`gear::boots`: the exhaust).
 #[derive(Message, Clone, Copy, Debug)]
@@ -680,6 +689,7 @@ pub(crate) fn move_creatures(
     coatings: Res<body::elements::Coatings>,
 ) {
     let grid = WorldGrid(&sim.world);
+    let top = sim.generator.sky_layers().map(|s| s.top as f32);
     for (entity, mut k, stats, controls, (chilled, coated, gooey, phasing, tug, slowed), track, web_walker, rope, player, ease, faltering) in &mut q {
         // Frozen until the ground under it is loaded.
         if !sim.world.is_loaded(CellPos::from_world(k.body.pos.x, k.body.pos.y).chunk()) {
@@ -728,6 +738,14 @@ pub(crate) fn move_creatures(
         k.loco.swinging = tether.is_some();
         // (Weightless, it can reach for what's by it.)
         k.loco.reach = if weightless { platypus_physics::within_reach(&grid, &k.body, REACH) } else { [false; 4] };
+        // (At the world's top: nothing there to take hold of, and a gentle
+        // push back down, `edge`.)
+        let head = k.body.pos.y + k.body.half.y;
+        let at_top = top.is_some_and(|t| head >= t - REACH as f32 - 1.0);
+        k.loco.reach[3] &= !at_top;
+        if let Some(t) = top {
+            k.body.vel.y -= edge(t - head) * dt;
+        }
         // (A climber can hold on to the wall behind it; a spider to its
         // web, anywhere in it.)
         k.loco.backed = stats.cling && (backed(&sim.world, k.body.pos) || (web_walker && stuck_in(&sim.world, &k.body)));
@@ -760,7 +778,8 @@ pub(crate) fn move_creatures(
             if t.left > 0.0 { (t.to - k.body.pos).normalize_or_zero() * t.speed } else { Vec2::ZERO }
         });
         k.body.vel += drift;
-        let contacts = move_and_collide(&grid, &mut k.body, dt);
+        let mut contacts = move_and_collide(&grid, &mut k.body, dt);
+        contacts.ceiling &= !at_top;
         // (What a wall stopped is stopped; the rest goes back as it steers.)
         let v = k.body.vel;
         k.body.vel = Vec2::new(if v.x == 0.0 { 0.0 } else { v.x - drift.x }, if v.y == 0.0 { 0.0 } else { v.y - drift.y });

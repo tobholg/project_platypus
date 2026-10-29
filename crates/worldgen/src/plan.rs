@@ -40,6 +40,16 @@ impl Preset {
         }
     }
 
+    /// Chunks of space over the sky (the void: no gravity, no air), on
+    /// top of its height (`chunks`): the land and the sky as they were.
+    pub fn space_chunks(self) -> i32 {
+        match self {
+            Preset::Small => 32,
+            Preset::Medium => 96,
+            Preset::Large => 256,
+        }
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             Preset::Small => "small",
@@ -130,11 +140,12 @@ impl Scale {
 /// Sea level and the floors of the bands (`Band::ALL` order) for a world
 /// this tall: the reference's scaled down, or, taller, the reference's with
 /// the extra height shared out (`EXTRA_SKY`, `EXTRA_BELOW`).
-/// The high air's layers over a sky band from `floor` to the world's top.
-fn sky_layers(floor: i32, height: i32) -> crate::SkyLayers {
+/// The high air's layers over a sky band from `floor` to the sky's top
+/// (`height`), and space over it to the world's top (`space` more).
+fn sky_layers(floor: i32, height: i32, space: i32) -> crate::SkyLayers {
     let (lo, span) = (floor as f64, (height - 1 - floor) as f64);
     let at = |share: f64| (lo + share * span) as i32;
-    crate::SkyLayers { jet: (at(JET.0), at(JET.1)), thin_from: at(THIN_FROM), weightless: (at(WEIGHTLESS.0), at(WEIGHTLESS.1)), top: height - 1 }
+    crate::SkyLayers { jet: (at(JET.0), at(JET.1)), thin_from: at(THIN_FROM), weightless: (at(WEIGHTLESS.0), at(WEIGHTLESS.1)), top: height + space - 1 }
 }
 
 fn bands(height: i32, sy: f64) -> (i32, [i32; 7]) {
@@ -309,9 +320,11 @@ impl StartValley {
 pub struct WorldPlan {
     pub seed: u64,
     pub preset: Preset,
-    /// Size in cells.
+    /// Size in cells: across, and up to the sky's top (the land and the
+    /// sky are laid out by it; space goes on over it, `space` more).
     pub width: i32,
     pub height: i32,
+    pub space: i32,
     pub sea_level: i32,
     /// The lowest y of each band, in `Band::ALL` order (the underworld's is 0).
     band_floors: [i32; 7],
@@ -387,7 +400,7 @@ impl WorldPlan {
         let s = |salt: u64| (hash(&[seed, salt]) & 0xFFFF_FFFF) as u32;
         let mut rng = Rng::seeded(&[seed, 0x9A4B]);
         let (wc, hc) = preset.chunks();
-        let (width, height) = (wc * CHUNK, hc * CHUNK);
+        let (width, height, space) = (wc * CHUNK, hc * CHUNK, preset.space_chunks() * CHUNK);
         let scale = Scale::of(width, height);
         // (Sizes across and up, and counts across.)
         let ((sw, sh), cw) = (scale.size, scale.count);
@@ -560,7 +573,7 @@ impl WorldPlan {
             cells_per_degree_inversion: (INVERSION * sh).max(1.0) as i32,
             wet,
             wet_bits,
-            weightless: sky_layers(band_floors[0], height).weightless,
+            weightless: sky_layers(band_floors[0], height, space).weightless,
         };
 
         // The land: rolling hills and cliffs on each biome's lift; oceans
@@ -844,7 +857,7 @@ impl WorldPlan {
             let (a, b) = ((SUNKEN_CITY.0 * ocean_w as f64) as i32, (SUNKEN_CITY.1 * ocean_w as f64) as i32);
             (a, b, surface[a as usize..b as usize].iter().copied().max().unwrap_or(sea_level))
         };
-        WorldPlan { seed, preset, width, height, sea_level, band_floors, biomes, surface, plain, start, water, rugged, islands, chasms, stretches, climate, forest, island_forest, structures, caves, spires, ocean: ocean_w, ocean_floor, sunken_city, drifters, cloud_sea: (band_floors[0] as f64 + CLOUD_SEA_AT * (height - 1 - band_floors[0]) as f64) as i32 }
+        WorldPlan { seed, preset, width, height, space, sea_level, band_floors, biomes, surface, plain, start, water, rugged, islands, chasms, stretches, climate, forest, island_forest, structures, caves, spires, ocean: ocean_w, ocean_floor, sunken_city, drifters, cloud_sea: (band_floors[0] as f64 + CLOUD_SEA_AT * (height - 1 - band_floors[0]) as f64) as i32 }
     }
 
     /// How high rain and snow come in from: the sky band's floor (the
@@ -855,7 +868,12 @@ impl WorldPlan {
 
     /// The high air's layers.
     pub fn sky_layers(&self) -> crate::SkyLayers {
-        sky_layers(self.band_floors[0], self.height)
+        sky_layers(self.band_floors[0], self.height, self.space)
+    }
+
+    /// The world's top: over the sky, over space (cells up).
+    pub fn top(&self) -> i32 {
+        self.height + self.space
     }
 
     /// The world wraps: a column's x, around into 0 … width.

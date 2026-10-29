@@ -771,7 +771,7 @@ impl TerrainGen {
     }
 
     pub fn size_cells(&self) -> (i32, i32) {
-        (self.plan.width, self.plan.height)
+        (self.plan.width, self.plan.top())
     }
 
     /// What generation puts at a cell, front and back, without shades: for
@@ -2276,7 +2276,7 @@ impl TerrainGen {
 impl ChunkGenerator for TerrainGen {
     fn bounds(&self) -> (ChunkPos, ChunkPos) {
         let (w, h) = self.plan.preset.chunks();
-        (ChunkPos::new(0, 0), ChunkPos::new(w - 1, h - 1))
+        (ChunkPos::new(0, 0), ChunkPos::new(w - 1, h + self.plan.preset.space_chunks() - 1))
     }
 
     fn wraps(&self) -> Option<i32> {
@@ -2354,7 +2354,7 @@ impl ChunkGenerator for TerrainGen {
     }
 
     fn material_hint(&self, x: i32, y: i32) -> Option<MaterialId> {
-        (0..self.plan.height).contains(&y).then(|| self.material_at(self.plan.wrap(x), y))
+        (0..self.plan.top()).contains(&y).then(|| self.material_at(self.plan.wrap(x), y))
     }
 
     fn water_hint(&self, x: i32) -> Option<i32> {

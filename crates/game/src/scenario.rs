@@ -17152,7 +17152,8 @@ fn high_script(
 /// over the slab, shooting arrows down to the left / holding the flame
 /// jet to the left from 3 s to 8 s; `pick`: floating by the slab's side,
 /// striking it with the pickaxe from 3 s; `cells`: sand, water, a fire,
-/// wood and lone specks of sand put over it too. Logs where it is against
+/// wood and lone specks of sand put over it too; `top`: instead put 600
+/// under the world's top going up at `PLATYPUS_ZEROG_UP` (200). Logs where it is against
 /// the slab, its speed, what it holds, how it's turned, the gravity, its
 /// breath and health.
 fn zerog_script(
@@ -17225,6 +17226,11 @@ fn zerog_script(
                     k.body.pos = Vec2::new(at.x + 60.0 + k.body.half.x + 4.0, at.y - 2.0);
                     30
                 }
+                "top" => {
+                    k.body.pos = Vec2::new(at.x, sky.top as f32 - 600.0);
+                    k.body.vel = Vec2::new(0.0, std::env::var("PLATYPUS_ZEROG_UP").ok().and_then(|v| v.parse().ok()).unwrap_or(200.0));
+                    40
+                }
                 _ => 1,
             };
             k.prev_pos = k.body.pos;
@@ -17286,6 +17292,11 @@ fn zerog_script(
             }
         }
         _ => {}
+    }
+    if *step == 40 && t >= *next {
+        *next = t + 0.5;
+        info!("zerog: t {t:.2} {:+.0} from the world's top going {:+.1} holding roof {}", k.body.pos.y + k.body.half.y - sky.top as f32, k.body.vel.y, k.loco.contacts.ceiling);
+        return;
     }
     if *step >= 1 && t >= *next {
         *next = t + 0.25;
