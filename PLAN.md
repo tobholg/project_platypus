@@ -134,7 +134,7 @@ islands' long sun shadows, a castle on the great islands.
 creatures, recoil from every tool, tumbling; cells that don't fall above
 the line (water in blobs, drifting dust); breath and cold in vacuum.
 
-Design (2026-10-29), BUILT on `zerog` the same day (unmerged; deviations: the void's water freezes almost at once, so blobs are ice; lone specks drift, clumps keep still; a body reaches for what's within 2 cells; the void's cold slows to about 70%, not a frost spell's 40%):
+Design (2026-10-29), BUILT on `zerog` the same day (unmerged; deviations: the void's water freezes almost at once, so blobs are ice; lone specks drift, clumps keep still; a body reaches for what's within 2 cells; the void's cold slows to about 70%, not a frost spell's 40%; after a play: space added over the sky's top (16 384 cells of it on a large world, the land and sky unmoved), the world's top a soft edge pushing you back, not a ceiling to hold):
 - *The void.* Gravity fades from 0.74 of the sky band to none at 0.84
   and stays none above, to the world's top: the void, where space will
   be (a large world: about 1 200 cells of it). The air's gone there too.
