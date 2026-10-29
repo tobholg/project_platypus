@@ -166,7 +166,7 @@ sun and shade (scorching and freezing), meteor showers down through the
 layers (craters, meteorite ore), the space gear, a creature or two, the
 planet seen curving below (the world's own map).
 
-Design (2026-10-29, started on `space`, off `zerog`): the space over the
+Design (2026-10-29), BUILT on `space` (off `zerog`, both unmerged) the same day: asteroids, the look, sun and shade, meteor showers, the void gear and star wisps; left: the planet's curve under you, ice steaming in the sun, a grazer of space's own, solarite refuelling the pack. Design: the space over the
 sky (16 384 cells on a large world) in three reaches: the shallows just
 over the void's edge (sparse debris, ice), the belts (asteroid fields,
 dense, across the world, some wide, some tight clusters), high space over
