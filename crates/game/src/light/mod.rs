@@ -610,6 +610,10 @@ pub(crate) fn update_daylight(
     // Lightning lights the whole sky.
     light = light.map(|c| c.max(flash.0 * 1.2));
     color = lerp3(color, [0.88, 0.9, 1.0], flash.0 * 0.7);
+    // Up where the air thins to nothing the sky goes black (the sun as
+    // bright as ever: nothing to scatter it).
+    let (tf, _) = *cam;
+    color = lerp3(color, crate::sky::SPACE, crate::sky::space_at(&sim, tf.translation.y));
     day.sky = light;
     // With lighting off, the sky colour is shown as it is; with it on, the
     // overlay multiplies it by the sky light (dark at night).
@@ -883,7 +887,8 @@ fn compute_light(
     // God rays: the sun's light in the open air, a faint haze along it
     // (shafts where something shades it: under a crown, past a cliff, in a
     // cave's mouth); most as a sky breaks (clouding over, not pouring).
-    let shafts = shafts_scale() * (0.3 + 0.7 * gloom.cover * (1.0 - 0.75 * gloom.rain));
+    // (In space, no air to light up: no shafts.)
+    let shafts = shafts_scale() * (0.3 + 0.7 * gloom.cover * (1.0 - 0.75 * gloom.rain)) * (1.0 - crate::sky::space_at(&sim, cam.0.translation.y));
 
     // What the player carries.
     if let Ok((k, hand)) = player.single() {

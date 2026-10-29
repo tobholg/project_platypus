@@ -833,6 +833,7 @@ fn gradient_setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut 
 /// faded out underground.
 #[allow(clippy::too_many_arguments)]
 fn gradient(
+    sim: Res<SimWorld>,
     g: Res<Gradient>,
     bd: Res<Backdrops>,
     clear: Res<ClearColor>,
@@ -854,7 +855,14 @@ fn gradient(
     }
     let time = day.as_ref().map_or(0.5, |d| d.time);
     let k = clear.0.to_srgba();
-    let heavens = platypus_backdrop::terrain::sky(time, [k.red, k.green, k.blue]);
+    let mut heavens = platypus_backdrop::terrain::sky(time, [k.red, k.green, k.blue]);
+    // (Into space: black overhead and all round, no glow of air about the
+    // sun.)
+    let space = crate::sky::space_at(&sim, c.y);
+    let black = |rgb: [f32; 3]| [0, 1, 2].map(|i| rgb[i] + (crate::sky::SPACE[i] - rgb[i]) * space);
+    heavens.zenith = black(heavens.zenith);
+    heavens.horizon = black(heavens.horizon);
+    heavens.glow_strength *= 1.0 - space;
     let sun = c - half + disc_at(time, half).0;
     let v4 = |rgb: [f32; 3], w: f32| Vec4::new(rgb[0], rgb[1], rgb[2], w);
     if let Some(mut m) = skies.get_mut(&g.material) {
@@ -984,9 +992,10 @@ fn sky(
     if surface > 0.01
         && let Some(d) = day.as_ref()
     {
-        // Night: how much (0 by day), from the sun's height.
+        // Night: how much (0 by day), from the sun's height. (In space
+        // the stars are out by day too.)
         let sun_h = -(d.time * std::f32::consts::TAU).cos();
-        let night = ((0.05 - sun_h) / 0.3).clamp(0.0, 1.0) * surface;
+        let night = ((0.05 - sun_h) / 0.3).clamp(0.0, 1.0).max(crate::sky::space_at(&sim, c.y)) * surface;
         let cloud = |x: f32| world.weather().map_or(0.0, |w| ((w.overcast(x as i32 - 4, x as i32 + 4) - 0.2) / 0.4).clamp(0.0, 1.0));
         let cover = bd.cover(c);
         let sky_open = |p: Vec2| open(p) && !cover.covers(p);
@@ -1072,7 +1081,10 @@ fn sky(
                 // brightened wide about it; golden when low.
                 let warm = [1.0, 0.93 - 0.2 * low, 0.8 - 0.45 * low];
                 let core = 7.5;
-                each(165.0, true, &|_, _, r| Some((warm, (-(r / 83.0).powi(2)).exp() * 0.3)), &mut put);
+                // (In space, no air about it to glow: only the core and a
+                // tight halo.)
+                let air = 1.0 - crate::sky::space_at(&sim, c.y);
+                each(165.0, true, &|_, _, r| Some((warm, (-(r / 83.0).powi(2)).exp() * 0.3 * air)), &mut put);
                 each(33.0, false, &|_, _, r| Some((warm, (-(r / 13.5).powi(2)).exp() * 0.9)), &mut put);
                 each(core + pix, false, &|_, _, r| Some(([1.0, 1.0, 0.96 - 0.3 * low], inside(core - r))), &mut put);
             } else {

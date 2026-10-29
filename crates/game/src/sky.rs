@@ -27,6 +27,15 @@ pub const JET: f32 = 160.0;
 /// Streaks in view in its middle, a second, at most.
 const STREAKS: f32 = 70.0;
 
+/// How far into space a height is (0: under the thinning air … 1: the
+/// void, where the sky's black and the stars are out by day).
+pub fn space_at(sim: &SimWorld, y: f32) -> f32 {
+    sim.generator.sky_layers().map_or(0.0, |s| s.thin(y))
+}
+
+/// Space's black (a little blue in it).
+pub const SPACE: [f32; 3] = [0.01, 0.012, 0.03];
+
 /// Which way the jet stream blows (the weather's wind's way), and how hard
 /// at `y`: its velocity there.
 pub fn jet_at(sim: &SimWorld, y: f32) -> f32 {
