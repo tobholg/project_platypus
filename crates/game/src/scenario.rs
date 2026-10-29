@@ -17008,9 +17008,11 @@ fn seam_script(
 /// 1200) over the sea of clouds the backdrop draws (negative: under it),
 /// from 0.5 s, to look at it; `PLATYPUS_SKY_ISLAND=dy`: instead `dy` cells
 /// over the bottom of the sky island nearest the spawn (negative: under
-/// it); with `PLATYPUS_SKY_CUT=1` too, a piece of its underside cut off
-/// (3 s: a slot over it, its sides cut down), to float free. Logs where it
-/// is, and the drifters near it.
+/// it; `PLATYPUS_SKY_GREAT=1`: the nearest great island; `PLATYPUS_SKY_DX`:
+/// that far along it from its middle); with `PLATYPUS_SKY_CUT=1` too, a
+/// piece of its underside cut off (3 s: a slot over it, its sides cut
+/// down), to float free. Logs where it is, the drifters near it, and its
+/// waterfall (springs, spray, mist).
 fn sky_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, mut menu: ResMut<crate::devmenu::DevMenu>, mut player: Query<&mut Kinematics, With<LocalPlayer>>, drifters: Query<&crate::drift::Drifter>, mut state: Local<(Option<Vec2>, f32, bool)>) {
     if s.name != "sky" {
         return;
@@ -17051,9 +17053,13 @@ fn sky_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, mut menu: ResMut<crat
         Some(dy) => {
             let sx = sim.generator.spawn_point().x;
             let isles = sim.generator.sky_islands();
-            let (lo, hi) = isles.iter().min_by_key(|(lo, hi)| ((lo.x + hi.x) / 2 - sx).abs()).copied().unwrap_or_default();
+            // (PLATYPUS_SKY_GREAT=1: the nearest great one, with its lake.)
+            let great = std::env::var("PLATYPUS_SKY_GREAT").is_ok();
+            let (lo, hi) = isles.iter().filter(|(lo, hi)| !great || hi.x - lo.x >= 840).min_by_key(|(lo, hi)| ((lo.x + hi.x) / 2 - sx).abs()).copied().unwrap_or_default();
             info!("sky: the island at {}..{}, {}..{}", lo.x, hi.x, lo.y, hi.y);
-            Vec2::new((lo.x + hi.x) as f32 / 2.0, lo.y as f32 + dy)
+            // (PLATYPUS_SKY_DX: that far along it from its middle.)
+            let dx = std::env::var("PLATYPUS_SKY_DX").ok().and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.0);
+            Vec2::new((lo.x + hi.x) as f32 / 2.0 + dx, lo.y as f32 + dy)
         }
         None => Vec2::new(k.body.pos.x, sea as f32 + up),
     });
@@ -17064,6 +17070,22 @@ fn sky_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, mut menu: ResMut<crat
         state.1 = t + 1.0;
         let near: Vec<String> = drifters.iter().filter(|d| d.pos.distance(at) < 600.0).map(|d| format!("{:+.0},{:+.0}{} {:+.1}", d.pos.x - at.x, d.pos.y - at.y, if d.taken() { "" } else { " (not yet)" }, d.pos.y - d.rest)).collect();
         info!("sky: t {t:.1} {up:+.0} from the sea of clouds (at {sea}); {} drifters, near: {}", drifters.iter().count(), near.join("; "));
+        // (Its waterfall, if it has one: the springs, the spray falling,
+        // the mist it's blown to.)
+        let count = |name: &str| {
+            let Some(m) = sim.materials().id(name) else { return (0, i32::MAX) };
+            let mut n = (0, i32::MAX);
+            for y in (at.y as i32 - 1_200..at.y as i32 + 400).step_by(1) {
+                for x in at.x as i32 - 900..at.x as i32 + 900 {
+                    if sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.material == m) {
+                        n = (n.0 + 1, n.1.min(y));
+                    }
+                }
+            }
+            n
+        };
+        let (springs, spray, mist) = (count("spring"), count("spray"), count("spray_mist"));
+        info!("sky: t {t:.1} {} spring cells, {} spray (lowest {:+}), {} mist (lowest {:+})", springs.0, spray.0, spray.1 - at.y as i32, mist.0, mist.1 - at.y as i32);
     }
 }
 
@@ -17127,16 +17149,21 @@ fn high_script(
 /// floor; the player dropped onto it from 60 over it (1.5 s), jumping off
 /// it to the right (5 s), and back on (7 s, from the left, running); half
 /// its aerolite and more mined out at 10 s, then all but a fifth at 13 s.
-/// Logs the drifter's height against where it floats, its speed, the
-/// player's feet against its top.
+/// `PLATYPUS_DRIFT=side`: instead leapt onto from 16 to its left, running
+/// (1.5 s); `bow` / `jet`: stood on, shooting arrows down to the left /
+/// holding the flame jet to the left from 3 s to 9 s. Logs the drifter's
+/// height against where it floats, its speed, the player's feet against
+/// its top.
 fn drift_script(
     mut commands: Commands,
     s: Res<Scenario>,
     mut sim: ResMut<SimWorld>,
     mut menu: ResMut<crate::devmenu::DevMenu>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
-    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    mut player: Query<(&mut Kinematics, &mut crate::hands::items::Inventory), With<LocalPlayer>>,
     drifters: Query<&crate::drift::Drifter>,
+    items: Option<Res<crate::hands::items::Items>>,
+    (mut hand, mut cursor, mut mouse): (ResMut<crate::hands::Hand>, ResMut<CursorOverride>, ResMut<ButtonInput<MouseButton>>),
     mut state: Local<(u8, f32)>,
 ) {
     if s.name != "drift" {
@@ -17144,7 +17171,11 @@ fn drift_script(
     }
     menu.open = false;
     let t = s.elapsed;
-    let Ok(mut k) = player.single_mut() else { return };
+    let Ok((mut k, mut inv)) = player.single_mut() else { return };
+    // PLATYPUS_DRIFT: `side` (leapt onto from the side, running), `bow`
+    // (arrows shot from it, down to the left), `jet` (the fire staff's
+    // flame jet held, to the left); else stood on, jumped off, mined.
+    let mode = std::env::var("PLATYPUS_DRIFT").unwrap_or_default();
     let fl = platypus_worldgen::arena::FLOOR;
     let (x0, y0, w, h) = (900, fl + 140, 40, 20);
     let (step, next) = &mut *state;
@@ -17176,11 +17207,48 @@ fn drift_script(
             commands.spawn(crate::drift::Drifter::new(IVec2::new(x0, y0), IVec2::new(w, h)));
             *step = 1;
         }
+        1 if t > 1.5 && mode == "side" => {
+            k.body.pos = Vec2::new((x0 - 16) as f32, (y0 + h + 24) as f32);
+            k.prev_pos = k.body.pos;
+            k.body.vel = Vec2::new(110.0, 60.0);
+            keys.press(KeyCode::KeyD);
+            *step = 20;
+        }
+        // (Running at it till it lands on it.)
+        20 if t > 1.7 && k.loco.grounded() => {
+            keys.release(KeyCode::KeyD);
+            *step = 21;
+        }
         1 if t > 1.5 => {
             k.body.pos = Vec2::new((x0 + w / 2) as f32, (y0 + h + 60) as f32);
             k.prev_pos = k.body.pos;
             k.body.vel = Vec2::ZERO;
-            *step = 2;
+            *step = if mode == "bow" || mode == "jet" { 30 } else { 2 };
+        }
+        30 if t > 3.0 => {
+            let Some(items) = items.as_ref() else { return };
+            if let Some(id) = items.id(if mode == "bow" { "bow" } else { "fire_staff" }) {
+                inv.slots[9] = Some(crate::hands::items::Stack::new(id, 1));
+                (hand.bar, hand.slot) = (0, 9);
+            }
+            if let Some(id) = items.id("arrow") {
+                inv.slots[8] = Some(crate::hands::items::Stack::new(id, 99));
+            }
+            *step = 31;
+        }
+        31 => {
+            let aim = if mode == "bow" { Vec2::new(-40.0, -14.0) } else { Vec2::new(-40.0, 0.0) };
+            cursor.0 = Some(k.body.pos + aim);
+            let shooting = t < 9.0;
+            let press = if mode == "bow" { (t - 3.0) % 1.1 < 0.8 } else { true };
+            if shooting && press {
+                mouse.press(MouseButton::Left);
+            } else {
+                mouse.release(MouseButton::Left);
+            }
+            if !shooting {
+                *step = 32;
+            }
         }
         2 if t > 5.0 => {
             keys.press(KeyCode::Space);

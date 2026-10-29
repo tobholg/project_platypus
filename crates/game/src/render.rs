@@ -91,6 +91,9 @@ struct ChunkGfx {
     /// shading (`occlusion`) is only redone when it changes, not every time
     /// blood or a spark dirties the front.
     solid: Vec<u64>,
+    /// The drifters' cells in it, left out (`drift::Drifting`: they're drawn
+    /// themselves, gliding): redrawn when they change.
+    hidden: Option<[u64; N]>,
 }
 
 /// The box round a chunk's aerolite (cells in it), if it has enough to
@@ -403,7 +406,8 @@ fn backdrop(x: i32, y: i32, depth: i32) -> [u8; 4] {
 /// Rebuild a layer's base image and plant list from its cells. `ground`: the
 /// generated surface height of each of the chunk's columns (background layers
 /// of generated worlds), for the backdrop.
-fn rebuild(layer: &mut Layer, cells: &[Cell], mats: &MaterialTable, origin: CellPos, climate: &Climate, back: bool, ground: Option<&[i32]>, front: Option<&[Cell]>) {
+#[allow(clippy::too_many_arguments)]
+fn rebuild(layer: &mut Layer, cells: &[Cell], mats: &MaterialTable, origin: CellPos, climate: &Climate, back: bool, ground: Option<&[i32]>, front: Option<&[Cell]>, hidden: Option<&[u64; N]>) {
     layer.base.fill(0);
     // (A background, shaded by what's in front of it.)
     let shade = front.map(|f| occlusion(f, mats));
@@ -414,6 +418,9 @@ fn rebuild(layer: &mut Layer, cells: &[Cell], mats: &MaterialTable, origin: Cell
         let ambient = climate.ambient(origin.x, origin.y + ly as i32);
         for lx in 0..N {
             let c = cells[ly * N + lx];
+            if hidden.is_some_and(|h| h[ly] >> lx & 1 != 0) {
+                continue;
+            }
             if c.is_air() {
                 if let Some(ground) = ground {
                     let (x, y) = (origin.x + lx as i32, origin.y + ly as i32);
@@ -513,6 +520,7 @@ fn sync_chunks(
     mut images: ResMut<Assets<Image>>,
     camera: Query<(&GlobalTransform, &ChunkLoader), With<MainCamera>>,
     mut glow: ResMut<Aerolite>,
+    drifting: Res<crate::drift::Drifting>,
 ) {
     gfx.0.retain(|pos, g| {
         let keep = sim.world.is_loaded(*pos);
@@ -543,7 +551,7 @@ fn sync_chunks(
         if fresh {
             let front = new_layer(&mut commands, &mut images, at, Z_WORLD);
             let back = new_layer(&mut commands, &mut images, at, Z_BACKGROUND);
-            gfx.0.insert(chunk.pos, ChunkGfx { front, back, at, aero: None, solid: Vec::new() });
+            gfx.0.insert(chunk.pos, ChunkGfx { front, back, at, aero: None, solid: Vec::new(), hidden: None });
         }
         let g = gfx.0.get_mut(&chunk.pos).expect("inserted above");
         if g.at != at {
@@ -553,7 +561,9 @@ fn sync_chunks(
             }
         }
         // (Each layer redrawn only when its own cells changed.)
-        let dirty = chunk.take_render_dirty() || fresh;
+        let hidden = drifting.0.get(&chunk.pos).copied();
+        let dirty = chunk.take_render_dirty() || fresh || hidden != g.hidden;
+        g.hidden = hidden;
         let bg_dirty = chunk.take_bg_render_dirty() || fresh;
         // (Its cells as stored, drawn where it's seen.)
         let (o, seen) = (chunk.pos.origin(), at.origin());
@@ -561,7 +571,7 @@ fn sync_chunks(
         // in front changes.)
         let mut reshade = false;
         if dirty {
-            rebuild(&mut g.front, chunk.cells(), mats, o, &climate, false, None, None);
+            rebuild(&mut g.front, chunk.cells(), mats, o, &climate, false, None, None, g.hidden.as_ref());
             g.aero = aerolite_box(chunk.cells(), aerolite);
             let solid = solid_mask(chunk.cells(), mats);
             reshade = solid != g.solid;
@@ -569,7 +579,7 @@ fn sync_chunks(
         }
         if bg_dirty || reshade {
             let ground: Option<Vec<i32>> = (0..N as i32).map(|lx| sim.generator.surface_hint(o.x + lx)).collect();
-            rebuild(&mut g.back, chunk.background(), mats, o, &climate, true, ground.as_deref(), Some(chunk.cells()));
+            rebuild(&mut g.back, chunk.background(), mats, o, &climate, true, ground.as_deref(), Some(chunk.cells()), None);
         }
         let visible = view.is_none_or(|(lo, hi)| {
             let (x, y) = (seen.x as f32, seen.y as f32);

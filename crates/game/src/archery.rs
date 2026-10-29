@@ -165,6 +165,7 @@ fn nock(
     mut sounds: MessageWriter<crate::sound::PlaySound>,
     ids: Query<&crate::creatures::Stable>,
     mut sparks: ResMut<crate::vfx::Sparks>,
+    mut recoils: MessageWriter<crate::drift::Recoil>,
 ) {
     let Some(weapons) = weapons else { return };
     for ask in asks.read() {
@@ -222,6 +223,8 @@ fn nock(
         let keen = def.crit.0 + if d >= 0.99 { def.crit.1 } else { 0.0 };
         let (damage, knock, crit) = stats.cloned().unwrap_or_default().strike(lerp(def.damage), lerp(def.knock), roll, keen);
         spawn_arrow(&mut commands, &weapons, from + dir * 4.5, dir * lerp(def.speed), e, team.copied(), (damage, crit), knock, def.stun);
+        // (Standing on a drifter, it kicks it the other way.)
+        recoils.write(crate::drift::Recoil { who: e, from, push: -dir * crate::drift::KICK_ARROW * d });
         sounds.write(crate::sound::PlaySound::at("bow", from).volume(0.5 + 0.5 * d));
     }
 }

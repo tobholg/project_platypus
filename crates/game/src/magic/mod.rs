@@ -491,11 +491,23 @@ fn fire(
     drinkers: Res<Drinkers>,
     (parts, teams): (Query<&crate::creatures::body::parts::Parts>, Query<&crate::creatures::Team>),
     (mut strokes, mut painted, mut kept, mut mana, mut sounds, mut fields): (ResMut<brush::Strokes>, ResMut<brush::Painted>, ResMut<brush::Kept>, Query<&mut Mana>, MessageWriter<crate::sound::PlaySound>, ResMut<field::Fields>),
+    mut recoils: MessageWriter<crate::drift::Recoil>,
 ) {
     let halo = halo.map(|h| h.0.clone());
     let mut booms = Vec::new();
     for f in std::mem::take(&mut firing.0) {
         let cast = f.cast.clone();
+        // (What's shot kicks its caster the other way: on a drifter, the
+        // drifter's.)
+        let kick = match &cast.carrier {
+            Carrier::Bolt { .. } | Carrier::Orb { .. } | Carrier::Lightning { .. } => crate::drift::KICK_BOLT,
+            Carrier::Stream { .. } => crate::drift::KICK_STREAM,
+            Carrier::Beam { .. } => crate::drift::KICK_BEAM,
+            _ => 0.0,
+        };
+        if kick > 0.0 {
+            recoils.write(crate::drift::Recoil { who: f.caster, from: f.from, push: -f.dir * kick * f.pace });
+        }
         match &cast.carrier {
             &Carrier::Bolt { speed, life } => spawn_spell(&mut commands, &f, speed, life, 0, 0.0, halo.clone()),
             &Carrier::Orb { speed, life, bounces } => spawn_spell(&mut commands, &f, speed, life, bounces, ORB_FALL, halo.clone()),
