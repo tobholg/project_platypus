@@ -406,7 +406,7 @@ fn supported_back(world: &World, block: CellPos) -> bool {
 /// Is there something for a block to rest on, touching it: a solid against
 /// one of its sides (not across a gap: a block left hanging over uneven
 /// ground fell as soon as anything near it moved), rock it fills round, or
-/// a wall behind it.
+/// a wall behind it; or nothing at all, weightless.
 fn supported(world: &World, block: CellPos) -> bool {
     let mats = world.materials();
     let solid = |p: CellPos| world.get(p).is_some_and(|c| matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder) && c.flags & platypus_sim::cell::flags::HELD == 0);
@@ -414,7 +414,9 @@ fn supported(world: &World, block: CellPos) -> bool {
     let rock = block_cells(block).any(|p| world.get(p).is_some_and(|c| matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder) && !mats.soft(c.material)));
     let (x0, y0, b) = (block.x * BLOCK, block.y * BLOCK, BLOCK);
     let touching = (0..b).any(|i| solid(CellPos::new(x0 + i, y0 - 1)) || solid(CellPos::new(x0 + i, y0 + b)) || solid(CellPos::new(x0 - 1, y0 + i)) || solid(CellPos::new(x0 + b, y0 + i)));
-    wall || rock || touching
+    // (Weightless, nothing falls: a block holds where it's put.)
+    let floats = world.gravity(y0 as f32) < crate::zerog::WEIGHTLESS;
+    wall || rock || touching || floats
 }
 
 /// A bomb in flight looks as one in hand does: its item's picture.
