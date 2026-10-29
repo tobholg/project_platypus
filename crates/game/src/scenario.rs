@@ -17325,7 +17325,7 @@ fn zerog_script(
 /// right; `PLATYPUS_SPACE_SIDE=sun`: on the sun's side, `shade`: in its
 /// shadow), held there till its chunks are in (`PLATYPUS_SHOWER=1`: a
 /// meteor shower on; `PLATYPUS_SPACE_KIT=spacer`: that kit handed out). Logs the rock, how much of it's in, and
-/// the creatures about it.
+/// the creatures about the player.
 fn space_script(
     s: Res<Scenario>,
     sim: Res<SimWorld>,
@@ -17391,7 +17391,7 @@ fn space_script(
     if t >= *next {
         *next = t + 1.0;
         let solid = (-60..=60).flat_map(|dy| (-60..=60).map(move |dx| (dx, dy))).filter(|&(dx, dy)| sim.world.get(CellPos::new(at.x as i32 + dx * 2, at.y as i32 + dy * 2)).is_some_and(|c| !c.is_air())).count();
-        let near: Vec<String> = others.iter().filter(|(o, _)| o.body.pos.distance(at) < r * 2.0 + 200.0).map(|(o, n)| format!("{n} {:+.0},{:+.0}", o.body.pos.x - at.x, o.body.pos.y - at.y)).collect();
+        let near: Vec<String> = others.iter().filter(|(o, _)| o.body.pos.distance(k.body.pos) < 900.0).map(|(o, n)| format!("{n} {:.0} off", o.body.pos.distance(k.body.pos))).collect();
         info!(
             "space: t {t:.1} at {:+.0},{:+.0} from the rock's middle; {solid} of its cells about it solid (a 2-cell sample); near it: {}; time {:.2}, {}, health {:.0}{}; {} meteors; breath {:?}",
             k.body.pos.x - at.x,

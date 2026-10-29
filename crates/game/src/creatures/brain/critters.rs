@@ -302,6 +302,9 @@ pub enum Place {
     /// In open water under the ground (the flooded caverns, the great
     /// halls' lakes), on its bed.
     Flooded,
+    /// Out in space (the void over the sky), in the open, when you're up
+    /// there.
+    Space,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
@@ -548,6 +551,16 @@ fn ambient(
                 let bed = (y - 120..y).rev().find(|&fy| kind_at(x, fy).is_some_and(|(air, ph)| !air && matches!(ph.kind, Kind::Static | Kind::Powder)))?;
                 Some(Vec2::new(x as f32 + 0.5, bed as f32 + 1.0))
             }),
+            // Out in space, open round it, when the player's up there too.
+            Place::Space => (crate::sky::space_at(&sim, p.y) >= 0.5).then(|| (0..TRIES).find_map(|_| {
+                let a = unit(&mut rng) * std::f32::consts::TAU;
+                let at = p + Vec2::from_angle(a) * (OUT_OF_SIGHT + unit(&mut rng) * 200.0);
+                let (x, y) = (at.x as i32, at.y as i32);
+                // (Out past what's loaded is open too: the void's mostly
+                // nothing, and what comes there waits till it's in.)
+                let open = |dx: i32, dy: i32| kind_at(x + dx, y + dy).is_none_or(|(air, _)| air);
+                (crate::sky::space_at(&sim, at.y) >= 0.5 && open(0, 0) && open(-8, 0) && open(8, 0) && open(0, 8) && open(0, -8)).then_some(at)
+            })).flatten(),
             // In the air of a cave: open round it, a roof above, well under
             // the surface.
             Place::Cave => (0..TRIES).find_map(|_| {

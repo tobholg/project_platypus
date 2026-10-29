@@ -300,7 +300,7 @@
                 ("diving_helmet", 1), ("flippers", 1), ("ember_amulet", 1), ("frost_charm", 1), ("storm_ring", 1),
                 ("hammer", 1), ("copper_axe", 1), ("glowstick", 30), ("block:platform", 200), ("bow", 1), ("arrow", 198),
                 // (For the void.)
-                ("void_helm", 1), ("void_suit", 1), ("thruster_pack", 1), ("starmetal_pickaxe", 1),
+                ("void_helm", 1), ("void_suit", 1), ("thruster_pack", 1),
                 ("door", 2), ("table", 1), ("chair", 2), ("bed", 1), ("hanging_lantern", 4), ("block:firebrick", 60), ("bucket", 1), ("flask", 1),
             ],
             wear: ["mithril_helm", "mithril_mail", "mithril_gauntlets", "mithril_greaves", "rocket_boots", "silk_line", "dread_cloak", "ring_of_vigour", "lucky_coin", "flashlight"]),
