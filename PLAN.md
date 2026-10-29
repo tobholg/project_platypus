@@ -115,8 +115,20 @@ cut loose with aerolite in it floats free as one. Over the islands the
 high air: the jet stream, thinning air (breath), gravity fading to none
 at the world's top. Fulgurite where lightning goes to earth (and old
 scars on the islands), shocking the wet. Rain comes from just over the
-view wherever it is. Left: the aurora, gear from aerolite and
-stormglass, the islands' long sun shadows.
+view wherever it is. Second pass (2026-10-29, after a play): islands
+twice as many and far bigger (half-widths 160..1 000, most middling; the
+great ones a plateau with room for a castle), woods over most of their
+tops, the great ones a lake out towards one end and a waterfall from
+their side under it (a `springs` material pouring white spray that's
+mist before the ground); drifters three to six an island and one more
+each 220 of its width, kept off the trees; a leap onto one from the side
+sends it sailing (pushes across against a lighter weight than it holds
+up), you keep its way leaping off, and what you shoot from it kicks it
+the other way (arrows, bolts, orbs, lightning; streams and rays each
+tick held), a raft for crossing between islands; drawn gliding (the
+chunks leave its cells out, it's drawn where it is exactly, its riders
+with it). Left: the aurora, gear from aerolite and stormglass, the
+islands' long sun shadows, a castle on the great islands.
 
 **3. `zerog`: weightless.** Newtonian zero gravity for the player and
 creatures, recoil from every tool, tumbling; cells that don't fall above
