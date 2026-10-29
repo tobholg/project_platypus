@@ -17323,7 +17323,8 @@ fn zerog_script(
 /// `metal`, `icy`, `sunstone`; any) and at least `PLATYPUS_SPACE_R` (40)
 /// across its radius, `PLATYPUS_SPACE_OFF` (30) out from its edge (to its
 /// right; `PLATYPUS_SPACE_SIDE=sun`: on the sun's side, `shade`: in its
-/// shadow), held there till its chunks are in. Logs the rock, how much of it's in, and
+/// shadow), held there till its chunks are in (`PLATYPUS_SHOWER=1`: a
+/// meteor shower on). Logs the rock, how much of it's in, and
 /// the creatures about it.
 fn space_script(
     s: Res<Scenario>,
@@ -17332,6 +17333,7 @@ fn space_script(
     mut menu: ResMut<crate::devmenu::DevMenu>,
     mut player: Query<(&mut Kinematics, &crate::creatures::Health, Option<&crate::space::Sunlit>, Option<&crate::creatures::body::elements::Chilled>), With<LocalPlayer>>,
     others: Query<(&Kinematics, &Name), (Without<LocalPlayer>, With<crate::creatures::Creature>)>,
+    meteors: Query<&crate::space::Meteor>,
     mut state: Local<(Option<(Vec2, f32)>, f32)>,
 ) {
     if s.name != "space" {
@@ -17380,14 +17382,15 @@ fn space_script(
         let solid = (-60..=60).flat_map(|dy| (-60..=60).map(move |dx| (dx, dy))).filter(|&(dx, dy)| sim.world.get(CellPos::new(at.x as i32 + dx * 2, at.y as i32 + dy * 2)).is_some_and(|c| !c.is_air())).count();
         let near: Vec<String> = others.iter().filter(|(o, _)| o.body.pos.distance(at) < r * 2.0 + 200.0).map(|(o, n)| format!("{n} {:+.0},{:+.0}", o.body.pos.x - at.x, o.body.pos.y - at.y)).collect();
         info!(
-            "space: t {t:.1} at {:+.0},{:+.0} from the rock's middle; {solid} of its cells about it solid (a 2-cell sample); near it: {}; time {:.2}, {}, health {:.0}{}",
+            "space: t {t:.1} at {:+.0},{:+.0} from the rock's middle; {solid} of its cells about it solid (a 2-cell sample); near it: {}; time {:.2}, {}, health {:.0}{}; {} meteors",
             k.body.pos.x - at.x,
             k.body.pos.y - at.y,
             near.join(", "),
             day.time,
             sunlit.map_or("no sun or shade".to_string(), |s| format!("{} (heat {:.2})", if s.lit { "in the sun" } else { "in shade" }, s.heat)),
             health.hp,
-            chilled.map_or(String::new(), |c| format!(", chilled {:.2}", c.cold))
+            chilled.map_or(String::new(), |c| format!(", chilled {:.2}", c.cold)),
+            meteors.iter().count()
         );
     }
 }
