@@ -57,7 +57,7 @@ pub struct Recoil {
 }
 
 /// Shot this near them (cells), it was from their hand.
-const HAND: f32 = 24.0;
+pub(crate) const HAND: f32 = 24.0;
 
 /// Recoils: an arrow loosed (at full draw), a bolt or an orb cast, a
 /// lightning bolt; a stream or a beam held, each tick it's held.
@@ -75,8 +75,8 @@ pub struct Drifting(pub HashMap<ChunkPos, [u64; CHUNK as usize]>);
 /// Who rides which drifter (drawn with it: `ride`), and how far off where
 /// they stand they were last drawn (eased away when they leave it).
 #[derive(Resource, Default)]
-struct Riders {
-    on: HashMap<Entity, Entity>,
+pub(crate) struct Riders {
+    pub(crate) on: HashMap<Entity, Entity>,
     drawn: HashMap<Entity, Vec2>,
 }
 
@@ -97,6 +97,11 @@ const WANDER_HZ: f32 = 0.05;
 const WANDER_REACH: f32 = 60.0;
 /// What's on it weighs this a cell of its box (a cell of rock weighs 1).
 const WEIGHT: f32 = 0.5;
+
+/// What a body weighs (a cell of rock weighs 1).
+pub(crate) fn weight(body: &platypus_physics::Body) -> f32 {
+    4.0 * body.half.x * body.half.y * WEIGHT
+}
 /// Pushed across (a landing, a leap, a shove, a recoil), it's this light a
 /// cell: a rock in the sky's easier to set going than to hold up.
 const DENSITY: f32 = 0.08;
@@ -248,14 +253,14 @@ fn adopt(mut commands: Commands, sim: Res<SimWorld>, mut drifters: Query<(Entity
 /// What a creature was doing on a drifter last tick: its velocity, and
 /// whether it stood on one.
 #[derive(Default)]
-struct Was(HashMap<Entity, (Vec2, bool)>);
+pub(crate) struct Was(HashMap<Entity, (Vec2, bool)>);
 
 /// Each drifter: its cells checked (what's mined is gone), what's on it
 /// weighed, the pushes of what landed, leapt, ran into it or shot from it,
 /// lifted by its aerolite, and moved a cell at a time (bouncing off what's
 /// in its way), carrying what's on it.
 #[allow(clippy::too_many_arguments)]
-fn drift(
+pub(crate) fn drift(
     mut commands: Commands,
     time: Res<Time>,
     mut sim: ResMut<SimWorld>,
@@ -306,7 +311,7 @@ fn drift(
             // (On it: feet on its cells, not rising off it; as it sinks, a
             // rider carried down with it is still on it.)
             let on = (min.x.floor() as i32..=(max.x - 0.01).floor() as i32).any(|x| mine(x, feet)) && k.body.vel.y <= d.vel.y.max(0.0) + 1.0;
-            let m = 4.0 * k.body.half.x * k.body.half.y * WEIGHT;
+            let m = weight(&k.body);
             let (prev, was_on) = was.0.get(&ce).copied().unwrap_or((k.body.vel, on));
             near.push((ce, m, on, prev, min, max, was_on));
             now.insert(ce, (k.body.vel, on));

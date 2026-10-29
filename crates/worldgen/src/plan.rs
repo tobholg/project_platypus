@@ -221,11 +221,11 @@ const ISLANDS_FROM: f64 = 0.55;
 const ISLANDS_TO: f64 = 0.55;
 /// The high air, over the islands (shares of the sky band, up from its
 /// floor): the jet stream (from, to), the air thinning from here (breath
-/// runs down, faster the higher), gravity fading from here to nothing at
-/// the world's top (where space begins).
+/// runs down, faster the higher), gravity fading from here to nothing
+/// here (the void over it, where space is: no gravity, no air).
 const JET: (f64, f64) = (0.62, 0.72);
 const THIN_FROM: f64 = 0.7;
-const WEIGHTLESS_FROM: f64 = 0.74;
+const WEIGHTLESS: (f64, f64) = (0.74, 0.84);
 const ISLAND_CLEAR: f64 = 300.0;
 /// Drifters about each island (fewest, most, and one more for each this
 /// much of its width), their half-width at most, and how far out from it
@@ -849,7 +849,7 @@ impl WorldPlan {
     pub fn sky_layers(&self) -> crate::SkyLayers {
         let (lo, span) = (self.band_floors[0] as f64, (self.height - 1 - self.band_floors[0]) as f64);
         let at = |share: f64| (lo + share * span) as i32;
-        crate::SkyLayers { jet: (at(JET.0), at(JET.1)), thin_from: at(THIN_FROM), weightless: (at(WEIGHTLESS_FROM), self.height - 1) }
+        crate::SkyLayers { jet: (at(JET.0), at(JET.1)), thin_from: at(THIN_FROM), weightless: (at(WEIGHTLESS.0), at(WEIGHTLESS.1)), top: self.height - 1 }
     }
 
     /// The world wraps: a column's x, around into 0 … width.

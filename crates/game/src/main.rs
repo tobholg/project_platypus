@@ -81,6 +81,7 @@ mod tools;
 mod traps;
 mod vfx;
 mod world;
+mod zerog;
 
 use std::sync::Arc;
 
@@ -200,6 +201,7 @@ fn main() {
         .add_plugins(shoals::ShoalsPlugin)
         .add_plugins(drift::DriftPlugin)
         .add_plugins(sky::SkyPlugin)
+        .add_plugins(zerog::ZeroGPlugin)
         .add_plugins((reset::ResetPlugin, clock::ClockPlugin, gold::GoldPlugin, hearts::HeartsPlugin, breath::BreathPlugin, kick::KickPlugin, traps::TrapsPlugin, hazards::HazardsPlugin, death::DeathPlugin, talk::TalkPlugin, events::EventsPlugin, show::ShowPlugin, display::DisplayPlugin, pickups::PickupsPlugin, cursor::CursorPlugin))
         .add_plugins((tempo::TempoPlugin, potion::PotionPlugin, screen_fx::ScreenFxPlugin, cloth::ClothPlugin))
         .add_plugins((settings::SettingsPlugin, sound::SoundPlugin))

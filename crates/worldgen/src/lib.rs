@@ -200,23 +200,25 @@ pub enum Spawn {
 
 /// The high air over the sky islands (heights, cells): the jet stream's
 /// band, where the air starts to thin (breath runs down, faster the
-/// higher), and where gravity starts to fade and where it's gone (the
-/// world's top, where space begins).
+/// higher), where gravity starts to fade and where it's gone (the void:
+/// no gravity, no air, from there to the world's top, where space is),
+/// and the world's top.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SkyLayers {
     pub jet: (i32, i32),
     pub thin_from: i32,
     pub weightless: (i32, i32),
+    pub top: i32,
 }
 
 impl SkyLayers {
-    /// How much gravity there is at `y` (1 down to 0 at the top).
+    /// How much gravity there is at `y` (1 down to 0 in the void).
     pub fn gravity(&self, y: f32) -> f32 {
         let (a, b) = (self.weightless.0 as f32, self.weightless.1 as f32);
         1.0 - smooth(((y - a) / (b - a)).clamp(0.0, 1.0))
     }
 
-    /// How thin the air is at `y` (0: breathable … 1: none, at the top).
+    /// How thin the air is at `y` (0: breathable … 1: none, in the void).
     pub fn thin(&self, y: f32) -> f32 {
         let (a, b) = (self.thin_from as f32, self.weightless.1 as f32);
         smooth(((y - a) / (b - a)).clamp(0.0, 1.0))

@@ -134,6 +134,33 @@ islands' long sun shadows, a castle on the great islands.
 creatures, recoil from every tool, tumbling; cells that don't fall above
 the line (water in blobs, drifting dust); breath and cold in vacuum.
 
+Design (2026-10-29, started on `zerog`):
+- *The void.* Gravity fades from 0.74 of the sky band to none at 0.84
+  and stays none above, to the world's top: the void, where space will
+  be (a large world: about 1 200 cells of it). The air's gone there too.
+- *Moving weightless.* Between the line and the void the light-gravity
+  platforming stays (higher jumps, slow falls). Weightless (gravity under
+  a sixth), there's nothing to steer against: what's moving keeps going.
+  Touching anything (a floor, a wall, a ceiling, a drifter) you catch
+  hold of it and crawl along it every way; jump pushes off it towards
+  where you steer (away from it if nowhere). Off everything you drift:
+  no air control, no air jumps, no fall damage, slamming into things
+  still hurts. Rocket boots thrust the way you steer. A rope reels you.
+- *Recoil.* Every shot, swing and strike pushes its maker the other way,
+  weightless: arrows, bolts and orbs (a kick each), streams and rays
+  (held), a pickaxe or a sword hitting something (back off it), a blast
+  (out from it). Bigger bodies kick less (by their size).
+- *Tumbling.* Drifting free a body turns slowly (set spinning by a kick,
+  a push off, a hit), drawn turned; catching hold of something rights it.
+- *Cells.* Weightless, nothing falls: powder hangs and drifts (dust,
+  sand, gravel a cell at a time now and then), liquid stays as it's put
+  (blobs, no spreading), gas spreads without rising. Sparks and debris
+  fly straight. Fire needs air: it goes out where the air's gone.
+- *Vacuum.* No air to breathe (breath, as the thinning air but at its
+  hardest); bitterly cold (ambient falls to deep frost over the void:
+  water freezes into floating ice, you're chilled, slowed). Space gear
+  (later, `space`) protects.
+
 **4. `space`: the asteroids.** Asteroid fields, starmetal and solarite,
 sun and shade (scorching and freezing), meteor showers down through the
 layers (craters, meteorite ore), the space gear, a creature or two, the

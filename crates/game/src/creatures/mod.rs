@@ -584,6 +584,8 @@ pub struct FallTrack {
 /// Hitting a wall or ceiling slower than this isn't worth reporting (walking
 /// into a wall).
 const SLAM_MIN: f32 = 225.0;
+/// Weightless, a body takes hold of what's this near it (cells).
+const REACH: i32 = 2;
 
 /// A creature's rocket boots fired this tick (`gear::boots`: the exhaust).
 #[derive(Message, Clone, Copy, Debug)]
@@ -709,13 +711,14 @@ pub(crate) fn move_creatures(
         } else {
             &paced
         };
-        // High in the sky gravity fades (to none at the world's top): it
-        // falls slower, and a jump (as fast off the ground as ever) goes
-        // higher.
+        // High in the sky gravity fades (to none in the void): it falls
+        // slower, and a jump (as fast off the ground as ever) goes higher;
+        // all but gone, it floats (`Locomotion::float`).
         let light;
         let g = sky.map_or(1.0, |s| s.gravity(k.body.pos.y));
+        let weightless = g < crate::zerog::WEIGHTLESS;
         let stats = if g < 1.0 {
-            light = platypus_physics::MovementStats { gravity: stats.gravity * g, jump_height: stats.jump_height / g.max(0.05), ..stats.clone() };
+            light = platypus_physics::MovementStats { gravity: stats.gravity * g, jump_height: stats.jump_height / g.max(0.05), weightless, ..stats.clone() };
             &light
         } else {
             stats
@@ -724,6 +727,8 @@ pub(crate) fn move_creatures(
         // (reeling in pulls it up: `gear::hook`).
         let tether = rope.and_then(|r| r.tether());
         k.loco.swinging = tether.is_some();
+        // (Weightless, it can reach for what's by it.)
+        k.loco.reach = if weightless { platypus_physics::within_reach(&grid, &k.body, REACH) } else { [false; 4] };
         // (A climber can hold on to the wall behind it; a spider to its
         // web, anywhere in it.)
         k.loco.backed = stats.cling && (backed(&sim.world, k.body.pos) || (web_walker && stuck_in(&sim.world, &k.body)));
@@ -771,7 +776,10 @@ pub(crate) fn move_creatures(
         // rope: it reels you in fast, right up to the rock it bit.)
         let walled = if (contacts.wall_left && before.x < 0.0) || (contacts.wall_right && before.x > 0.0) { before.x.abs() } else { 0.0 };
         let roofed = if contacts.ceiling && before.y > 0.0 { before.y } else { 0.0 };
-        let slam = if tether.is_some() { 0.0 } else { walled.max(roofed) };
+        // (Weightless, nothing falls: coming down on the ground is a slam
+        // too, by the speed it hit at.)
+        let floored = if weightless && contacts.ground && before.y < 0.0 { -before.y } else { 0.0 };
+        let slam = if tether.is_some() { 0.0 } else { walled.max(roofed).max(floored) };
         let y = k.body.pos.y;
         let drop = track.map_or(0.0, |mut t| {
             if rejumped {
@@ -781,7 +789,7 @@ pub(crate) fn move_creatures(
             // (Standing on something, or in water: the fall starts over.
             // Nearly still, or coming down gently (rocket boots braking, a
             // wall slide): it starts from here.)
-            t.top = if contacts.ground || contacts.submerged > 0.5 {
+            t.top = if contacts.ground || contacts.submerged > 0.5 || weightless {
                 None
             } else if k.body.vel.y > -GENTLE_FALL {
                 Some(y)

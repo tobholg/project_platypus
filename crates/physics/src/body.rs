@@ -116,6 +116,18 @@ pub fn overlaps_solid(grid: &impl Grid, min: IVec2, max: IVec2) -> bool {
     (min.y..=max.y).any(|y| (min.x..=max.x).any(|x| grid.solid(x, y)))
 }
 
+/// What's solid within `reach` cells of a body, beside it: under it, to
+/// its left, to its right, over it (what it could take hold of).
+pub fn within_reach(grid: &impl Grid, body: &Body, reach: i32) -> [bool; 4] {
+    let (min, max) = body.cells_at(body.pos);
+    [
+        overlaps_solid(grid, IVec2::new(min.x, min.y - reach), IVec2::new(max.x, min.y - 1)),
+        overlaps_solid(grid, IVec2::new(min.x - reach, min.y), IVec2::new(min.x - 1, max.y)),
+        overlaps_solid(grid, IVec2::new(max.x + 1, min.y), IVec2::new(max.x + reach, max.y)),
+        overlaps_solid(grid, IVec2::new(min.x, max.y + 1), IVec2::new(max.x, max.y + reach)),
+    ]
+}
+
 fn blocked(grid: &impl Grid, body: &Body, pos: Vec2) -> bool {
     let (min, max) = body.cells_at(pos);
     overlaps_solid(grid, min, max)

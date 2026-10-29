@@ -414,7 +414,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, fall_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, save_script)
             .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script, wardrobe_script, herbcut_script, zombiejump_script, crushcheck_script, batcount_script, airswing_script, dive_script, paint_script, firewall_script, fields_script, ward_script, seam_script))
-            .add_systems(Update, (sky_script, drift_script, high_script))
+            .add_systems(Update, (sky_script, drift_script, high_script, zerog_script))
             .add_systems(PreUpdate, craft_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pack_script.after(bevy::ui::UiSystems::Focus).before(crate::pause::key))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
@@ -17114,7 +17114,7 @@ fn high_script(
         0 if t > 0.5 => {
             // (The sky band: from its floor, the jet stream's start back by
             // its share, to the world's top.)
-            let top = sky.weightless.1 as f32;
+            let top = sky.top as f32;
             let floor = (sky.jet.0 as f32 - 0.62 * top) / (1.0 - 0.62);
             k.body.pos = Vec2::new(k.body.pos.x, floor + share * (top - floor));
             k.prev_pos = k.body.pos;
@@ -17140,6 +17140,147 @@ fn high_script(
             k.body.vel.x, k.body.vel.y,
             sky.gravity(y), sky.thin(y), crate::sky::jet_at(&sim, y),
             breath.map(|b| (b.left * 10.0).round() / 10.0)
+        );
+    }
+}
+
+/// `zerog` (a generated world): the player put low in the void over the
+/// sky on a stone slab made there (from 0.5 s, once its chunks are in), a
+/// stone roof 80 over it; pushing off the slab up and to the right at 2 s
+/// (Space + D), crawling left along the roof (4 s to 5 s), pushing straight
+/// off it at 6 s. `PLATYPUS_ZEROG=bow` / `jet`: instead put floating 40
+/// over the slab, shooting arrows down to the left / holding the flame
+/// jet to the left from 3 s to 8 s; `pick`: floating by the slab's side,
+/// striking it with the pickaxe from 3 s. Logs where it is against the
+/// slab, its speed, what it holds, the gravity, its breath and health.
+fn zerog_script(
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut player: Query<(&mut Kinematics, &mut crate::hands::items::Inventory, &crate::creatures::Health, Option<&crate::breath::Breath>), With<LocalPlayer>>,
+    items: Option<Res<crate::hands::items::Items>>,
+    (mut hand, mut cursor, mut mouse): (ResMut<crate::hands::Hand>, ResMut<CursorOverride>, ResMut<ButtonInput<MouseButton>>),
+    mut state: Local<(u8, f32, Option<Vec2>)>,
+) {
+    if s.name != "zerog" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let Ok((mut k, mut inv, health, breath)) = player.single_mut() else { return };
+    let Some(sky) = sim.generator.sky_layers() else { return };
+    let mode = std::env::var("PLATYPUS_ZEROG").unwrap_or_default();
+    let (step, next, slab) = &mut *state;
+    if t < 0.5 {
+        return;
+    }
+    // (Low in the void: a small world's is thin.)
+    let at = *slab.get_or_insert_with(|| Vec2::new(sim.generator.spawn_point().x as f32, (sky.weightless.1 + 10).max((sky.weightless.1 + sky.top) / 2 - 40) as f32));
+    let (x, y) = (at.x as i32, at.y as i32);
+    match *step {
+        0 => {
+            // (Held there till its chunks are in.)
+            k.body.pos = Vec2::new(at.x, at.y + k.body.half.y + 0.5);
+            k.prev_pos = k.body.pos;
+            k.body.vel = Vec2::ZERO;
+            if !(sim.world.is_loaded(CellPos::new(x - 100, y).chunk()) && sim.world.is_loaded(CellPos::new(x + 200, y + 83).chunk())) {
+                return;
+            }
+            let Some(stone) = sim.materials().id("stone") else { return };
+            for (x0, x1, y0) in [(x - 60, x + 60, y - 4), (x - 100, x + 200, y + 80)] {
+                for cy in y0..y0 + 4 {
+                    for cx in x0..x1 {
+                        sim.world.set(CellPos::new(cx, cy), platypus_sim::Cell::new(stone, 0));
+                    }
+                }
+            }
+            info!("zerog: the slab at {x},{y} (void from {}, gravity {:.3} there)", sky.weightless.1, sky.gravity(at.y));
+            *step = match mode.as_str() {
+                "bow" | "jet" => {
+                    k.body.pos = Vec2::new(at.x, at.y + 40.0);
+                    30
+                }
+                "pick" => {
+                    k.body.pos = Vec2::new(at.x + 60.0 + k.body.half.x + 4.0, at.y - 2.0);
+                    30
+                }
+                _ => 1,
+            };
+            k.prev_pos = k.body.pos;
+        }
+        1 if t > 2.0 => {
+            keys.press(KeyCode::Space);
+            keys.press(KeyCode::KeyD);
+            *step = 2;
+        }
+        2 if t > 2.1 => {
+            keys.release(KeyCode::Space);
+            keys.release(KeyCode::KeyD);
+            *step = 3;
+        }
+        3 if t > 4.0 => {
+            keys.press(KeyCode::KeyA);
+            *step = 4;
+        }
+        4 if t > 5.0 => {
+            keys.release(KeyCode::KeyA);
+            *step = 5;
+        }
+        5 if t > 6.0 => {
+            keys.press(KeyCode::Space);
+            *step = 6;
+        }
+        6 if t > 6.1 => {
+            keys.release(KeyCode::Space);
+            *step = 7;
+        }
+        30 if t > 3.0 => {
+            let Some(items) = items.as_ref() else { return };
+            let tool = match mode.as_str() {
+                "bow" => "bow",
+                "jet" => "fire_staff",
+                _ => "copper_pickaxe",
+            };
+            if let Some(id) = items.id(tool) {
+                inv.slots[9] = Some(crate::hands::items::Stack::new(id, 1));
+                (hand.bar, hand.slot) = (0, 9);
+            }
+            if let Some(id) = items.id("arrow") {
+                inv.slots[8] = Some(crate::hands::items::Stack::new(id, 99));
+            }
+            *step = 31;
+        }
+        31 => {
+            let aim = match mode.as_str() {
+                "bow" => Vec2::new(-40.0, -14.0),
+                "jet" => Vec2::new(-40.0, 0.0),
+                _ => Vec2::new(at.x + 58.0, at.y - 2.0) - k.body.pos,
+            };
+            cursor.0 = Some(k.body.pos + aim);
+            let press = if mode == "bow" { (t - 3.0) % 1.1 < 0.8 } else { true };
+            if t < 8.0 && press {
+                mouse.press(MouseButton::Left);
+            } else {
+                mouse.release(MouseButton::Left);
+            }
+        }
+        _ => {}
+    }
+    if *step >= 1 && t >= *next {
+        *next = t + 0.25;
+        let c = k.loco.contacts;
+        let holds: Vec<&str> = [(c.ground, "floor"), (c.ceiling, "roof"), (c.wall_left, "wall left"), (c.wall_right, "wall right")].into_iter().filter(|h| h.0).map(|h| h.1).collect();
+        info!(
+            "zerog: t {t:.2} at {:+.1},{:+.1} going {:+.1},{:+.1} holding [{}] gravity {:.3}; breath {:?} health {:.0}",
+            k.body.pos.x - at.x,
+            k.body.pos.y - k.body.half.y - at.y,
+            k.body.vel.x,
+            k.body.vel.y,
+            holds.join(", "),
+            sky.gravity(k.body.pos.y),
+            breath.map(|b| (b.left * 10.0).round() / 10.0),
+            health.hp
         );
     }
 }
