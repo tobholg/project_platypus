@@ -292,6 +292,7 @@ type PlayerStatuses<'a> = (
     Option<&'a crate::potion::PotionSickness>,
     Option<&'a crate::potion::Lasting>,
     Option<&'a crate::breath::Breath>,
+    Option<&'a crate::space::Sunlit>,
 );
 
 fn update_statuses(
@@ -303,7 +304,7 @@ fn update_statuses(
     mut labels: Query<(&StatusLabel, &mut Text)>,
     mut fuel: Local<(f32, bool)>,
 ) {
-    let Ok((burning, chilled, coated, k, stats, sick, lasting, breath)) = player.single() else { return };
+    let Ok((burning, chilled, coated, k, stats, sick, lasting, breath, sunlit)) = player.single() else { return };
     // (label, colour, share left)
     let mut shown: Vec<(String, [u8; 3], f32)> = Vec::new();
     // Breath held, first: while its head's under, or till it's all back.
@@ -316,6 +317,10 @@ fn update_statuses(
     }
     if let Some(c) = chilled {
         shown.push(("Chilled".into(), [150, 215, 255], c.left / CHILL_SECS));
+    }
+    // (In space: in the sun's glare, baking through.)
+    if let Some(s) = sunlit.filter(|s| s.lit || s.heat > 0.0) {
+        shown.push((if s.lit { "In the sun".into() } else { "Cooling".into() }, [255, 210, 110], s.heat.max(0.05)));
     }
     // What's on you, each by how much of you it covers (a trace, under 5 %,
     // not worth a slot).

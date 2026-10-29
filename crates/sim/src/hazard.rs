@@ -19,8 +19,6 @@ pub const HARMFUL_CONTACT: i32 = 220;
 const HEAT_DAMAGE: f32 = 0.1;
 /// Below this (°C) it chills; fully chilled 60 °C further down.
 pub const CHILLING_COLD: i32 = -10;
-/// The most the void's cold chills a body (of 1: a frost spell's worst).
-const VOID_CHILL: f32 = 0.5;
 /// Below this (°C) cold also hurts, at `HEAT_DAMAGE` per °C.
 pub const HARMFUL_COLD: i32 = -60;
 
@@ -118,14 +116,6 @@ impl World {
                     touched = Some(c.material);
                 }
             }
-        }
-        // Up where the air's thinning to the void's nothing, the air itself
-        // chills (the cold of space), the colder the higher, up to
-        // `VOID_CHILL`.
-        let (cx, cy) = ((min.x + max.x) / 2, (min.y + max.y) / 2);
-        if self.climate().gravity(cy) < 256 {
-            let t = self.climate().ambient(cx, cy);
-            e.cold = e.cold.max(((CHILLING_COLD - t) as f32 / 60.0).clamp(0.0, VOID_CHILL));
         }
         let area = ((max.x - min.x + 1) * (max.y - min.y + 1)).max(1);
         e.submerged = liquid as f32 / area as f32;

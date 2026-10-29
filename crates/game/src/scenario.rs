@@ -17321,16 +17321,25 @@ fn zerog_script(
 /// `space` (a generated world): the player put floating beside the
 /// asteroid nearest the spawn of the kind `PLATYPUS_SPACE_ROCK` (`stony`,
 /// `metal`, `icy`, `sunstone`; any) and at least `PLATYPUS_SPACE_R` (40)
-/// across its radius, `PLATYPUS_SPACE_OFF` (30) out from its edge, held
-/// there till its chunks are in. Logs the rock, how much of it's in, and
+/// across its radius, `PLATYPUS_SPACE_OFF` (30) out from its edge (to its
+/// right; `PLATYPUS_SPACE_SIDE=sun`: on the sun's side, `shade`: in its
+/// shadow), held there till its chunks are in. Logs the rock, how much of it's in, and
 /// the creatures about it.
-fn space_script(s: Res<Scenario>, sim: Res<SimWorld>, mut menu: ResMut<crate::devmenu::DevMenu>, mut player: Query<&mut Kinematics, With<LocalPlayer>>, others: Query<(&Kinematics, &Name), (Without<LocalPlayer>, With<crate::creatures::Creature>)>, mut state: Local<(Option<(Vec2, f32)>, f32)>) {
+fn space_script(
+    s: Res<Scenario>,
+    sim: Res<SimWorld>,
+    day: Res<crate::light::Daylight>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    mut player: Query<(&mut Kinematics, &crate::creatures::Health, Option<&crate::space::Sunlit>, Option<&crate::creatures::body::elements::Chilled>), With<LocalPlayer>>,
+    others: Query<(&Kinematics, &Name), (Without<LocalPlayer>, With<crate::creatures::Creature>)>,
+    mut state: Local<(Option<(Vec2, f32)>, f32)>,
+) {
     if s.name != "space" {
         return;
     }
     menu.open = false;
     let t = s.elapsed;
-    let Ok(mut k) = player.single_mut() else { return };
+    let Ok((mut k, health, sunlit, chilled)) = player.single_mut() else { return };
     if t < 0.3 {
         return;
     }
@@ -17352,7 +17361,15 @@ fn space_script(s: Res<Scenario>, sim: Res<SimWorld>, mut menu: ResMut<crate::de
         return;
     }
     let off: f32 = std::env::var("PLATYPUS_SPACE_OFF").ok().and_then(|v| v.parse().ok()).unwrap_or(30.0);
-    let spot = at + Vec2::new(r * 1.3 + off, 0.0);
+    // (PLATYPUS_SPACE_SIDE: `sun`, on the side the sun's on; `shade`, in
+    // its shadow; else to its right.)
+    let d = crate::light::sun_dir(day.time);
+    let way = match std::env::var("PLATYPUS_SPACE_SIDE").as_deref() {
+        Ok("sun") => -Vec2::new(d[0], d[1]),
+        Ok("shade") => Vec2::new(d[0], d[1]),
+        _ => Vec2::X,
+    };
+    let spot = at + way * (r * 1.3 + off);
     if !sim.world.is_loaded(CellPos::from_world(at.x, at.y).chunk()) || t < 1.0 {
         k.body.pos = spot;
         k.prev_pos = spot;
@@ -17362,7 +17379,16 @@ fn space_script(s: Res<Scenario>, sim: Res<SimWorld>, mut menu: ResMut<crate::de
         *next = t + 1.0;
         let solid = (-60..=60).flat_map(|dy| (-60..=60).map(move |dx| (dx, dy))).filter(|&(dx, dy)| sim.world.get(CellPos::new(at.x as i32 + dx * 2, at.y as i32 + dy * 2)).is_some_and(|c| !c.is_air())).count();
         let near: Vec<String> = others.iter().filter(|(o, _)| o.body.pos.distance(at) < r * 2.0 + 200.0).map(|(o, n)| format!("{n} {:+.0},{:+.0}", o.body.pos.x - at.x, o.body.pos.y - at.y)).collect();
-        info!("space: t {t:.1} at {:+.0},{:+.0} from the rock's middle; {solid} of its cells about it solid (a 2-cell sample); near it: {}", k.body.pos.x - at.x, k.body.pos.y - at.y, near.join(", "));
+        info!(
+            "space: t {t:.1} at {:+.0},{:+.0} from the rock's middle; {solid} of its cells about it solid (a 2-cell sample); near it: {}; time {:.2}, {}, health {:.0}{}",
+            k.body.pos.x - at.x,
+            k.body.pos.y - at.y,
+            near.join(", "),
+            day.time,
+            sunlit.map_or("no sun or shade".to_string(), |s| format!("{} (heat {:.2})", if s.lit { "in the sun" } else { "in shade" }, s.heat)),
+            health.hp,
+            chilled.map_or(String::new(), |c| format!(", chilled {:.2}", c.cold))
+        );
     }
 }
 
