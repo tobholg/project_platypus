@@ -262,6 +262,7 @@ struct SkyParams {
     warm: Vec4,
     sun: Vec4,
     view: Vec4,
+    aurora: Vec4,
 }
 
 impl Material2d for SkyMaterial {
@@ -999,6 +1000,7 @@ fn gradient_setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut 
 #[allow(clippy::too_many_arguments)]
 fn gradient(
     sim: Res<SimWorld>,
+    real: Res<Time<Real>>,
     g: Res<Gradient>,
     bd: Res<Backdrops>,
     clear: Res<ClearColor>,
@@ -1030,6 +1032,18 @@ fn gradient(
     heavens.glow_strength *= 1.0 - space;
     let sun = c - half + disc_at(time, half).0;
     let v4 = |rgb: [f32; 3], w: f32| Vec4::new(rgb[0], rgb[1], rgb[2], w);
+    // The aurora, hanging in the thin air over the islands: seen by night
+    // (by day, faintly, only up in the thin air), from up among the highest
+    // islands on into space; its foot where it seems to be.
+    let aurora = bd.sky.map_or(Vec4::ZERO, |l| {
+        let sun_h = -(time * std::f32::consts::TAU).cos();
+        let dark = ((0.05 - sun_h) / 0.3).clamp(0.0, 1.0);
+        let (thin, void) = (l.thin_from as f32, l.weightless.1 as f32);
+        let near = smooth(((c.y - (thin - AURORA_FROM)) / AURORA_FROM).clamp(0.0, 1.0)) * (1.0 - smooth(((c.y - void - AURORA_GONE) / AURORA_GONE).clamp(0.0, 1.0)));
+        let day = AURORA_BY_DAY * space.max(smooth(((c.y - thin) / 400.0).clamp(0.0, 1.0)));
+        let foot = thin + AURORA_AT * (void - thin);
+        Vec4::new(near * (dark + (1.0 - dark) * day) * bd.shown, c.y + (foot - c.y) * AURORA_NEAR, c.x * AURORA_PARALLAX, real.elapsed_secs() % 3_600.0)
+    });
     if let Some(mut m) = skies.get_mut(&g.material) {
         m.params = SkyParams {
             zenith: v4(heavens.zenith, bd.shown),
@@ -1039,6 +1053,7 @@ fn gradient(
             warm: v4(heavens.warm, 0.0),
             sun: Vec4::new(sun.x, sun.y, 0.0, 0.0),
             view: Vec4::new(c.x - half.x, c.y - half.y, half.x, half.y),
+            aurora,
         };
     }
 }
@@ -1072,6 +1087,18 @@ struct Star {
 const TWINKLE_CELL: f32 = 9.0;
 const TWINKLE_CHANCE: u64 = 200;
 const TWINKLE_PARALLAX: f32 = 0.02;
+
+/// The aurora (`sky.wgsl`): it shows climbing the last this many cells up
+/// to the thin air and goes out over this many past the void's edge; its
+/// foot this far up the thin air, seen this much of the way from where you
+/// are to it, moving at this share of the camera's motion; by day, this
+/// faint (and only up in the thin air).
+const AURORA_FROM: f32 = 900.0;
+const AURORA_GONE: f32 = 1_500.0;
+const AURORA_AT: f32 = 0.1;
+const AURORA_NEAR: f32 = 0.2;
+const AURORA_PARALLAX: f32 = 0.03;
+const AURORA_BY_DAY: f32 = 0.12;
 
 /// Stars are made over this many views' width and those in the first
 /// kept, spread over the view (the field as it was when the sky drifted).

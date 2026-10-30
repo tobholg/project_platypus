@@ -21,6 +21,9 @@ struct Sky {
     sun: vec4<f32>,
     // xy the view's bottom left (world), zw its half size.
     view: vec4<f32>,
+    // The aurora: x how strong (0: none), y its foot's world y as it seems,
+    // z how far it's moved with the camera, w the time (s).
+    aurora: vec4<f32>,
 };
 
 @group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> s: Sky;
@@ -28,6 +31,24 @@ struct Sky {
 fn bayer(x: u32, y: u32) -> f32 {
     var m = array<f32, 16>(0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
     return (m[(y & 3u) * 4u + (x & 3u)] + 0.5) / 16.0;
+}
+
+// One of the aurora's curtains (k 0 the near one, 1 a fainter one farther
+// off and higher) at `x` cells from the view's left, `y` world: green low,
+// violet up its folds, rippling, finely rayed; its colour and how strong.
+fn curtain(x: f32, y: f32, k: f32) -> vec4<f32> {
+    let t = s.aurora.w;
+    let u = x + s.aurora.z * (1.0 - 0.4 * k) + k * 2300.0;
+    let ph = k * 3.7;
+    let v = 0.5 + 0.35 * sin(u / 1400.0 + t * 0.03 + ph) + 0.15 * sin(u / 380.0 - t * 0.05 + ph);
+    let fold = smoothstep(0.0, 1.0, clamp((v - 0.3) / 0.35, 0.0, 1.0));
+    let edge = s.aurora.y + k * 90.0 + 55.0 * sin(u / 300.0 + t * 0.05 + ph) + 25.0 * sin(u / 110.0 - t * 0.09 + ph) + 8.0 * sin(u / 37.0 + t * 0.21);
+    let dy = y - edge;
+    let fall = select(exp(-dy / 140.0), exp(dy / 5.0), dy < 0.0);
+    let ray = (0.7 + 0.3 * sin(u / 2.4 + 3.0 * sin(u / 47.0 + t * 0.35))) * (0.6 + 0.4 * sin(u / 80.0 + t * 0.15 + ph));
+    let up = smoothstep(0.0, 1.0, clamp(dy / 180.0, 0.0, 1.0));
+    let rgb = vec3<f32>(0.35 + 0.4 * up, 1.0 - 0.65 * up, 0.55 + 0.4 * up);
+    return vec4<f32>(rgb, fold * fall * ray * (1.0 - 0.5 * k));
 }
 
 fn to_linear(c: vec3<f32>) -> vec3<f32> {
@@ -58,5 +79,13 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let g = exp(-r * 3.0) * s.glow.w;
     let gq = clamp(floor(g * 7.0 + 0.25 + 0.5 * d) / 7.0, 0.0, 1.0);
     c = mix(c, s.glow.rgb, gq);
+    // The aurora, glowing over it.
+    if (s.aurora.x > 0.01) {
+        let x = p.x - s.view.x;
+        let near = curtain(x, p.y, 0.0);
+        let far = curtain(x, p.y, 1.0);
+        // (Bright: the night's light dims what's behind the world.)
+        c = c + (near.rgb * near.a + far.rgb * far.a * (1.0 - near.a)) * s.aurora.x * 1.8;
+    }
     return vec4<f32>(to_linear(clamp(c, vec3<f32>(0.0), vec3<f32>(1.0))), s.zenith.w);
 }
