@@ -19,6 +19,11 @@ struct Cloud {
     // faces turned over: the sea of clouds from under it).
     lit: vec4<f32>,
     shade: vec4<f32>,
+    // The jet stream's gusts (z 1: shown, by the cirrus): their two waves'
+    // phases at the tile's middle (x, y), and how each turns a cell along
+    // (gust_turn x, y); thin in a lull, thick in a gust.
+    gust: vec4<f32>,
+    gust_turn: vec4<f32>,
 };
 
 @group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> c: Cloud;
@@ -79,6 +84,16 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     if (m.a <= 0.001) {
         discard;
     }
-    let rgb = clamp(m.rgb / m.a, vec3<f32>(0.0), vec3<f32>(1.0));
-    return vec4<f32>(to_linear(rgb), m.a * c.color.w);
+    var rgb = clamp(m.rgb / m.a, vec3<f32>(0.0), vec3<f32>(1.0));
+    // (Cirrus: ice, whiter than the heaps, catching the light.)
+    if (c.gust.z > 0.5) {
+        rgb = mix(rgb, c.color.rgb, 0.45);
+    }
+    var alpha = m.a * c.color.w;
+    if (c.gust.z > 0.5) {
+        let along = (in.uv.x - 0.5) * size.x;
+        let g = 0.5 + 0.3 * sin(c.gust.x + c.gust_turn.x * along) + 0.2 * sin(c.gust.y + c.gust_turn.y * along);
+        alpha = alpha * (0.3 + 0.7 * g);
+    }
+    return vec4<f32>(to_linear(rgb), alpha);
 }

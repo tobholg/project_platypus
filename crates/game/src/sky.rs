@@ -44,15 +44,33 @@ pub const SPACE: [f32; 3] = [0.01, 0.012, 0.03];
 const LULL: f32 = 0.3;
 const GUST_SECS: (f32, f32) = (7.0, 2.9);
 
+/// Which way the jet stream blows (the weather's wind's way): 1 or −1.
+fn jet_way(sim: &SimWorld) -> f32 {
+    if sim.world.wind() < 0.0 { -1.0 } else { 1.0 }
+}
+
+/// The gusts' two waves at `x` now: their phases (radians), and how each
+/// turns along x (radians a cell), for drawing them (the cirrus riding the
+/// jet: `backdrop`). Gusting: 0.5 + 0.3 sin(first) + 0.2 sin(second).
+pub fn gusts(sim: &SimWorld, x: f32) -> [f32; 4] {
+    let way = jet_way(sim) as f64;
+    let tau = std::f64::consts::TAU;
+    let u = sim.world.tick() as f64 / crate::world::TICK_HZ - way * x as f64 / JET as f64;
+    let (a, b) = (GUST_SECS.0 as f64, GUST_SECS.1 as f64);
+    [(tau * u / a).rem_euclid(tau) as f32, (tau * u / b + 1.3).rem_euclid(tau) as f32, (-tau * way / (a * JET as f64)) as f32, (-tau * way / (b * JET as f64)) as f32]
+}
+
+/// How far into a gust it is at `x` now (0 … 1).
+pub fn gust_at(sim: &SimWorld, x: f32) -> f32 {
+    let g = gusts(sim, x);
+    0.5 + 0.3 * g[0].sin() + 0.2 * g[1].sin()
+}
+
 /// Which way the jet stream blows (the weather's wind's way), and how hard
 /// at `x`, `y` (gusting): its velocity there.
 pub fn jet_at(sim: &SimWorld, x: f32, y: f32) -> f32 {
     let Some(sky) = sim.generator.sky_layers() else { return 0.0 };
-    let way = if sim.world.wind() < 0.0 { -1.0 } else { 1.0 };
-    let u = sim.world.tick() as f32 / crate::world::TICK_HZ as f32 - way * x / JET;
-    let tau = std::f32::consts::TAU;
-    let wave = 0.5 + 0.3 * (tau * u / GUST_SECS.0).sin() + 0.2 * (tau * u / GUST_SECS.1 + 1.3).sin();
-    way * JET * sky.jet(y) * (LULL + (1.0 - LULL) * wave)
+    jet_way(sim) * JET * sky.jet(y) * (LULL + (1.0 - LULL) * gust_at(sim, x))
 }
 
 /// Out of the jet stream: right behind ground upwind it's calm, this far

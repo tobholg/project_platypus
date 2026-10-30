@@ -8,7 +8,7 @@
 //! `layer_tile` shades it at noon (stills).
 
 use crate::terrain::{self, Albedo, Light, Shape};
-use crate::{Rgb, bayer, hash, mix, noise1, noise2, rgb};
+use crate::{Rgb, bayer, fbm1, hash, mix, noise1, noise2, rgb};
 use serde::Deserialize;
 
 /// A layer of land: terrain, a band of it seen from the front
@@ -333,6 +333,44 @@ pub fn cloud_sea_data(look: &Look, x0: i64, w: usize, h: usize, detail: f32, see
                 // (Nearer over farther; its plain last row kept.)
                 if layer[i + 3] > 0 && layer[i + 3] >= out[j + 3] / 2 && y + off + 1 < h {
                     out[j..j + 4].copy_from_slice(&layer[i..i + 4]);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Cirrus, strip columns `x0 .. x0 + w`, `h` rows, as `cloud_data`'s
+/// texels: thin streaks combed out along the wind, in bands across the
+/// strip, wavering, coming and going along it, finely striated, see-through.
+pub fn cirrus_data(x0: i64, w: usize, h: usize, seed: u64) -> Vec<u8> {
+    let mut out = vec![0u8; w * h * 4];
+    let enc = |v: f32| ((v.clamp(-1.0, 1.0) * 0.5 + 0.5) * 255.0).round() as u8;
+    let streaks = 9;
+    let per = h as f32 / streaks as f32;
+    for xi in 0..w {
+        let xf = (x0 + xi as i64) as f32;
+        for j in 0..streaks {
+            let s = seed ^ (0xC1 + j as u64 * 0x9E37);
+            // (Here or not along it: patches of streaks, gaps between.)
+            let here = smoothstep(0.36, 0.6, fbm1(xf / 640.0, 3, s ^ 1));
+            if here <= 0.0 {
+                continue;
+            }
+            let yc = per * (j as f32 + 0.5) + (fbm1(xf / 380.0, 2, s ^ 2) - 0.5) * per * 1.3;
+            let thick = 2.0 + 9.0 * fbm1(xf / 140.0, 2, s ^ 3) * here;
+            for y in ((yc - 3.0 * thick).max(0.0) as usize)..((yc + 3.0 * thick).min(h as f32) as usize) {
+                let d = (y as f32 + 0.5 - yc) / thick;
+                let comb = 0.6 + 0.4 * noise2(xf / 55.0, y as f32 / 1.4 + j as f32 * 17.0, s ^ 4);
+                let a = ((-d * d).exp() * here * comb * 1.25).min(1.0);
+                let i = (y * w + xi) * 4;
+                let a8 = (a * 255.0) as u8;
+                if a8 > out[i + 3] {
+                    // (Its top facing up into the light, its underside down.)
+                    out[i] = enc(0.0);
+                    out[i + 1] = enc(0.45 - 0.35 * d);
+                    out[i + 2] = ((0.15 * d.abs()).min(1.0) * 63.0).round() as u8;
+                    out[i + 3] = a8;
                 }
             }
         }

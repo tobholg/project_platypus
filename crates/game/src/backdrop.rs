@@ -87,6 +87,14 @@ const SEA_OVER: f32 = 0.55;
 const SEA_GONE: f32 = 1.6;
 const SEA_LOW: f32 = 1_500.0;
 const SEA_DEEP: f32 = 3_600.0;
+/// The jet stream's cirrus: its share of the camera's motion across, how
+/// much of the way from where you are to the jet stream's middle it seems
+/// to lie (about you in it, over you under it), its share of the jet's
+/// speed, its strip's rows.
+const CIRRUS_PARALLAX: f32 = 0.06;
+const CIRRUS_NEAR: f32 = 0.3;
+const CIRRUS_SPEED: f32 = 0.25;
+const CIRRUS_HEIGHT: usize = 300;
 /// Over it, its base's solid row stretched this far on down (cells: past
 /// the view's bottom, zoomed all the way out).
 const SEA_SKIRT: f32 = 1_600.0;
@@ -129,6 +137,8 @@ enum Part {
     Clouds,
     /// The sea of clouds, far off at its height in the sky (`cloud_sea`).
     Sea,
+    /// Cirrus streaming along the jet stream, far off at its height.
+    Cirrus,
 }
 
 /// A tile: what, which look and layer, which column (`ty` unused: 0).
@@ -215,11 +225,13 @@ struct CloudParams {
     haze: Vec4,
     lit: Vec4,
     shade: Vec4,
+    gust: Vec4,
+    gust_turn: Vec4,
 }
 
 impl CloudParams {
     fn near(&self, o: &CloudParams) -> bool {
-        [(self.to, o.to), (self.color, o.color), (self.ambient, o.ambient), (self.haze, o.haze), (self.lit, o.lit), (self.shade, o.shade)].iter().all(|(a, b)| (*a - *b).abs().max_element() < 0.003)
+        [(self.to, o.to), (self.color, o.color), (self.ambient, o.ambient), (self.haze, o.haze), (self.lit, o.lit), (self.shade, o.shade), (self.gust, o.gust), (self.gust_turn, o.gust_turn)].iter().all(|(a, b)| (*a - *b).abs().max_element() < 0.003)
     }
 }
 
@@ -314,6 +326,9 @@ pub struct Backdrops {
     /// tile's.
     meshes: Option<(Handle<Mesh>, Handle<Mesh>)>,
     cloud_mesh: Option<Handle<Mesh>>,
+    cirrus_mesh: Option<Handle<Mesh>>,
+    /// How far the cirrus has streamed along the jet stream (cells).
+    cirrus: f32,
     /// The sea of clouds' tile, upside down, and its skirt (its last row
     /// stretched).
     sea_meshes: Option<(Handle<Mesh>, Handle<Mesh>, Handle<Mesh>)>,
@@ -329,7 +344,7 @@ impl Backdrops {
         let looks = Arc::new(all.looks.clone());
         let weights = looks.iter().map(|v| if v.name == all.default { 1.0 } else { 0.0 }).collect();
         let biomes = Arc::new(all);
-        Backdrops { looks, biomes, weights, tiles: HashMap::new(), making: HashMap::new(), ground: None, shown: 1.0, drift: 0.0, sea: None, sky: None, half: Vec2::new(380.0, 230.0), meshes: None, cloud_mesh: None, sea_meshes: None }
+        Backdrops { looks, biomes, weights, tiles: HashMap::new(), making: HashMap::new(), ground: None, shown: 1.0, drift: 0.0, sea: None, sky: None, half: Vec2::new(380.0, 230.0), meshes: None, cloud_mesh: None, cirrus_mesh: None, cirrus: 0.0, sea_meshes: None }
     }
 
     /// A tile's size in cells.
@@ -338,6 +353,7 @@ impl Backdrops {
             Part::Land => (TILE, HEIGHT),
             Part::Clouds => (TILE, CLOUD_HEIGHT),
             Part::Sea => (TILE, SEA_HEIGHT),
+            Part::Cirrus => (TILE, CIRRUS_HEIGHT),
         }
     }
 
@@ -348,6 +364,7 @@ impl Backdrops {
             Part::Land => cam.x * (1.0 - layer_at(k, self.looks[v].layers.len()).0),
             Part::Clouds => cam.x * (1.0 - CLOUD_PARALLAX) + self.drift,
             Part::Sea => cam.x * (1.0 - SEA_PARALLAX) + self.drift * 0.5,
+            Part::Cirrus => cam.x * (1.0 - CIRRUS_PARALLAX) + self.cirrus,
         }
     }
 
@@ -371,6 +388,7 @@ impl Backdrops {
             // (Its farthest heaps' tops where the sea seems to be; from under
             // it, upside down, they hang down to there: `under_centre`.)
             Part::Sea => self.sea_top(cam).unwrap_or(cam.y + 1e6) - h * (0.5 - platypus_backdrop::peaks::SEA_CROWN),
+            Part::Cirrus => self.cirrus_y(cam).unwrap_or(cam.y + 1e6),
         };
         Vec2::new(x, y)
     }
@@ -391,6 +409,14 @@ impl Backdrops {
             ease(SEA_OVER, SEA_GONE, (-up - SEA_LOW) / (SEA_DEEP - SEA_LOW))
         };
         Some(cam.y + at * self.half.y)
+    }
+
+    /// Where the jet stream's cirrus seems to be for the camera at `cam`
+    /// (its strip's middle), if the world has a jet stream.
+    fn cirrus_y(&self, cam: Vec2) -> Option<f32> {
+        let sky = self.sky?;
+        let jet = (sky.jet.0 + sky.jet.1) as f32 / 2.0;
+        Some(cam.y + (jet - cam.y) * CIRRUS_NEAR)
     }
 
     /// How much the sea of clouds is seen from over it (1) or from under it
@@ -419,7 +445,7 @@ impl Backdrops {
                 // under the sea, upside down, its last row its top.)
                 let flip = key.part == Part::Sea && self.over_sea(cam) < 0.5;
                 let c = if flip { self.under_centre(*key, cam) } else { self.centre(*key, cam) };
-                CoverTile { corner: Vec2::new(c.x - w as f32 / 2.0, c.y + h as f32 / 2.0), w, h, skirted: key.part != Part::Clouds, flip, alpha: tile.alpha.as_slice() }
+                CoverTile { corner: Vec2::new(c.x - w as f32 / 2.0, c.y + h as f32 / 2.0), w, h, skirted: matches!(key.part, Part::Land | Part::Sea), flip, alpha: tile.alpha.as_slice() }
             })
             .collect();
         Cover { tiles }
@@ -494,6 +520,10 @@ fn tiles(
     bd.sky = sim.generator.sky_layers();
     bd.half = half;
     bd.drift += time.delta_secs() * CLOUD_DRIFT;
+    // (The cirrus streams with the jet stream, gusting as it does.)
+    if let Some(sky) = bd.sky {
+        bd.cirrus += time.delta_secs() * CIRRUS_SPEED * crate::sky::jet_at(&sim, c.x, (sky.jet.0 + sky.jet.1) as f32 / 2.0);
+    }
     // The looks' shares, eased (about a second to change over).
     let target = targets(&bd, &sim, c.x);
     let ease = 1.0 - (-time.delta_secs() / 0.35).exp();
@@ -520,13 +550,19 @@ fn tiles(
             let (lo, hi) = span(&bd, Part::Clouds, v, 0);
             want.extend((lo..=hi).map(|tx| Key { part: Part::Clouds, v, k: 0, tx, ty: 0 }));
             // (The sea of clouds only when it's in view: its heaps' tops not
-            // under the view, its base not over it.)
-            // (Its heaps' tops not under the view, from over it; their
-            // hanging ends not over it, from under it.)
+            // under the view, from over it; their hanging ends not over it,
+            // from under it.)
             let over = bd.over_sea(c);
             if bd.sea_top(c).is_some_and(|at| (over > 0.0 && at > c.y - half.y - 8.0) || (over < 1.0 && at < c.y + half.y + 8.0)) {
                 let (lo, hi) = span(&bd, Part::Sea, v, 0);
                 want.extend((lo..=hi).map(|tx| Key { part: Part::Sea, v, k: 0, tx, ty: 0 }));
+            }
+            // (The jet stream's cirrus, when its strip's in view.)
+            if let Some(y) = bd.cirrus_y(c)
+                && (y - c.y).abs() < half.y + CIRRUS_HEIGHT as f32 / 2.0
+            {
+                let (lo, hi) = span(&bd, Part::Cirrus, v, 0);
+                want.extend((lo..=hi).map(|tx| Key { part: Part::Cirrus, v, k: 0, tx, ty: 0 }));
             }
         }
     }
@@ -540,6 +576,7 @@ fn tiles(
             Part::Land => pool.spawn(async move { layer_data(&looks[key.v], key.k, key.tx * w as i64, w, h, DETAIL, seed) }),
             Part::Clouds => pool.spawn(async move { cloud_data(&looks[key.v], key.tx * w as i64, w, h, DETAIL, seed) }),
             Part::Sea => pool.spawn(async move { cloud_sea_data(&looks[key.v], key.tx * w as i64, w, h, DETAIL, seed) }),
+            Part::Cirrus => pool.spawn(async move { platypus_backdrop::peaks::cirrus_data(key.tx * w as i64, w, h, seed) }),
         };
         bd.making.insert(key, task);
     }
@@ -563,13 +600,14 @@ fn tiles(
         bd.making.remove(&key);
         let (w, h) = Backdrops::size(key.part);
         let alpha: Vec<u8> = px.chunks(4).map(|p| p[3]).collect();
-        let clouds = matches!(key.part, Part::Clouds | Part::Sea);
+        let clouds = matches!(key.part, Part::Clouds | Part::Sea | Part::Cirrus);
         // The farthest range, the clouds, the nearer ranges.
         let z = Z + key.v as f32 * 0.002
             + match key.part {
                 Part::Land => key.k as f32 * 0.03,
                 Part::Clouds => 0.015,
                 Part::Sea => 0.016,
+                Part::Cirrus => 0.017,
             };
         if clouds {
             // Their texels (read exactly; the shader blends them after
@@ -577,8 +615,9 @@ fn tiles(
             let image = Image::new(Extent3d { width: w as u32, height: h as u32, depth_or_array_layers: 1 }, TextureDimension::D2, px, TextureFormat::Rgba8Unorm, RenderAssetUsages::RENDER_WORLD);
             let texture = images.add(image);
             let material = cloud_mats.add(CloudMaterial { params: CloudParams::default(), texture: texture.clone() });
-            if key.part == Part::Clouds {
-                let quad = bd.cloud_mesh.get_or_insert_with(|| meshes.add(Rectangle::new(w as f32, h as f32))).clone();
+            if key.part != Part::Sea {
+                let mesh = if key.part == Part::Clouds { &mut bd.cloud_mesh } else { &mut bd.cirrus_mesh };
+                let quad = mesh.get_or_insert_with(|| meshes.add(Rectangle::new(w as f32, h as f32))).clone();
                 let entity = commands.spawn((Name::new("Backdrop clouds"), Mesh2d(quad), MeshMaterial2d(material.clone()), Transform::from_xyz(0.0, 0.0, z), backdrop_layer())).id();
                 bd.tiles.insert(key, Tile { entity, skirt: None, under: None, alpha, material: Lit::Cloud(material) });
                 continue;
@@ -629,6 +668,7 @@ fn tiles(
 #[allow(clippy::too_many_arguments)]
 fn place(
     bd: Res<Backdrops>,
+    sim: Res<SimWorld>,
     zoom: Res<crate::camera::Zoom>,
     gloom: Res<crate::light::Gloom>,
     day: Option<Res<crate::light::Daylight>>,
@@ -655,13 +695,13 @@ fn place(
     let px = zoom.0.max(1.0);
     for (key, tile) in &bd.tiles {
         let exact = bd.centre(*key, c);
-        let at = if matches!(key.part, Part::Clouds | Part::Sea) { exact } else { c + ((exact - c) * px).round() / px };
+        let at = if key.part == Part::Land { c + ((exact - c) * px).round() / px } else { exact };
         // (In heavy weather the ranges haze over into the sky, the far ones
         // most; the far clouds thin into the overcast.)
         let haze = gloom.rain * 0.55 + gloom.cover * 0.25;
         let far = match key.part {
             Part::Land => (1.0 - key.k as f32 * 0.18).max(0.3),
-            Part::Clouds | Part::Sea => 0.8,
+            Part::Clouds | Part::Sea | Part::Cirrus => 0.8,
         };
         let alpha = bd.shown * bd.weights[key.v] * (1.0 - haze * far).max(0.0);
         // (A range's skirt under its last row. The sea from over it, its
@@ -710,6 +750,15 @@ fn place(
             }
             Lit::Cloud(m) => {
                 let (lit, shade) = (look.clouds.lit, look.clouds.shade);
+                // (The cirrus thinning in the jet stream's lulls, thick in its
+                // gusts, where they are along it: the gusts' waves from the
+                // tile's middle as drawn.)
+                let (gust, gust_turn) = if key.part == Part::Cirrus {
+                    let g = crate::sky::gusts(&sim, at.x);
+                    (Vec4::new(g[0], g[1], 1.0, 0.0), Vec4::new(g[2], g[3], 0.0, 0.0))
+                } else {
+                    (Vec4::ZERO, Vec4::ZERO)
+                };
                 // (Upside down from under the sea: its faces turned over.)
                 let params = |alpha: f32, flip: f32| CloudParams {
                     to: v4(light.to, light.golden),
@@ -718,6 +767,8 @@ fn place(
                     haze: v4(light.haze, 0.0),
                     lit: v4(lit, flip),
                     shade: v4(shade, 0.0),
+                    gust,
+                    gust_turn,
                 };
                 let under = tile.under.as_ref().map(|(_, _, m)| (m, params(alpha * (1.0 - over), 1.0)));
                 for (m, params) in std::iter::once((m, params(alpha * over, 0.0))).chain(under) {
