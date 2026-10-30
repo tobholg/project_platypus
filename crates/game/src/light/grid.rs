@@ -330,11 +330,14 @@ impl LightGrid {
 
     /// Light from far away (the sun, the moon, a patch of sky) travelling
     /// along `dir` (unit, downward), entering the grid wherever it's open to
-    /// the sky: the top of every column in `open_top`, and the side it comes
-    /// from down to where that edge column meets the ground. Dimmed by what
-    /// it passes (crowns barely, the ground completely), so it casts shadows
-    /// that lean with the sun.
-    pub fn seed_directional(&mut self, dir: [f32; 2], color: Rgb, open_top: &[bool]) {
+    /// the sky: the top of every column, as much as `open_top` says of it
+    /// gets there (1 open; shaded by something over the grid, what's come
+    /// back of it since: `sun_back`), and the side it comes from down to
+    /// where that edge column meets the ground. Dimmed by what it passes
+    /// (crowns barely, the ground completely), so it casts shadows that lean
+    /// with the sun; out in the open sky past them it comes back
+    /// (`SUN_BACK`): a floating island's shadow fades out under it.
+    pub fn seed_directional(&mut self, dir: [f32; 2], color: Rgb, open_top: &[f32]) {
         let (w, h, t) = (self.w, self.h, self.texel as f32);
         if dir[1] >= 0.0 || color.iter().all(|&c| c <= 0.0) {
             return;
@@ -348,7 +351,7 @@ impl LightGrid {
         // Where each column's open sky ends, going down from the top.
         let floor: Vec<Option<usize>> = (0..w)
             .map(|x| {
-                if !open_top[x] {
+                if open_top[x] < 0.5 {
                     return None;
                 }
                 let solid = (0..h).rev().find(|&y| self.sky_opacity[y * w + x] > 0.5);
@@ -376,15 +379,15 @@ impl LightGrid {
                 (x as f32 + 0.5, y as f32 + phase as f32)
             }
         };
-        let mut starts: Vec<(f32, f32)> = (0..w).filter(|&x| open_top[x]).map(|x| start(x, h - 1)).collect();
+        let mut starts: Vec<((f32, f32), f32)> = (0..w).filter(|&x| open_top[x] > 0.02).map(|x| (start(x, h - 1), open_top[x])).collect();
         let edge = if dir[0] > 0.0 { 0 } else { w - 1 };
         if dir[0] != 0.0
             && let Some(f) = floor[edge]
         {
-            starts.extend((f..h).map(|y| start(edge, y)));
+            starts.extend((f..h).map(|y| (start(edge, y), 1.0)));
         }
-        for (x, y) in starts {
-            self.trace(Ray { x, y, dx: sx, dy: sy, v: color, s: 0, steps: i32::MAX, n: 1.0, chan: None, bounces: 0, edge: 1.0, bent: false }, Lit::Sun, &lut);
+        for ((x, y), share) in starts {
+            self.trace(Ray { x, y, dx: sx, dy: sy, v: color.map(|c| c * share), full: color, dark: 0, s: 0, steps: i32::MAX, n: 1.0, chan: None, bounces: 0, edge: 1.0, bent: false }, Lit::Sun, &lut);
         }
     }
 
@@ -444,7 +447,7 @@ impl LightGrid {
             };
             // (In whatever the lamp is in: a lamp under water starts in it.)
             let n = self.index_of(CellPos::from_world(from[0], from[1])).map_or(1.0, |i| self.ior[i]);
-            self.trace(Ray { x: fx + dx, y: fy + dy, dx, dy, v: color, s: 1, steps, n, chan: None, bounces: 0, edge, bent: false }, Lit::Beam, &lut);
+            self.trace(Ray { x: fx + dx, y: fy + dy, dx, dy, v: color, full: color, dark: 0, s: 1, steps, n, chan: None, bounces: 0, edge, bent: false }, Lit::Beam, &lut);
         }
     }
 
@@ -497,6 +500,9 @@ impl LightGrid {
         while let Some(mut r) = stack.pop() {
             let step = (r.dx * r.dx + r.dy * r.dy).sqrt();
             let tint_k = step * t / platypus_sim::Optics::TINT_DEPTH;
+            // (How much of the sun's light comes back a step through open
+            // sky, past what shaded it.)
+            let back = 1.0 - (-step * t / SUN_BACK).exp();
             loop {
                 if r.x < 0.0 || r.y < 0.0 || r.x >= w as f32 || r.y >= h as f32 || r.s >= r.steps {
                     break;
@@ -577,14 +583,27 @@ impl LightGrid {
                 let keep = pass[(op.clamp(0.0, 1.0) * 255.0) as usize];
                 let keep = if self.water[i] > 0.0 { keep.powf(1.0 - WATER_CLEAR * self.water[i].clamp(0.0, 1.0)) } else { keep };
                 r.v = r.v.map(|c| c * keep);
+                if lit == Lit::Sun && op < 0.05 {
+                    for c in 0..3 {
+                        r.v[c] += (r.full[c] - r.v[c]) * back;
+                    }
+                }
                 if self.optical && self.ior[i] > 1.0 {
                     let tint = self.tint[i];
                     for (c, v) in r.v.iter_mut().enumerate() {
                         *v *= tint[c].powf(tint_k);
                     }
                 }
+                // (The sun's light put out goes on a while through what put it
+                // out: an island's only so thick, open sky past it; the
+                // ground goes on.)
                 if r.v[0] + r.v[1] + r.v[2] < if lit == Lit::Sun { 0.003 } else { 0.01 } {
-                    break;
+                    r.dark += 1;
+                    if lit != Lit::Sun || r.dark as f32 * step * t > SUN_THROUGH {
+                        break;
+                    }
+                } else {
+                    r.dark = 0;
                 }
                 r.x += r.dx;
                 r.y += r.dy;
@@ -869,6 +888,13 @@ const GLINT_RATE: f32 = 9.0;
 
 /// Steps one traced ray and all it splits into may take, at most.
 const RAY_STEPS_MOST: u32 = 4_000;
+/// Past what shades it, out in the open sky, the sun's light comes back
+/// over about this far (cells: scattered by the air): a floating island's
+/// shadow fades out under it, a cliff's across a valley. Put out, it goes
+/// on this far through what put it out before it's given up (an island's
+/// as thick as this at most; the ground's deeper).
+pub const SUN_BACK: f32 = 220.0;
+pub const SUN_THROUGH: f32 = 160.0;
 /// Faces a ray is mirrored off before it's let go.
 const BOUNCES_MOST: u8 = 3;
 
@@ -881,6 +907,10 @@ struct Ray {
     dx: f32,
     dy: f32,
     v: Rgb,
+    /// The sun's light as it was before anything shaded it (it comes back
+    /// towards it through open sky), and how many steps it's been out.
+    full: Rgb,
+    dark: u16,
     /// Steps taken, and the most (a beam fades over its range).
     s: i32,
     steps: i32,
@@ -1138,7 +1168,7 @@ mod tests {
     #[test]
     fn sky_lights_open_columns_not_under_a_roof_and_spills_in_a_little() {
         let mut g = grid(&[(0, 20, 30, 24)]);
-        g.seed_directional([0.0, -1.0], [1.0; 3], &[true; 60]);
+        g.seed_directional([0.0, -1.0], [1.0; 3], &[1.0; 60]);
         g.solve(P);
         g.add_direct();
         assert!(at(&g, 45, 5) > 0.95, "open ground is in daylight");
@@ -1155,7 +1185,7 @@ mod tests {
         let mut g = grid(&[(0, 0, 60, 5), (40, 5, 42, 15)]);
         let d = [-0.9f32, -0.44];
         let n = (d[0] * d[0] + d[1] * d[1]).sqrt();
-        g.seed_directional([d[0] / n, d[1] / n], [1.0; 3], &[true; 60]);
+        g.seed_directional([d[0] / n, d[1] / n], [1.0; 3], &[1.0; 60]);
         let lit = |x: usize, y: usize| g.seed[y * 60 + x][0];
         assert!(lit(30, 6) < 0.05, "shadow on the ground west of the post");
         assert!(lit(41, 16) > 0.9 && lit(45, 6) > 0.9, "the top of the post and the ground east of it in sun");
@@ -1182,7 +1212,7 @@ mod tests {
                         }
                     }
                 }
-                let open: Vec<bool> = (0..60).map(|x| (0..100).all(|d| !solid(ox + x, oy + 40 + d))).collect();
+                let open: Vec<f32> = (0..60).map(|x| if (0..100).all(|d| !solid(ox + x, oy + 40 + d)) { 1.0 } else { 0.0 }).collect();
                 g.seed_directional(dir, [1.0; 3], &open);
                 g
             };
@@ -1193,7 +1223,7 @@ mod tests {
             for (ox, oy) in [(40, 20), (30_000, 12_600)] {
                 let at = |d: [f32; 2]| {
                     let mut g = LightGrid::new(CellPos::new(ox, oy), 60, 40, 1);
-                    let open = vec![true; 60];
+                    let open = vec![1.0; 60];
                     for y in 0..40 {
                         for x in 0..60 {
                             if solid(40 + x as i32, 20 + y as i32) {

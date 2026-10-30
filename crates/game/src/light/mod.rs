@@ -865,27 +865,44 @@ fn compute_light(
     };
     g.fill_from(world, &flicker, &breath, &glimmer);
 
-    // Sky: down every column that is open to the sky above the grid.
+    // Sky: down every column that is open to the sky above the grid; under
+    // something over it, as much as has come back of the sun's light past
+    // it by the grid's top (`grid::SUN_BACK`).
     let top = origin.y + h as i32 * t;
     let mats = world.materials();
     let generator = &sim.generator;
-    let open = |tx: usize| {
+    let open = |tx: usize| -> f32 {
         let x = origin.x + tx as i32 * t + t / 2;
+        let back = |y: i32| 1.0 - (-((y - top) as f32) / grid::SUN_BACK).exp();
+        // (Where what shades it starts, and how deep into something it is:
+        // under the ground as generated, it's the ground; over it, an
+        // island or an overhang, only so thick.)
+        let ground = generator.surface_hint(x);
+        let (mut shade, mut deep) = (None, 0);
         for y in top..top + 900 {
-            match world.get(CellPos::new(x, y)) {
-                // Past what's loaded: open if above the ground as generated.
-                None => return generator.surface_hint(x).is_none_or(|s| y >= s),
-                Some(c) => {
-                    let front = if c.is_air() { 0 } else { mats.phys(c.material).opacity };
-                    if front > 128 {
-                        return false;
-                    }
+            let under = ground.is_some_and(|s| y < s);
+            let solid = match world.get(CellPos::new(x, y)) {
+                // Past what's loaded: open sky over the ground as generated.
+                None if !under => break,
+                None => return 0.0,
+                Some(c) => !c.is_air() && mats.phys(c.material).opacity > 128,
+            };
+            if solid {
+                if under {
+                    return 0.0;
                 }
+                shade.get_or_insert(y);
+                deep += 1;
+                if deep as f32 > grid::SUN_THROUGH {
+                    return 0.0;
+                }
+            } else {
+                deep = 0;
             }
         }
-        true
+        shade.map_or(1.0, back)
     };
-    let open_top: Vec<bool> = (0..w).map(open).collect();
+    let open_top: Vec<f32> = (0..w).map(open).collect();
     let sky = sky_lights(day.time, day.sky);
     // God rays: the sun's light in the open air, a faint haze along it
     // (shafts where something shades it: under a crown, past a cliff, in a
@@ -1003,7 +1020,7 @@ fn compute_light(
         let sky_now = sky.clone();
         for (i, (dir, color)) in sky.into_iter().enumerate() {
             // (Not at night, nor with no sky in view: nothing to shine.)
-            if i == 0 && shafts > 0.0 && color.iter().any(|&c| c > SHAFTS_FROM) && open_top.iter().any(|&o| o) {
+            if i == 0 && shafts > 0.0 && color.iter().any(|&c| c > SHAFTS_FROM) && open_top.iter().any(|&o| o > 0.5) {
                 let before = g.seed.clone();
                 g.seed_directional(dir, color, &open_top);
                 // (Only what stands out from its surroundings: lit air beside
