@@ -44,8 +44,15 @@ fn curtain(x: f32, y: f32, k: f32) -> vec4<f32> {
     let fold = smoothstep(0.0, 1.0, clamp((v - 0.3) / 0.35, 0.0, 1.0));
     let edge = s.aurora.y + k * 90.0 + 55.0 * sin(u / 300.0 + t * 0.05 + ph) + 25.0 * sin(u / 110.0 - t * 0.09 + ph) + 8.0 * sin(u / 37.0 + t * 0.21);
     let dy = y - edge;
-    let fall = select(exp(-dy / 140.0), exp(dy / 5.0), dy < 0.0);
-    let ray = (0.7 + 0.3 * sin(u / 2.4 + 3.0 * sin(u / 47.0 + t * 0.35))) * (0.6 + 0.4 * sin(u / 80.0 + t * 0.15 + ph));
+    // (Up from its foot over a few dozen cells, brightest a little over
+    // it, thinning out up its height to nothing.)
+    let rise = smoothstep(-28.0, 18.0, dy);
+    let thin = 1.0 - smoothstep(0.0, 1.0, clamp(dy / 320.0, 0.0, 1.0));
+    let fall = rise * thin * exp(-max(dy, 0.0) / 170.0);
+    // (Rays: a soft grain along it, never gaps; brighter bands drifting
+    // through.)
+    let grain = 0.5 + 0.25 * sin(u / 3.1 + 2.0 * sin(u / 47.0 + t * 0.35)) + 0.25 * sin(u / 7.3 - t * 0.2);
+    let ray = (0.82 + 0.18 * grain) * (0.7 + 0.3 * sin(u / 80.0 + t * 0.15 + ph));
     let up = smoothstep(0.0, 1.0, clamp(dy / 180.0, 0.0, 1.0));
     let rgb = vec3<f32>(0.35 + 0.4 * up, 1.0 - 0.65 * up, 0.55 + 0.4 * up);
     return vec4<f32>(rgb, fold * fall * ray * (1.0 - 0.5 * k));
