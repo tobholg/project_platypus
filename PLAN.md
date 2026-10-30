@@ -221,6 +221,35 @@ less.) BUILT on `lightlands` (off `space`, unmerged) the same day:
   rock open to the sky now.
 - `lightlands` scenario: the highest island; `PLATYPUS_LIGHT=lee|open|orc`.
 
+**4c. `skies`: the sky over the islands.** (After a play, 2026-10-30: the
+sea of clouds faded out in a straight line and sank out of view too fast;
+what should the jet stream's layer have?) BUILT on `skies` (off
+`lightlands`, unmerged) the same day:
+- *The sea of clouds* (`peaks::cloud_sea_data`): 8 rows of heaps, a solid
+  deck under each (no sky between rows), 640 rows tall (heaps to the
+  view's bottom zoomed out), its plain last row stretched on down (a
+  skirt). Where it seems to lie is a place on the view: from just under
+  you at its height to the lower third by the highest islands
+  (`thin_from`), sinking out only through the thin air; from under it,
+  drawn upside down and lit from under (hanging heaps; the cloud shader's
+  `lit.w` flips its faces), its deck stretched on up, easing up the view
+  as you go down; the two crossfade through its height (`SEA_TURN`).
+- *Cirrus* in the jet stream (`peaks::cirrus_data`, `Part::Cirrus`):
+  wind-combed streaks streaming with the jet; the cloud shader thins and
+  thickens them by the gusts' waves (`sky::gusts`, one source with the
+  wind), so a gust shows in them before it reaches you.
+- *The aurora* (`sky.wgsl`, behind the world): two rippling curtains,
+  green low, violet up their folds, a soft grain of rays (no gaps), its
+  foot risen into and its top faded out; by night from up among the top
+  islands into space, by day a faint trace in the thin air. (First drawn
+  with the stars over the light: it covered the player.)
+- *Shadows*: the sun's light comes back through open sky past what shaded
+  it (`grid::SUN_BACK` 220 cells) and goes on through an island
+  (`SUN_THROUGH` 160): a drifter's shadow fades out under it instead of a
+  dark band down the whole view; under the ground as generated, no sun.
+- Left: the god-ray shafts off the islands are still strong; a far, flat
+  band between the far rows of heaps.
+
 **5. `singularity`: the black hole.** Its look (lensing, the disk, the
 ring), its pull, slowed time, tidal hurt, the disk's nullstone and
 wrecks; crossing kills.
