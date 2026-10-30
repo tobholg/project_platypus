@@ -301,11 +301,13 @@ fn lake(rng: &mut Rng, isl: &mut Island, rx: f64) {
         isl.set(lx, bottom - 1 - isl.y0, IslandCell::Dirt);
         isl.top[lx as usize] = None;
     }
-    // The spring: in the outermost rock at that end, some way under the
+    // The spring: in the outermost rock at that end (open to the sky on
+    // its outer side: aerolite, a scar, as any rock), some way under the
     // lake's level (where the edge has rolled off).
     let ly = shore - 12 - isl.y0;
+    let out = if right { 1 } else { -1 };
     let mut cols: Box<dyn Iterator<Item = i32>> = if right { Box::new((0..isl.w).rev()) } else { Box::new(0..isl.w) };
-    if let Some(lx) = cols.find(|&lx| matches!(isl.get(lx, ly), IslandCell::Grass | IslandCell::Dirt | IslandCell::Stone)) {
+    if let Some(lx) = cols.find(|&lx| !matches!(isl.get(lx, ly), IslandCell::None | IslandCell::Cave | IslandCell::Water) && isl.get(lx + out, ly) == IslandCell::None) {
         for k in 0..SPRING_TALL {
             if isl.get(lx, ly - k) != IslandCell::None {
                 isl.set(lx, ly - k, IslandCell::Spring);

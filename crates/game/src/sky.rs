@@ -1,7 +1,8 @@
-//! The high air (the sky arc), over the sky islands: the jet stream, a
-//! band of wind blowing the way the weather's wind does, carrying what's
-//! in the air through it (creatures, drifters: `drift`), streaks of it
-//! showing where it runs. (The air thinning, `breath`; gravity fading,
+//! The high air (the sky arc), up among the highest sky islands: the jet
+//! stream, a band of wind blowing the way the weather's wind does,
+//! gusting, carrying what's in the air through it (creatures, drifters:
+//! `drift`; calm in the lee of the islands' ridges and down on them:
+//! `wind_at`), streaks of it showing where it runs. (The air thinning, `breath`; gravity fading,
 //! `creatures::move_creatures`.)
 //!
 //! And fulgurite, stormglass: where lightning strikes rock, sand or soil,
@@ -36,12 +37,47 @@ pub fn space_at(sim: &SimWorld, y: f32) -> f32 {
 /// Space's black (a little blue in it).
 pub const SPACE: [f32; 3] = [0.01, 0.012, 0.03];
 
+/// The jet stream gusts: from a lull (this share of it) to its full
+/// strength and back, about every this many seconds (and a quicker
+/// flutter over it), each gust running along with it: a crossing waits
+/// for a lull.
+const LULL: f32 = 0.3;
+const GUST_SECS: (f32, f32) = (7.0, 2.9);
+
 /// Which way the jet stream blows (the weather's wind's way), and how hard
-/// at `y`: its velocity there.
-pub fn jet_at(sim: &SimWorld, y: f32) -> f32 {
+/// at `x`, `y` (gusting): its velocity there.
+pub fn jet_at(sim: &SimWorld, x: f32, y: f32) -> f32 {
     let Some(sky) = sim.generator.sky_layers() else { return 0.0 };
     let way = if sim.world.wind() < 0.0 { -1.0 } else { 1.0 };
-    way * JET * sky.jet(y)
+    let u = sim.world.tick() as f32 / crate::world::TICK_HZ as f32 - way * x / JET;
+    let tau = std::f32::consts::TAU;
+    let wave = 0.5 + 0.3 * (tau * u / GUST_SECS.0).sin() + 0.2 * (tau * u / GUST_SECS.1 + 1.3).sin();
+    way * JET * sky.jet(y) * (LULL + (1.0 - LULL) * wave)
+}
+
+/// Out of the jet stream: right behind ground upwind it's calm, this far
+/// off it (cells) it blows full; over the ground, the same (calm on it,
+/// full this far over it); looked for this many cells at a time.
+const LEE: i32 = 64;
+const ALOFT: i32 = 96;
+const LEE_STEP: usize = 4;
+
+/// The jet stream where a body is (its middle, and half its height): calm
+/// in the lee of what's solid upwind of it (behind a ridge, down in a
+/// hollow, by a trunk) and down by the ground, rising to the full wind out
+/// in the open (off an island's edge, over the gulf between two).
+pub fn wind_at(sim: &SimWorld, at: Vec2, half: f32) -> f32 {
+    let jet = jet_at(sim, at.x, at.y);
+    if jet == 0.0 {
+        return 0.0;
+    }
+    let solid = |x: i32, y: i32| sim.world.is_solid(platypus_sim::CellPos::new(x, y));
+    let up = -jet.signum() as i32;
+    let (x, feet) = (at.x.floor() as i32, (at.y - half).floor() as i32);
+    let rows = [at.y.floor() as i32, (at.y - 0.5 * half).floor() as i32];
+    let lee = (LEE_STEP as i32..=LEE).step_by(LEE_STEP).find(|d| rows.iter().any(|&y| solid(x + up * d, y))).map_or(1.0, |d| d as f32 / LEE as f32);
+    let aloft = (1..=ALOFT).step_by(LEE_STEP).find(|d| solid(x, feet - d)).map_or(1.0, |d| d as f32 / ALOFT as f32);
+    jet * lee.min(aloft)
 }
 
 /// Streaks of wind racing through the jet stream where it's in view.
@@ -63,7 +99,7 @@ fn streaks(time: Res<Time>, sim: Res<SimWorld>, camera: Query<(&GlobalTransform,
     while *owed >= 1.0 {
         *owed -= 1.0;
         let at = Vec2::new(c.x + (roll() - 0.5) * 2.0 * l.half_extent.x, lo + roll() * (hi - lo));
-        let jet = jet_at(&sim, at.y);
+        let jet = wind_at(&sim, at, 0.0);
         if jet.abs() < 20.0 {
             continue;
         }

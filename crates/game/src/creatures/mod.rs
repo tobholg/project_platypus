@@ -727,7 +727,7 @@ pub(crate) fn move_creatures(
         let g = crate::zerog::gravity_at(&sim, k.body.pos.y);
         let weightless = g < crate::zerog::WEIGHTLESS;
         let stats = if g < 1.0 {
-            light = platypus_physics::MovementStats { gravity: stats.gravity * g, jump_height: stats.jump_height / g.max(0.05), weightless, ..stats.clone() };
+            light = platypus_physics::MovementStats { weightless, ..crate::zerog::lighter(stats, g) };
             &light
         } else {
             stats
@@ -750,8 +750,9 @@ pub(crate) fn move_creatures(
         // web, anywhere in it.)
         k.loco.backed = stats.cling && (backed(&sim.world, k.body.pos) || (web_walker && stuck_in(&sim.world, &k.body)));
         // (In the jet stream it steers through the air, and the air's
-        // going somewhere: off the ground, it's carried along.)
-        let jet = if k.loco.contacts.ground { 0.0 } else { crate::sky::jet_at(&sim, k.body.pos.y) };
+        // going somewhere: off the ground and out of the lee, it's carried
+        // along.)
+        let jet = if k.loco.contacts.ground { 0.0 } else { crate::sky::wind_at(&sim, k.body.pos, k.body.half.y) };
         k.body.vel.x -= jet;
         let ev = k.loco.steer(stats, &controls.0, &mut k.body, dt);
         k.body.vel.x += jet;

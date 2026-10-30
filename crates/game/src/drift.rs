@@ -369,7 +369,7 @@ pub(crate) fn drift(
         let mut acc = Vec2::new(0.0, -g + g * held * mass / (mass + load) - BOB_DAMP * d.vel.y);
         // (In the jet stream, carried off with it: it wanders about where
         // it's got to.)
-        let jet = crate::sky::jet_at(&sim, d.pos.y);
+        let jet = crate::sky::jet_at(&sim, d.pos.x, d.pos.y);
         if jet != 0.0 {
             acc.x = (jet - d.vel.x) * DRAG;
             d.home = d.pos.x;

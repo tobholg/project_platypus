@@ -416,6 +416,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script, wardrobe_script, herbcut_script, zombiejump_script, crushcheck_script, batcount_script, airswing_script, dive_script, paint_script, firewall_script, fields_script, ward_script, seam_script))
             .add_systems(Update, (sky_script, drift_script, high_script, zerog_script))
             .add_systems(PreUpdate, space_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, lightlands_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, craft_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pack_script.after(bevy::ui::UiSystems::Focus).before(crate::pause::key))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
@@ -17139,8 +17140,116 @@ fn high_script(
             "high: t {t:.1} y {y:.0} (jet {:.0}..{:.0}, thin from {}, weightless {:.0}..{:.0}) going {:+.0},{:+.0}; gravity {:.2}, air thin {:.2}, jet {:+.0}; breath {:?}",
             sky.jet.0, sky.jet.1, sky.thin_from, sky.weightless.0, sky.weightless.1,
             k.body.vel.x, k.body.vel.y,
-            crate::zerog::gravity_at(&sim, y), sky.thin(y), crate::sky::jet_at(&sim, y),
+            crate::zerog::gravity_at(&sim, y), sky.thin(y), crate::sky::jet_at(&sim, k.body.pos.x, y),
             breath.map(|b| (b.left * 10.0).round() / 10.0)
+        );
+    }
+}
+
+/// `lightlands` (a generated world): the player put over the highest sky
+/// island's middle (0.5 s), held there till its chunks are in (3 s), then
+/// stood on it, jumping at 4 s; logs the gravity, the wind, how high the
+/// jump went. `PLATYPUS_LIGHT=lee` / `open`: instead let go in the air by
+/// the island's side, halfway up it, downwind of it (in its lee) /
+/// upwind (in the open), logging the wind it's in and where it's carried;
+/// `orc`: the player on a stone ledge `PLATYPUS_LIGHT_LEDGE` (70) over the
+/// island (out of an orc's jump at the ground's gravity, in it here), an
+/// orc put on the island 120 off, logging it as it comes for the player
+/// (with `PLATYPUS_WAYLOG=1`, its ways and jumps).
+fn lightlands_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    others: Query<(&Kinematics, &Name), (Without<LocalPlayer>, With<crate::creatures::Creature>)>,
+    mut state: Local<(u8, f32, Option<(CellPos, CellPos)>, f32, f32)>,
+) {
+    if s.name != "lightlands" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let Ok(mut k) = player.single_mut() else { return };
+    let mode = std::env::var("PLATYPUS_LIGHT").unwrap_or_default();
+    let (step, next, isle, base, peak) = &mut *state;
+    if t < 0.5 {
+        return;
+    }
+    let (lo, hi) = *isle.get_or_insert_with(|| {
+        let isles = sim.generator.sky_islands();
+        let (lo, hi) = isles.iter().max_by_key(|(_, hi)| hi.y).copied().unwrap_or_default();
+        info!("lightlands: the highest island {}..{}, {}..{} ({} islands, tops {}..{})", lo.x, hi.x, lo.y, hi.y, isles.len(), isles.iter().map(|i| i.1.y).min().unwrap_or(0), hi.y);
+        (lo, hi)
+    });
+    let cx = (lo.x + hi.x) / 2;
+    let jet = crate::sky::jet_at(&sim, cx as f32, (lo.y + hi.y) as f32 / 2.0);
+    match *step {
+        0 => {
+            k.body.pos = Vec2::new(cx as f32, hi.y as f32 + 40.0);
+            k.prev_pos = k.body.pos;
+            k.body.vel = Vec2::ZERO;
+            if t > 3.0 {
+                *step = 1;
+                let half = k.body.half.y;
+                let at = match mode.as_str() {
+                    "lee" | "open" => {
+                        // (Halfway up its side, a little off it: the side
+                        // the wind leaves it by, or comes at it from.)
+                        let y = (lo.y + hi.y) / 2;
+                        let row = |x: i32| sim.world.get(CellPos::new(x, y)).is_some_and(|c| !c.is_air());
+                        let (l, r) = ((lo.x..=hi.x).find(|&x| row(x)).unwrap_or(lo.x), (lo.x..=hi.x).rev().find(|&x| row(x)).unwrap_or(hi.x));
+                        let lee = (mode == "lee") == (jet > 0.0);
+                        Vec2::new(if lee { r as f32 + 10.0 } else { l as f32 - 10.0 }, y as f32)
+                    }
+                    _ => {
+                        let mut ground = (lo.y..hi.y + 40).rev().find(|&y| sim.world.is_solid(CellPos::new(cx, y))).unwrap_or(hi.y);
+                        if mode == "orc" {
+                            let up: i32 = std::env::var("PLATYPUS_LIGHT_LEDGE").ok().and_then(|v| v.parse().ok()).unwrap_or(70);
+                            let stone = sim.materials().id("stone").expect("stone");
+                            ground += up;
+                            for x in cx - 15..=cx + 15 {
+                                for y in ground - 3..=ground {
+                                    sim.world.set(CellPos::new(x, y), platypus_sim::Cell::new(stone, 120));
+                                }
+                            }
+                        }
+                        Vec2::new(cx as f32, ground as f32 + 1.0 + half)
+                    }
+                };
+                k.body.pos = at;
+                k.prev_pos = at;
+                *base = at.y;
+                *peak = at.y;
+                if mode == "orc" {
+                    let ground = (lo.y..hi.y + 40).rev().find(|&y| sim.world.is_solid(CellPos::new(cx + 120, y))).unwrap_or(hi.y);
+                    crate::creatures::def::spawn_creature(&mut commands, "orc", Vec2::new(cx as f32 + 120.5, ground as f32 + 2.0), |_| {});
+                }
+                info!("lightlands: t {t:.1} put at {:.0},{:.0} ({mode}); the jet there {jet:+.0}", at.x, at.y);
+            }
+            return;
+        }
+        1 if t > 4.0 && mode.is_empty() => {
+            keys.press(KeyCode::Space);
+            *step = 2;
+        }
+        2 if t > 4.4 => {
+            keys.release(KeyCode::Space);
+            *step = 3;
+        }
+        _ => {}
+    }
+    *peak = peak.max(k.body.pos.y);
+    if t >= *next {
+        *next = t + 0.25;
+        let p = k.body.pos;
+        let orc: Vec<String> = others.iter().filter(|(o, _)| o.body.pos.distance(p) < 600.0).map(|(o, n)| format!("{n} {:+.0},{:+.0} going {:+.0},{:+.0}", o.body.pos.x - p.x, o.body.pos.y - p.y, o.body.vel.x, o.body.vel.y)).collect();
+        info!(
+            "lightlands: t {t:.2} at {:+.0},{:+.0} going {:+.0},{:+.0}; gravity {:.2}, wind {:+.0} (jet {:+.0}), air thin {:.2}, {}°C; risen {:.0} at most; ground {}; {}",
+            p.x - cx as f32, p.y - *base, k.body.vel.x, k.body.vel.y,
+            crate::zerog::gravity_at(&sim, p.y), crate::sky::wind_at(&sim, p, k.body.half.y), crate::sky::jet_at(&sim, p.x, p.y),
+            sim.generator.sky_layers().map_or(0.0, |l| l.thin(p.y)), sim.world.climate().ambient(p.x as i32, p.y as i32), *peak - *base, k.loco.contacts.ground, orc.join("; ")
         );
     }
 }

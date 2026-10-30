@@ -3513,11 +3513,11 @@ mod tests {
             let ground = (i.x0..i.x0 + i.w).map(|x| p.surface_at(x)).max().unwrap_or(0);
             assert!(i.y0 > ground + 250, "island at {} floats clear of the ground ({} over it)", i.x0, i.y0 - ground);
             // (Grassy, or, over the cold lands, snowy: the air up there is
-            // as warm as the land's below it.)
-            let cold = p.climate.ambient(i.x0 + i.w / 2, i.y0 + i.h) <= 0;
-            let top = if cold { snow } else { grass };
-            let green = (i.x0..i.x0 + i.w).filter(|&x| i.top_at(x).is_some_and(|t| g.material_at(x, t - 1) == top)).count();
-            assert!(green as i32 > i.w / 2, "island at {} is {} ({green} of {})", i.x0, if cold { "snowy" } else { "grassy" }, i.w);
+            // as warm as the land's below it; one over the edge of the cold
+            // lands is some of each.)
+            let top = |x: i32| if p.climate.ambient(x, i.y0 + i.h) <= 0 { snow } else { grass };
+            let green = (i.x0..i.x0 + i.w).filter(|&x| i.top_at(x).is_some_and(|t| g.material_at(x, t - 1) == top(x))).count();
+            assert!(green as i32 > i.w / 2, "island at {} isn't grassy or snowy as its air is ({green} of {})", i.x0, i.w);
         }
         assert!(p.island_forest.len() >= p.islands.len(), "trees on them ({})", p.island_forest.len());
         // (Scarred by old lightning: fulgurite down from their tops.)
@@ -4333,6 +4333,3 @@ mod tests {
         assert!(floating * 20 <= heaped, "guano on something, not in the air: {floating} of {heaped}");
     }
 }
-
-
-

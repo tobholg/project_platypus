@@ -56,7 +56,8 @@ impl Plugin for WayPlugin {
 pub struct Ways {
     off: bool,
     pub nav: Nav,
-    profiles: HashMap<String, Arc<Profile>>,
+    /// (By kind and gravity, in eighths: `zerog::eighths`.)
+    profiles: HashMap<(String, u8), Arc<Profile>>,
     /// The tempo they were made at (`tempo.rs`: creatures move at its pace;
     /// a jump's arc and hold with it).
     pace: f32,
@@ -97,6 +98,9 @@ pub struct Way {
     pub whole: bool,
     i: usize,
     made: u64,
+    /// The gravity it was made for (in eighths: `zerog::eighths`; 0: none
+    /// yet).
+    eighths: u8,
     /// The jump key held until (tick), and which way the jump goes.
     hold_until: u64,
     flight: f32,
@@ -127,14 +131,17 @@ pub struct Steer {
 
 impl Ways {
     /// A kind's profile (made the first time it's asked for), as it moves
-    /// at the game's tempo.
-    pub fn profile(&mut self, kind: &str, def: &CreatureDef, tempo: &crate::tempo::Tempo) -> Arc<Profile> {
+    /// at the game's tempo, under so many eighths of the ground's gravity
+    /// (high in the sky: it jumps higher and further).
+    pub fn profile(&mut self, kind: &str, def: &CreatureDef, tempo: &crate::tempo::Tempo, eighths: u8) -> Arc<Profile> {
         self.profiles
-            .entry(kind.to_string())
+            .entry((kind.to_string(), eighths))
             .or_insert_with(|| {
                 // (No fall damage: it'll drop a long way.)
                 let drop = def.fall_damage.map_or(150.0, |f| f.safe_height);
-                let p = Profile::new(def.size, &tempo.apply(&def.movement, false), drop);
+                let stats = tempo.apply(&def.movement, false);
+                let stats = if eighths < 8 { crate::zerog::lighter(&stats, eighths as f32 / 8.0) } else { stats };
+                let p = Profile::new(def.size, &stats, drop);
                 Arc::new(match &def.dig {
                     Some(d) => p.digging(d.digging()),
                     None => p,
@@ -156,11 +163,18 @@ impl Ways {
             return None;
         }
         let def = creatures.get(&c.kind)?;
-        let p = self.profile(&c.kind, def, tempo);
         let feet = k.body.pos - Vec2::Y * k.body.half.y;
         let at = node_of(feet + Vec2::Y * 0.5);
         let to = node_of(goal + Vec2::Y * 0.5);
         let grounded = k.loco.grounded() || k.loco.clinging().is_some();
+        // (High up gravity's less, and its jumps go higher: on its feet
+        // somewhere lighter or heavier than its way was made for, it's
+        // made again; in the air it follows the way it has.)
+        let here = crate::zerog::eighths(world.gravity(feet.y));
+        if here != way.eighths && (grounded || way.eighths == 0) {
+            *way = Way { eighths: here, at: way.at, since: way.since, ..Way::default() };
+        }
+        let p = self.profile(&c.kind, def, tempo, way.eighths);
         // Headway.
         if at != way.at {
             way.at = at;
@@ -238,7 +252,7 @@ impl Ways {
                         way.made = tick;
                         way.goal = Some(to);
                     } else {
-                        *way = Way { goal: Some(to), start: search.start, whole: path.whole, path: steps, i: 0, made: tick, hold_until: 0, flight: 0.0, at, since: if stuck { tick } else { way.since }, dig: None, dig_down: false, dig_feet: Vec2::ZERO, search: None };
+                        *way = Way { goal: Some(to), start: search.start, whole: path.whole, path: steps, i: 0, made: tick, eighths: way.eighths, hold_until: 0, flight: 0.0, at, since: if stuck { tick } else { way.since }, dig: None, dig_down: false, dig_feet: Vec2::ZERO, search: None };
                     }
                 }
             }

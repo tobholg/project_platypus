@@ -136,6 +136,7 @@ the line (water in blobs, drifting dust); breath and cold in vacuum.
 
 Design (2026-10-29), BUILT on `zerog` the same day (unmerged; deviations: the void's water freezes almost at once, so blobs are ice; lone specks drift, clumps keep still; a body reaches for what's within 2 cells; the void's cold slows to about 70%, not a frost spell's 40%; after a play: space added over the sky's top (16 384 cells of it on a large world, the land and sky unmoved), the world's top a soft edge pushing you back, not a ceiling to hold):
 - *The void.* Gravity fades from 0.74 of the sky band to none at 0.84
+  (since `lightlands`: from 0.45 to none at 0.88)
   and stays none above, to the world's top: the void, where space will
   be (a large world: about 1 200 cells of it). The air's gone there too.
 - *Moving weightless.* Between the line and the void the light-gravity
@@ -191,6 +192,28 @@ them (sparse; the black hole's, later). Stages, a commit or more each:
   (steered pushes, fuel refilled by solarite), starmetal tools.
 - *Creatures*: one or two of space's own (grazers on the asteroids'
   regolith; something that hunts by the light).
+
+**4b. `lightlands`: the light high islands.** (Asked for after a play,
+2026-10-30: the upper islands should be much lighter, half gravity or
+less.) BUILT on `lightlands` (off `space`, unmerged) the same day:
+- *Layers* (shares of the sky band): island tops up to 0.72 (were 0.55);
+  gravity fades from 0.45 (was 0.74) to none at 0.88 (was 0.84), so the
+  lowest islands stay at the ground's, 0.55 has about 86%, 0.65 about
+  half, the highest about 0.31 (a held jump goes about 3× as high). The
+  jet stream 0.63..0.76 (was 0.62..0.72), through the highest islands;
+  the air thins from 0.74 (was 0.70), over them.
+- *The jet on the islands*: calm in the lee of what's solid upwind (64
+  cells) and down by the ground (full 96 over it), so on an island it's
+  calm, off its edge over the gulf it blows; and it gusts (a lull at
+  0.3 of it to full, ~7 s and a quicker flutter, the gusts running
+  downwind), so a crossing waits for a lull. Found by the orc: at full
+  strength (faster than anything runs) a creature jumping upwind on an
+  island hung there blown back, forever.
+- *Creatures' jumps*: a kind's way-finding profile is made per gravity
+  (in eighths, `zerog::eighths`); a way is made again when the creature,
+  on its feet, is somewhere lighter or heavier than it was made for. An
+  orc reaches a ledge 70 up at 0.28 (out of its reach on the ground).
+- `lightlands` scenario: the highest island; `PLATYPUS_LIGHT=lee|open|orc`.
 
 **5. `singularity`: the black hole.** Its look (lensing, the disk, the
 ring), its pull, slowed time, tidal hurt, the disk's nullstone and

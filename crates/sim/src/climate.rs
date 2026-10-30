@@ -46,9 +46,11 @@ pub struct Climate {
     pub wet: [u8; WET_COLUMNS],
     pub wet_bits: u32,
     /// Over this height gravity fades, to none at the second (and over
-    /// it: the void, where there's no air either), and the cold comes on,
-    /// down to `VOID_COLD` °C in the void.
+    /// it: the void, where there's no air either).
     pub weightless: (i32, i32),
+    /// Over this height (as the air thins, over the light high islands)
+    /// the cold comes on, down to `VOID_COLD` °C in the void.
+    pub cold_from: i32,
 }
 
 /// °C in the void (no air, nothing to keep warm).
@@ -73,6 +75,7 @@ impl Default for Climate {
             wet: [WET_DEFAULT; WET_COLUMNS],
             wet_bits: 16,
             weightless: (i32::MAX, i32::MAX),
+            cold_from: i32::MAX,
         }
     }
 }
@@ -136,8 +139,12 @@ impl Climate {
     #[inline]
     pub fn ambient(&self, x: i32, y: i32) -> i32 {
         let air = self.air_temp(x, y);
-        let v = self.into_void(y);
-        if v == 0 { air } else { air + (VOID_COLD - air) * v / 256 }
+        let (a, b) = (self.cold_from.min(self.weightless.1), self.weightless.1);
+        if y <= a {
+            return air;
+        }
+        let t = if y >= b { 256 } else { ((y - a) as i64 * 256 / (b - a).max(1) as i64) as i32 };
+        air + (VOID_COLD - air) * (t * t * (768 - 2 * t) / 65_536) / 256
     }
 
     /// Ambient °C at a world cell, as the air has it (the void's cold

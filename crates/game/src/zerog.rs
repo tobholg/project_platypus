@@ -53,6 +53,19 @@ pub fn gravity_at(sim: &SimWorld, y: f32) -> f32 {
     sim.world.gravity(y)
 }
 
+/// How a body moves under `g` of the ground's gravity: it falls slower,
+/// and a jump (as fast off the ground as ever) goes higher.
+pub fn lighter(stats: &platypus_physics::MovementStats, g: f32) -> platypus_physics::MovementStats {
+    platypus_physics::MovementStats { gravity: stats.gravity * g, jump_height: stats.jump_height / g.max(0.05), ..stats.clone() }
+}
+
+/// Gravity in eighths (8: the ground's), for what's made for one gravity
+/// (a creature's jumps: `brain::way`); never under a quarter (under that
+/// it all but floats).
+pub fn eighths(g: f32) -> u8 {
+    (g * 8.0).round().clamp(2.0, 8.0) as u8
+}
+
 /// Recoils and blows push their maker, weightless and holding on to
 /// nothing (riding a drifter, it's the drifter's), the harder the lighter
 /// they are, and (from off its middle) set it tumbling.
