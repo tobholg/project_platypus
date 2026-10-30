@@ -8,7 +8,7 @@
 //! `layer_tile` shades it at noon (stills).
 
 use crate::terrain::{self, Albedo, Light, Shape};
-use crate::{Rgb, bayer, hash, mix, noise1, rgb};
+use crate::{Rgb, bayer, hash, mix, noise1, noise2, rgb};
 use serde::Deserialize;
 
 /// A layer of land: terrain, a band of it seen from the front
@@ -289,23 +289,49 @@ pub fn cloud_data(look: &Look, x0: i64, w: usize, h: usize, detail: f32, seed: u
 
 /// A sea of clouds, strip columns `x0 .. x0 + w`, `h` rows, as
 /// `cloud_data`'s texels: rows of heaps packed side by side, the far rows
-/// higher and smaller, the near ones lower and bigger over them (seen from
-/// above, a floor of cloud running off into the distance; from below, a
-/// ceiling of it). Its heaps top out about `SEA_CROWN` of the way down.
+/// higher and smaller, the near ones lower and bigger over them, each a
+/// solid deck under its heaps down to the strip's bottom (seen from above,
+/// a floor of cloud running off into the distance, no sky between its
+/// rows; the game draws it upside down from below: a ceiling of hanging
+/// heaps). Its heaps top out about `SEA_CROWN` of the way down; its last
+/// row's all deck (stretched on past it).
 pub fn cloud_sea_data(look: &Look, x0: i64, w: usize, h: usize, detail: f32, seed: u64) -> Vec<u8> {
     let mut out = vec![0u8; w * h * 4];
-    let rows = 3;
-    let band = h * 9 / 20;
+    let rows = 8;
+    let band = SEA_BAND.min(h);
+    let enc = |v: f32| ((v.clamp(-1.0, 1.0) * 0.5 + 0.5) * 255.0).round() as u8;
+    // (The deck under the heaps: in the cloud, facing you, a little
+    // mottled; the last row plain, as it's stretched.)
+    let body = |xa: i64, y: usize| {
+        let n = if y + 1 >= h { 0.5 } else { noise2(xa as f32 / 34.0, y as f32 / 13.0, seed ^ 0xB0D7) };
+        [enc((n - 0.5) * 0.3), enc(0.1 + (n - 0.5) * 0.3), (34.0 + 12.0 * n).round() as u8, 255]
+    };
     for r in 0..rows {
-        let big = 1.1 + 0.25 * r as f32;
-        let sea = Look { clouds: Clouds { many: 5.0, big, ..look.clouds }, ..look.clone() };
-        let layer = cloud_data(&sea, x0, w, band, detail, seed ^ (0x5EA + r as u64));
+        let big = 0.8 + 0.16 * r as f32;
+        let sea = Look { clouds: Clouds { many: 5.5, big, ..look.clouds }, ..look.clone() };
+        let mut layer = cloud_data(&sea, x0, w, band, detail, seed ^ (0x5EA + r as u64));
         let off = (h - band) * r / (rows - 1);
+        for x in 0..w {
+            // (Under a heap's solid top: deck, the heap's thinning bottom
+            // filled in; on down to the strip's bottom behind the nearer
+            // rows.)
+            let Some(top) = (0..band).find(|&y| layer[(y * w + x) * 4 + 3] >= 200) else { continue };
+            for y in top..band {
+                let i = (y * w + x) * 4;
+                if layer[i + 3] < 255 {
+                    layer[i..i + 4].copy_from_slice(&body(x0 + x as i64, y + off));
+                }
+            }
+            for y in off + band..h {
+                let j = (y * w + x) * 4;
+                out[j..j + 4].copy_from_slice(&body(x0 + x as i64, y));
+            }
+        }
         for y in 0..band {
             for x in 0..w {
                 let (i, j) = ((y * w + x) * 4, ((y + off) * w + x) * 4);
-                // (Nearer over farther.)
-                if layer[i + 3] > 0 && layer[i + 3] >= out[j + 3] / 2 {
+                // (Nearer over farther; its plain last row kept.)
+                if layer[i + 3] > 0 && layer[i + 3] >= out[j + 3] / 2 && y + off + 1 < h {
                     out[j..j + 4].copy_from_slice(&layer[i..i + 4]);
                 }
             }
@@ -314,8 +340,12 @@ pub fn cloud_sea_data(look: &Look, x0: i64, w: usize, h: usize, detail: f32, see
     out
 }
 
-/// How far down a sea of clouds' strip its farthest heaps top out.
-pub const SEA_CROWN: f32 = 0.35;
+/// A sea of clouds' strip's rows (tall enough that its near heaps reach
+/// the view's bottom zoomed all the way out), each row of heaps' band, and
+/// how far down the strip its farthest heaps top out.
+pub const SEA_ROWS: usize = 640;
+const SEA_BAND: usize = 168;
+pub const SEA_CROWN: f32 = 147.0 / SEA_ROWS as f32;
 
 /// The heaps' blobs (x, y, r, seed, the heap's bottom) for columns `xs ..
 /// xe` (units): a broad bottom row, smaller ones stacked on top towards

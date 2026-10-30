@@ -71,14 +71,29 @@ const CLOUD_PARALLAX: f32 = 0.008;
 const CLOUD_PARALLAX_Y: f32 = 0.004;
 /// The sea of clouds: its share of the camera's motion across, and how
 /// much of the way from where you are to its height it seems to lie
-/// (far: a little; under you once you're well over it, overhead once
-/// you're well under it); its strip's rows.
+/// (a world with no high air's layers: far, a little); its strip's rows.
 const SEA_PARALLAX: f32 = 0.05;
 const SEA_NEAR: f32 = 0.08;
+/// Where on the view it seems to lie (its heaps' tops over it, its base
+/// under it: −1 the view's bottom … 1 its top), so it's in view all
+/// through the islands: at its height, `SEA_AT`; climbing, easing down to
+/// `SEA_UNDER` by the highest islands (the air thinning: `thin_from`),
+/// then sinking out of view (`SEA_GONE`) by the void; going down, easing
+/// up to `SEA_OVER` `SEA_LOW` under it, then out of view up `SEA_DEEP`
+/// under it.
+const SEA_AT: f32 = 0.1;
+const SEA_UNDER: f32 = -0.5;
+const SEA_OVER: f32 = 0.55;
+const SEA_GONE: f32 = 1.6;
+const SEA_LOW: f32 = 1_500.0;
+const SEA_DEEP: f32 = 3_600.0;
+/// Over it, its base's solid row stretched this far on down (cells: past
+/// the view's bottom, zoomed all the way out).
+const SEA_SKIRT: f32 = 1_600.0;
 /// Passing through the sea's height, it turns from hanging over you (by
 /// its bottom) to lying under you (by its heaps' tops) over this (cells).
 const SEA_TURN: f32 = 300.0;
-const SEA_HEIGHT: usize = 420;
+const SEA_HEIGHT: usize = platypus_backdrop::peaks::SEA_ROWS;
 const CLOUD_DRIFT: f32 = 1.8;
 /// The surface's strips: columns a tile, rows (layers, clouds).
 const TILE: usize = 384;
@@ -128,8 +143,11 @@ struct Key {
 
 struct Tile {
     entity: Entity,
-    /// A land tile's bottom row stretched down.
+    /// A land tile's bottom row stretched down (the sea's, under it).
     skirt: Option<Entity>,
+    /// The sea's from under it: drawn upside down (a ceiling of hanging
+    /// heaps), its deck stretched on up over it, lit by its own material.
+    under: Option<(Entity, Entity, Handle<CloudMaterial>)>,
     /// Its alpha (the stars hide behind it).
     alpha: Vec<u8>,
     /// Its material (lit by the hour).
@@ -244,6 +262,10 @@ impl Material2d for SkyMaterial {
     }
 }
 
+fn smooth(t: f32) -> f32 {
+    t * t * (3.0 - 2.0 * t)
+}
+
 /// Where the sun (by day) or the moon (by night) is in the view: from its
 /// bottom left (cells), the view's half size `half`; and whether it's the
 /// sun. Rising on the left, high at noon (or midnight), setting on the
@@ -282,12 +304,19 @@ pub struct Backdrops {
     shown: f32,
     /// How far the clouds have drifted (cells).
     drift: f32,
-    /// The sea of clouds' height, if the world has one.
+    /// The sea of clouds' height, if the world has one, and the high air's
+    /// layers.
     sea: Option<i32>,
+    sky: Option<platypus_worldgen::SkyLayers>,
+    /// The view's half size (cells).
+    half: Vec2,
     /// A range tile's quad and its skirt's (all the same size); a cloud
     /// tile's.
     meshes: Option<(Handle<Mesh>, Handle<Mesh>)>,
     cloud_mesh: Option<Handle<Mesh>>,
+    /// The sea of clouds' tile, upside down, and its skirt (its last row
+    /// stretched).
+    sea_meshes: Option<(Handle<Mesh>, Handle<Mesh>, Handle<Mesh>)>,
 }
 
 impl Backdrops {
@@ -300,7 +329,7 @@ impl Backdrops {
         let looks = Arc::new(all.looks.clone());
         let weights = looks.iter().map(|v| if v.name == all.default { 1.0 } else { 0.0 }).collect();
         let biomes = Arc::new(all);
-        Backdrops { looks, biomes, weights, tiles: HashMap::new(), making: HashMap::new(), ground: None, shown: 1.0, drift: 0.0, sea: None, meshes: None, cloud_mesh: None }
+        Backdrops { looks, biomes, weights, tiles: HashMap::new(), making: HashMap::new(), ground: None, shown: 1.0, drift: 0.0, sea: None, sky: None, half: Vec2::new(380.0, 230.0), meshes: None, cloud_mesh: None, sea_meshes: None }
     }
 
     /// A tile's size in cells.
@@ -339,22 +368,42 @@ impl Backdrops {
                 foot + self.looks[key.v].layers[key.k].base * h - h / 2.0
             }
             Part::Clouds => ground + self.looks[key.v].clouds.foot + up * (1.0 - CLOUD_PARALLAX_Y) + h / 2.0,
-            // (Under it, its bottom at the sea's height as it seems; over
-            // it, its farthest heaps' tops.)
-            Part::Sea => {
-                let sea = self.sea.unwrap_or(0) as f32;
-                let t = ((cam.y - sea + SEA_TURN) / (2.0 * SEA_TURN)).clamp(0.0, 1.0);
-                let row = 1.0 + (platypus_backdrop::peaks::SEA_CROWN - 1.0) * t * t * (3.0 - 2.0 * t);
-                self.sea_top(cam).unwrap_or(cam.y + 1e6) + h * row - h / 2.0
-            }
+            // (Its farthest heaps' tops where the sea seems to be; from under
+            // it, upside down, they hang down to there: `under_centre`.)
+            Part::Sea => self.sea_top(cam).unwrap_or(cam.y + 1e6) - h * (0.5 - platypus_backdrop::peaks::SEA_CROWN),
         };
         Vec2::new(x, y)
     }
 
-    /// Where the sea of clouds' heaps top out for the camera at `cam`, if
-    /// the world has one.
+    /// Where the sea of clouds seems to be for the camera at `cam` (its
+    /// heaps' tops over it, its base under it), if the world has one.
     fn sea_top(&self, cam: Vec2) -> Option<f32> {
-        self.sea.map(|y| cam.y + (y as f32 - cam.y) * SEA_NEAR)
+        let sea = self.sea? as f32;
+        let Some(sky) = self.sky else { return Some(cam.y + (sea - cam.y) * SEA_NEAR) };
+        let ease = |a: f32, b: f32, t: f32| a + (b - a) * smooth(t.clamp(0.0, 1.0));
+        let up = cam.y - sea;
+        let (lift, out) = ((sky.thin_from as f32 - sea).max(1.0), (sky.weightless.1 as f32 - sea).max(2.0));
+        let at = if up >= 0.0 {
+            if up <= lift { ease(SEA_AT, SEA_UNDER, up / lift) } else { ease(SEA_UNDER, -SEA_GONE, (up - lift) / (out - lift).max(1.0)) }
+        } else if -up <= SEA_LOW {
+            ease(SEA_AT, SEA_OVER, -up / SEA_LOW)
+        } else {
+            ease(SEA_OVER, SEA_GONE, (-up - SEA_LOW) / (SEA_DEEP - SEA_LOW))
+        };
+        Some(cam.y + at * self.half.y)
+    }
+
+    /// How much the sea of clouds is seen from over it (1) or from under it
+    /// (0: upside down), crossing its height over `SEA_TURN` either side.
+    fn over_sea(&self, cam: Vec2) -> f32 {
+        self.sea.map_or(1.0, |y| smooth(((cam.y - y as f32 + SEA_TURN) / (2.0 * SEA_TURN)).clamp(0.0, 1.0)))
+    }
+
+    /// Where the sea's tile is drawn from under it (its centre: upside
+    /// down, its farthest heaps hanging down to where it seems to be).
+    fn under_centre(&self, key: Key, cam: Vec2) -> Vec2 {
+        let c = self.centre(key, cam);
+        Vec2::new(c.x, c.y + SEA_HEIGHT as f32 * (1.0 - 2.0 * platypus_backdrop::peaks::SEA_CROWN))
     }
 
     /// What hides the sky now: each mostly shown look tile (layer or
@@ -366,29 +415,46 @@ impl Backdrops {
             .filter(|(key, _)| self.weights[key.v] >= 0.5)
             .map(|(key, tile)| {
                 let (w, h) = Self::size(key.part);
-                let c = self.centre(*key, cam);
-                (Vec2::new(c.x - w as f32 / 2.0, c.y + h as f32 / 2.0), w, h, key.part == Part::Land, tile.alpha.as_slice())
+                // (Solid past its last row: a range's skirt, the sea's; from
+                // under the sea, upside down, its last row its top.)
+                let flip = key.part == Part::Sea && self.over_sea(cam) < 0.5;
+                let c = if flip { self.under_centre(*key, cam) } else { self.centre(*key, cam) };
+                CoverTile { corner: Vec2::new(c.x - w as f32 / 2.0, c.y + h as f32 / 2.0), w, h, skirted: key.part != Part::Clouds, flip, alpha: tile.alpha.as_slice() }
             })
             .collect();
         Cover { tiles }
     }
 }
 
-/// The tiles hiding the sky: top-left corner, size, land (its skirt below
-/// is solid), alpha.
+/// The tiles hiding the sky.
 struct Cover<'a> {
-    tiles: Vec<(Vec2, usize, usize, bool, &'a [u8])>,
+    tiles: Vec<CoverTile<'a>>,
+}
+
+/// A tile hiding the sky: its top-left corner, size, whether it's solid on
+/// past its last row (a skirt), drawn upside down, its alpha.
+struct CoverTile<'a> {
+    corner: Vec2,
+    w: usize,
+    h: usize,
+    skirted: bool,
+    flip: bool,
+    alpha: &'a [u8],
 }
 
 impl Cover<'_> {
     /// Is a look's layer or cloud in front of this point of the sky?
     fn covers(&self, at: Vec2) -> bool {
-        self.tiles.iter().any(|&(corner, w, h, land, alpha)| {
-            let (lx, ly) = ((at.x - corner.x).floor() as i64, (corner.y - at.y).floor() as i64);
-            if lx < 0 || lx >= w as i64 || ly < 0 {
+        self.tiles.iter().any(|t| {
+            let (w, h) = (t.w as i64, t.h as i64);
+            let (lx, mut ly) = ((at.x - t.corner.x).floor() as i64, (t.corner.y - at.y).floor() as i64);
+            if t.flip {
+                ly = h - 1 - ly;
+            }
+            if lx < 0 || lx >= w || ly < 0 {
                 return false;
             }
-            (land && ly >= h as i64) || (ly < h as i64 && alpha[ly as usize * w + lx as usize] > 40)
+            (t.skirted && ly >= h) || (ly < h && t.alpha[(ly * w + lx) as usize] > 40)
         })
     }
 }
@@ -425,6 +491,8 @@ fn tiles(
     let g = bd.ground.unwrap_or(ground);
     bd.shown = (1.0 - (g - c.y - 60.0) / 120.0).clamp(0.0, 1.0);
     bd.sea = sim.generator.cloud_sea();
+    bd.sky = sim.generator.sky_layers();
+    bd.half = half;
     bd.drift += time.delta_secs() * CLOUD_DRIFT;
     // The looks' shares, eased (about a second to change over).
     let target = targets(&bd, &sim, c.x);
@@ -451,8 +519,12 @@ fn tiles(
             }
             let (lo, hi) = span(&bd, Part::Clouds, v, 0);
             want.extend((lo..=hi).map(|tx| Key { part: Part::Clouds, v, k: 0, tx, ty: 0 }));
-            // (The sea of clouds only when it's in view.)
-            if bd.sea_top(c).is_some_and(|top| (top - c.y).abs() < half.y + SEA_HEIGHT as f32) {
+            // (The sea of clouds only when it's in view: its heaps' tops not
+            // under the view, its base not over it.)
+            // (Its heaps' tops not under the view, from over it; their
+            // hanging ends not over it, from under it.)
+            let over = bd.over_sea(c);
+            if bd.sea_top(c).is_some_and(|at| (over > 0.0 && at > c.y - half.y - 8.0) || (over < 1.0 && at < c.y + half.y + 8.0)) {
                 let (lo, hi) = span(&bd, Part::Sea, v, 0);
                 want.extend((lo..=hi).map(|tx| Key { part: Part::Sea, v, k: 0, tx, ty: 0 }));
             }
@@ -479,6 +551,10 @@ fn tiles(
             if let Some(s) = tile.skirt {
                 commands.entity(s).despawn();
             }
+            if let Some((a, b, _)) = tile.under {
+                commands.entity(a).despawn();
+                commands.entity(b).despawn();
+            }
         }
     }
     // Made: to images, to sprites.
@@ -499,10 +575,32 @@ fn tiles(
             // Their texels (read exactly; the shader blends them after
             // lighting each, so they drift smoothly).
             let image = Image::new(Extent3d { width: w as u32, height: h as u32, depth_or_array_layers: 1 }, TextureDimension::D2, px, TextureFormat::Rgba8Unorm, RenderAssetUsages::RENDER_WORLD);
-            let material = cloud_mats.add(CloudMaterial { params: CloudParams::default(), texture: images.add(image) });
-            let quad = bd.cloud_mesh.get_or_insert_with(|| meshes.add(Rectangle::new(w as f32, h as f32))).clone();
-            let entity = commands.spawn((Name::new("Backdrop clouds"), Mesh2d(quad), MeshMaterial2d(material.clone()), Transform::from_xyz(0.0, 0.0, z), backdrop_layer())).id();
-            bd.tiles.insert(key, Tile { entity, skirt: None, alpha, material: Lit::Cloud(material) });
+            let texture = images.add(image);
+            let material = cloud_mats.add(CloudMaterial { params: CloudParams::default(), texture: texture.clone() });
+            if key.part == Part::Clouds {
+                let quad = bd.cloud_mesh.get_or_insert_with(|| meshes.add(Rectangle::new(w as f32, h as f32))).clone();
+                let entity = commands.spawn((Name::new("Backdrop clouds"), Mesh2d(quad), MeshMaterial2d(material.clone()), Transform::from_xyz(0.0, 0.0, z), backdrop_layer())).id();
+                bd.tiles.insert(key, Tile { entity, skirt: None, under: None, alpha, material: Lit::Cloud(material) });
+                continue;
+            }
+            // The sea: from over it, its deck stretched on down under it;
+            // from under it, upside down (by its own material, lit from
+            // under), its deck stretched on up over it.
+            let (quad, flipped, skirt_mesh) = bd.sea_meshes.get_or_insert_with(|| {
+                let quad = Mesh::from(Rectangle::new(w as f32, h as f32));
+                let mut flipped = quad.clone();
+                flipped.insert_attribute(Mesh::ATTRIBUTE_UV_0, vec![[1.0, 1.0], [0.0, 1.0], [0.0, 0.0], [1.0, 0.0]]);
+                let mut skirt = Mesh::from(Rectangle::new(w as f32, SEA_SKIRT));
+                let v = (h as f32 - 0.5) / h as f32;
+                skirt.insert_attribute(Mesh::ATTRIBUTE_UV_0, vec![[1.0, v], [0.0, v], [0.0, v], [1.0, v]]);
+                (meshes.add(quad), meshes.add(flipped), meshes.add(skirt))
+            }).clone();
+            let below = cloud_mats.add(CloudMaterial { params: CloudParams::default(), texture });
+            let mut part = |name: &'static str, mesh: &Handle<Mesh>, m: &Handle<CloudMaterial>| commands.spawn((Name::new(name), Mesh2d(mesh.clone()), MeshMaterial2d(m.clone()), Transform::from_xyz(0.0, 0.0, z), backdrop_layer())).id();
+            let entity = part("Backdrop sea", &quad, &material);
+            let skirt = part("Backdrop sea skirt", &skirt_mesh, &material);
+            let under = (part("Backdrop sea from under", &flipped, &below), part("Backdrop sea skirt from under", &skirt_mesh, &below), below);
+            bd.tiles.insert(key, Tile { entity, skirt: Some(skirt), under: Some(under), alpha, material: Lit::Cloud(material) });
             continue;
         }
         // A range: its texels (not colours: `Rgba8Unorm`, read exactly),
@@ -519,7 +617,7 @@ fn tiles(
         }).clone();
         let entity = commands.spawn((Name::new("Backdrop range"), Mesh2d(quad), MeshMaterial2d(material.clone()), Transform::from_xyz(0.0, 0.0, z), backdrop_layer())).id();
         let skirt = commands.spawn((Name::new("Backdrop skirt"), Mesh2d(skirt_mesh), MeshMaterial2d(material.clone()), Transform::from_xyz(0.0, 0.0, z), backdrop_layer())).id();
-        bd.tiles.insert(key, Tile { entity, skirt: Some(skirt), alpha, material: Lit::Range(material) });
+        bd.tiles.insert(key, Tile { entity, skirt: Some(skirt), under: None, alpha, material: Lit::Range(material) });
     }
 }
 
@@ -536,7 +634,7 @@ fn place(
     day: Option<Res<crate::light::Daylight>>,
     clear: Res<ClearColor>,
     cam: Single<(&Transform, &ChunkLoader), (With<MainCamera>, Without<Sprite>)>,
-    mut places: Query<&mut Transform, Without<MainCamera>>,
+    mut places: Query<(&mut Transform, &mut Visibility), Without<MainCamera>>,
     mut ranges: ResMut<Assets<RangeMaterial>>,
     mut cloud_mats: ResMut<Assets<CloudMaterial>>,
 ) {
@@ -566,11 +664,23 @@ fn place(
             Part::Clouds | Part::Sea => 0.8,
         };
         let alpha = bd.shown * bd.weights[key.v] * (1.0 - haze * far).max(0.0);
-        let skirt = tile.skirt.map(|s| (s, at.y - HEIGHT as f32 / 2.0 - SKIRT / 2.0));
-        for (e, y) in std::iter::once((tile.entity, at.y)).chain(skirt) {
-            if let Ok(mut tf) = places.get_mut(e) {
-                tf.translation.x = at.x;
-                tf.translation.y = y;
+        // (A range's skirt under its last row. The sea from over it, its
+        // skirt under it; from under it, upside down, its skirt over it;
+        // the two crossing over as you pass through its height.)
+        let over = if key.part == Part::Sea { bd.over_sea(c) } else { 1.0 };
+        let (h, skirt_h) = if key.part == Part::Sea { (SEA_HEIGHT as f32, SEA_SKIRT) } else { (HEIGHT as f32, SKIRT) };
+        let mut parts = vec![(tile.entity, at, over > 0.0)];
+        parts.extend(tile.skirt.map(|s| (s, Vec2::new(at.x, at.y - h / 2.0 - skirt_h / 2.0), over > 0.0)));
+        if let Some((e, s, _)) = &tile.under {
+            let u = bd.under_centre(*key, c);
+            parts.push((*e, u, over < 1.0));
+            parts.push((*s, Vec2::new(u.x, u.y + h / 2.0 + skirt_h / 2.0), over < 1.0));
+        }
+        for (e, p, shown) in parts {
+            if let Ok((mut tf, mut vis)) = places.get_mut(e) {
+                tf.translation.x = p.x;
+                tf.translation.y = p.y;
+                vis.set_if_neq(if shown { Visibility::Inherited } else { Visibility::Hidden });
             }
         }
         let look = &bd.looks[key.v];
@@ -600,18 +710,22 @@ fn place(
             }
             Lit::Cloud(m) => {
                 let (lit, shade) = (look.clouds.lit, look.clouds.shade);
-                let params = CloudParams {
+                // (Upside down from under the sea: its faces turned over.)
+                let params = |alpha: f32, flip: f32| CloudParams {
                     to: v4(light.to, light.golden),
                     color: v4(light.color, alpha),
                     ambient: v4(light.ambient, 0.0),
                     haze: v4(light.haze, 0.0),
-                    lit: v4(lit, 0.0),
+                    lit: v4(lit, flip),
                     shade: v4(shade, 0.0),
                 };
-                if cloud_mats.get(m).is_some_and(|mat| !mat.params.near(&params))
-                    && let Some(mut mat) = cloud_mats.get_mut(m)
-                {
-                    mat.params = params;
+                let under = tile.under.as_ref().map(|(_, _, m)| (m, params(alpha * (1.0 - over), 1.0)));
+                for (m, params) in std::iter::once((m, params(alpha * over, 0.0))).chain(under) {
+                    if cloud_mats.get(m).is_some_and(|mat| !mat.params.near(&params))
+                        && let Some(mut mat) = cloud_mats.get_mut(m)
+                    {
+                        mat.params = params;
+                    }
                 }
             }
         }

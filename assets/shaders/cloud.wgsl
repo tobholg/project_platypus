@@ -15,7 +15,8 @@ struct Cloud {
     color: vec4<f32>,
     ambient: vec4<f32>,
     haze: vec4<f32>,
-    // the clouds' lit and shaded colours.
+    // the clouds' lit and shaded colours; lit.w 1: drawn upside down (its
+    // faces turned over: the sea of clouds from under it).
     lit: vec4<f32>,
     shade: vec4<f32>,
 };
@@ -45,7 +46,7 @@ fn shade(t: vec2<i32>) -> vec4<f32> {
     }
     let raw = vec3<u32>(round(p.rgb * 255.0));
     let nx = f32(raw.x) / 255.0 * 2.0 - 1.0;
-    let ny = f32(raw.y) / 255.0 * 2.0 - 1.0;
+    let ny = (f32(raw.y) / 255.0 * 2.0 - 1.0) * (1.0 - 2.0 * c.lit.w);
     let n = vec3<f32>(nx, ny, -sqrt(max(0.0, 1.0 - nx * nx - ny * ny)));
     let depth = f32(raw.z & 63u) / 63.0;
     let edge = (raw.z & 64u) != 0u;
@@ -58,7 +59,8 @@ fn shade(t: vec2<i32>) -> vec4<f32> {
     var v = mix(shade_c, lit_c, lam);
     v = v * (1.0 - 0.3 * depth * (1.0 - golden));
     v = mix(v, vec3<f32>(1.0, 0.6, 0.45) * c.color.r, golden * depth * 0.45);
-    if (edge && facing > 0.2) {
+    // (Upside down, its outline faces away from the light: not lined.)
+    if (edge && facing > 0.2 && c.lit.w < 0.5) {
         v = v * 0.5 + c.color.rgb * 0.62 + vec3<f32>(0.12);
     }
     v = mix(v, c.haze.rgb, 0.12);
