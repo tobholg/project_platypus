@@ -213,6 +213,12 @@ less.) BUILT on `lightlands` (off `space`, unmerged) the same day:
   (in eighths, `zerog::eighths`); a way is made again when the creature,
   on its feet, is somewhere lighter or heavier than it was made for. An
   orc reaches a ledge 70 up at 0.28 (out of its reach on the ground).
+- *The cold* no longer follows the gravity: it comes on with the thin air
+  (0.74) to the void's −120 °C (following the gravity, half-gravity
+  islands would have been at about −50 °C).
+- Found on the way: an island's spring skipped aerolite looking for the
+  outermost rock, so it could land walled in; it takes the outermost
+  rock open to the sky now.
 - `lightlands` scenario: the highest island; `PLATYPUS_LIGHT=lee|open|orc`.
 
 **5. `singularity`: the black hole.** Its look (lensing, the disk, the
