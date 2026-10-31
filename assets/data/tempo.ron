@@ -46,6 +46,10 @@
             "air_accel": 630, "gravity": 1200, "fall_gravity": 1.25, "max_fall": 450,
             // (Jumps raised: 82, was 63 (96 was too much).)
             "jump_height": 82, "jump_hold": 0.12, "jump_cut": 0.6,
+            // (The boots a little gentler: at full power, over this lighter
+            // gravity, they shot up and were hard to hover with in a cave;
+            // at 0.85 they push about as far past gravity as Experimental's.)
+            "rocket_power": 0.85, "rocket_across": 0.9,
         }),
         // Terraria's own numbers, scaled to our size (its player is 42 px
         // tall, ours was 23 cells: 0.548 cells a pixel; 60 ticks a second;
