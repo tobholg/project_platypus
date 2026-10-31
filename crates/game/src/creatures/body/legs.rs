@@ -202,6 +202,13 @@ pub struct LegsDef {
     pub stride: f32,
     #[serde(default = "tilt")]
     pub tilt: f32,
+    /// Side: its gait at a run (150 cells/s and on): `(stride, lift, lean)`,
+    /// a longer stride, a higher lift, its feet resting `lean` times as far
+    /// from under their hips (a bad leg dragged walking is swung through
+    /// running); between a walk and a run, mixed by how fast it goes.
+    /// Without it, it runs on its walk's steps, only quicker.
+    #[serde(default)]
+    pub run: Option<(f32, f32, f32)>,
     /// Side: the far legs' colour (else the near ones', darker).
     #[serde(default)]
     pub far: Option<(u8, u8, u8)>,
@@ -569,6 +576,14 @@ fn tilt() -> f32 {
 }
 
 impl LegsDef {
+    /// Side: its stride, its lift and how far its feet rest from under
+    /// their hips (a share of each `lean`), going `speed` cells/s.
+    pub fn gait(&self, speed: f32) -> (f32, f32, f32) {
+        let Some((stride, lift, lean)) = self.run else { return (self.stride, self.lift, 1.0) };
+        let k = (speed / 150.0).min(1.0);
+        (self.stride + (stride - self.stride) * k, self.lift + (lift - self.lift) * k, 1.0 + (lean - 1.0) * k)
+    }
+
     /// The legs that strike.
     pub fn strikers(&self) -> Vec<usize> {
         match (self.strikers.is_empty(), self.view) {
@@ -1552,18 +1567,19 @@ fn walk(
         // finish or a foot's been left behind.
         if side && !aloft {
             let speed = going.abs();
+            let (stride, lift, lean) = legs.def.gait(speed);
             let groups = legs.def.each.iter().map(|l| l.gait).max().unwrap_or(0) as f32 + 1.0;
             let duty = 0.68 - 0.26 * (speed / 150.0).min(1.0);
-            let cycle = (legs.def.stride / duty).max(1.0);
+            let cycle = (stride / duty).max(1.0);
             let dir = if speed > 5.0 { going.signum() } else { legs.facing };
             // (Where along the surface from its hip each foot's wanted.)
             let target = |legs: &Legs, i: usize| {
                 let hip = legs.hip(i, c);
-                (hip, legs.def.each[i].lean * legs.facing + dir * legs.def.stride * 0.5)
+                (hip, legs.def.each[i].lean * lean * legs.facing + dir * stride * 0.5)
             };
             let behind = (0..n).any(|i| {
                 let (hip, ahead) = target(&legs, i);
-                legs.feet[i].t >= 1.0 && ((legs.feet[i].at - hip).dot(along) - ahead).abs() > legs.def.stride * 0.9
+                legs.feet[i].t >= 1.0 && ((legs.feet[i].at - hip).dot(along) - ahead).abs() > stride * 0.9
             });
             let swinging = legs.feet.iter().any(|f| f.t < 1.0);
             let mut rate = speed / cycle;
@@ -1571,7 +1587,6 @@ fn walk(
                 rate = rate.max((1.0 - duty) / step_time.max(0.01));
             }
             legs.phase = (legs.phase + rate * dt).fract();
-            let lift = legs.def.lift;
             let footfall = legs.def.footfall.clone();
             for i in 0..n {
                 let p = (legs.phase + legs.def.each[i].gait as f32 / groups).fract();

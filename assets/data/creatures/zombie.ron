@@ -62,7 +62,9 @@
     // (`lean`). Its body keeps in step with them (`in_step`): it rises on
     // its good leg and drops on its bad one, a hand planted as the other
     // foot is.
-    legs: (view: Side, rig: true, in_step: true, reach: 17, upper: 0.5, step: 0.26, lift: 2, stride: 7.5,
+    // Running at you it lopes (`run`): long strides, the feet lifted
+    // higher, the bad leg swung through, not dragged.
+    legs: (view: Side, rig: true, in_step: true, reach: 17, upper: 0.5, step: 0.26, lift: 2, stride: 7.5, run: (17, 4.5, 0.2),
            color: (65, 60, 72), joint: (82, 76, 90), shin: (104, 112, 110), outline: (16, 13, 14), width: [3.6, 3.1, 2.4], toes: 4,
            body: "zombie",
            each: [

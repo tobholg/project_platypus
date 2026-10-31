@@ -46,7 +46,8 @@
     // Its legs: a zombie's, running: long quick strides, the bad leg
     // still trailing; shins bare and flushed under its torn trousers.
     // (At the canon: hips 14 and 13 up, for a box 24 high.)
-    legs: (view: Side, rig: true, in_step: true, reach: 17, upper: 0.5, step: 0.13, lift: 4, stride: 11,
+    // (Running, it lopes as the zombie does: `run`, long strides.)
+    legs: (view: Side, rig: true, in_step: true, reach: 17, upper: 0.5, step: 0.13, lift: 4, stride: 11, run: (17, 5, 0.2),
            color: (58, 50, 66), joint: (76, 68, 84), shin: (160, 80, 68), outline: (16, 13, 14), width: [3.6, 3.1, 2.4], toes: 4,
            body: "zombie",
            each: [
