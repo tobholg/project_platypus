@@ -191,6 +191,17 @@
             (item: "storm_ring", weight: 1, count: (1, 1)),
             (item: "frost_charm", weight: 1, count: (1, 1)),
         ]),
+        // A zombie warlock's: what it carried of its craft: rags of its
+        // robe, a wand or two, now and then the void's own staff.
+        (name: "zombie_warlock", rolls: (1, 2), gold: (10, 28), entries: [
+            (item: "nothing", weight: 10, count: (1, 1)),
+            (item: "cloth_hood", weight: 5, count: (1, 1)),
+            (item: "apprentice_robe", weight: 4, count: (1, 1)),
+            (item: "small_health_potion", weight: 4, count: (1, 2)),
+            (item: "void_wand", weight: 2, count: (1, 1)),
+            (item: "oak_wand", weight: 2, count: (1, 1)),
+            (item: "void_staff", weight: 1, count: (1, 1)),
+        ]),
         // The drowned: what went down with them; now and then a diver's
         // flippers, rarely the helmet.
         (name: "drowned", rolls: (0, 2), gold: (3, 12), entries: [

@@ -174,6 +174,14 @@
         // rock round it.)
         (id: "abyss_burst", name: "Abyss burst", mana: 6, color: (120, 200, 255), kind: Payload(Blast(radius: 24, power: 100)),
             look: (burst: (count: 190, life: (0.35, 1.2), colors: [(255, 255, 255), (200, 240, 255), (120, 200, 255), (40, 100, 220), (12, 28, 70)], speed: 330, spread: 3.14, drag: 3, size: 2.2, jitter: 40, glow: true))),
+        // A zombie warlock's grave bolt: a slow ball of green grave-light
+        // (weave round it, jump it), the void's bite, and a little burst
+        // where it strikes that throws whatever's near, its own dead too.
+        (id: "grave_orb", name: "Grave orb", mana: 6, color: (150, 255, 100), kind: Carrier(Bolt(speed: 165, life: 3.0)),
+            look: (trail: (count: 0.9, life: (0.15, 0.4), colors: [(220, 255, 200), (150, 255, 100), (60, 150, 50), (20, 50, 24)], speed: 14, spread: 3.14, drag: 3, size: 1.5, gravity: -20, glow: true))),
+        (id: "grave_bite", name: "Grave bite", mana: 2, color: (150, 255, 100), kind: Payload(Damage(8))),
+        (id: "grave_burst", name: "Grave burst", mana: 4, color: (150, 255, 100), kind: Payload(Nova(radius: 11, power: 14)),
+            look: (burst: (count: 60, life: (0.25, 0.7), colors: [(230, 255, 210), (150, 255, 100), (60, 150, 50), (16, 40, 20)], speed: 160, spread: 3.14, drag: 3, size: 1.5, glow: true))),
         (id: "stasis_orb", name: "Stasis orb", mana: 10, color: (170, 140, 255), kind: Carrier(Orb(speed: 360, life: 1.0, bounces: 0)),
             look: (trail: (count: 0.8, life: (0.2, 0.5), colors: [(230, 220, 255), (150, 120, 240)], speed: 9, drag: 3, glow: true))),
         (id: "blink", name: "Blink", mana: 6, color: (200, 160, 255), kind: Payload(Blink)),

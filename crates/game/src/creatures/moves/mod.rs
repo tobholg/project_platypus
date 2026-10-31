@@ -172,8 +172,20 @@ pub enum Act {
     },
     /// What's within `radius` of its feet is hit.
     Slam(Slam),
-    /// `count` of a creature, `spread` cells either side.
-    Summon { kind: String, count: u32, #[serde(default)] spread: f32 },
+    /// `count` of a creature, `spread` cells either side; with `rise`,
+    /// each up out of the ground there (`emerge`: its hands first), one
+    /// after another; at most `most` of what it's summoned up at once (the
+    /// move waits till fewer are).
+    Summon {
+        kind: String,
+        count: u32,
+        #[serde(default)]
+        spread: f32,
+        #[serde(default)]
+        rise: bool,
+        #[serde(default)]
+        most: Option<u32>,
+    },
     /// A sound (sounds.ron) where it is.
     Sound(String),
     /// Live through the phase: what's within `reach` of a point `at` cells
@@ -197,6 +209,9 @@ pub enum Act {
     Web(web::Web),
 }
 
+/// Summoned up out of the ground: one this long after another (s).
+const SUMMON_APART: f32 = 0.7;
+
 fn one_shot() -> u32 {
     1
 }
@@ -219,6 +234,10 @@ fn throw_stun() -> f32 {
 fn beam_turn() -> f32 {
     1.5
 }
+
+/// Summoned by that creature (a move's `Summon`).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Summoned(pub Entity);
 
 /// Caught by a grab: held at `at` (where the grabber holds it) while it
 /// lasts, its body pinned there (`pin`), no control of its own.
@@ -476,6 +495,7 @@ pub fn start(
     mut began: MessageWriter<Began>,
     mut movers: Query<Starter, (Without<crate::creatures::brain::Staged>, Without<crate::creatures::Disguised>, Without<Occupied>)>,
     prey: Query<Prey, Without<crate::creatures::brain::villager::Hiding>>,
+    summoned: Query<&Summoned>,
 ) {
     let now = time.elapsed_secs();
     for (e, mut moves, k, swinging, legs, alert) in &mut movers {
@@ -505,7 +525,9 @@ pub fn start(
             let lead = if m.when.range.0 <= 0.0 { (closing * before.min(MOVE_LEAD_MOST)).min(MOVE_LEAD_CELLS) } else { 0.0 };
             // (Not one that fires from a turret that's venting.)
             let venting = legs.is_some_and(|l| m.phases.iter().flat_map(|p| &p.acts).any(|a| matches!(a, Act::Cast { from: Some(name), .. } if l.venting(name))));
-            now >= moves.ready[i] && !venting && (m.when.range.0..m.when.range.1 + lead).contains(&dist) && (!m.when.footing || holds) && (!m.when.line || clear(&sim, pos, pk.body.pos))
+            // (Not a summoning while as many as it may have are up.)
+            let full = m.phases.iter().flat_map(|p| &p.acts).any(|a| matches!(a, Act::Summon { most: Some(n), .. } if summoned.iter().filter(|s| s.0 == e).count() >= *n as usize));
+            now >= moves.ready[i] && !venting && !full && (m.when.range.0..m.when.range.1 + lead).contains(&dist) && (!m.when.footing || holds) && (!m.when.line || clear(&sim, pos, pk.body.pos))
         });
         if let Some(which) = start {
             // (`phase` past the end: the first phase's start is still to come.)
@@ -624,7 +646,7 @@ pub fn run(
                 *rear = Pose { target, ..pose.clone() };
             }
             let mut vel = k.body.vel;
-            begin(p, &k, dir, &mut vel, &mut sounds, &mut commands);
+            begin(e, p, &k, dir, &mut vel, &mut sounds, &mut commands);
             k.body.vel = vel;
             for act in &p.acts {
                 if let Act::Throw { speed, up, stun } = act
@@ -873,16 +895,23 @@ pub(crate) fn struggle(
 }
 
 /// What a phase does as it starts.
-fn begin(p: &Phase, k: &Kinematics, dir: Vec2, vel: &mut Vec2, sounds: &mut MessageWriter<crate::sound::PlaySound>, commands: &mut Commands) {
+fn begin(e: Entity, p: &Phase, k: &Kinematics, dir: Vec2, vel: &mut Vec2, sounds: &mut MessageWriter<crate::sound::PlaySound>, commands: &mut Commands) {
     for act in &p.acts {
         match act {
             Act::Lunge { speed, up } => *vel = dir * *speed + Vec2::Y * *up,
             // (Casts go off shot by shot as the phase runs: `run`.)
             Act::Cast { .. } => {}
-            Act::Summon { kind, count, spread } => {
+            Act::Summon { kind, count, spread, rise, most: _ } => {
                 for n in 0..*count {
                     let dx = if *count > 1 { (n as f32 / (*count - 1) as f32 - 0.5) * 2.0 * spread } else { 0.0 };
-                    crate::creatures::def::spawn_creature(commands, kind, k.body.pos + Vec2::new(dx, 1.5 - k.body.half.y), |_| {});
+                    let rise = *rise;
+                    crate::creatures::def::spawn_creature(commands, kind, k.body.pos + Vec2::new(dx, 1.5 - k.body.half.y), move |w| {
+                        w.insert(Summoned(e));
+                        // (Up out of the ground, hidden and still till it's out.)
+                        if rise {
+                            w.insert((crate::creatures::body::emerge::Emerging::after(n as f32 * SUMMON_APART), crate::creatures::Dormant, Visibility::Hidden));
+                        }
+                    });
                 }
             }
             Act::Sound(name) => {

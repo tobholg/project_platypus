@@ -227,6 +227,11 @@ pub struct CreatureDef {
     /// comes into the world, as gear found where it stands.
     #[serde(default)]
     pub wears: Vec<(String, f32)>,
+    /// Nothing goes on its head (its skull is its face: the hunched dead):
+    /// what it would wear there it doesn't (getting up again, it spills),
+    /// and none is drawn on it.
+    #[serde(default)]
+    pub bare_head: bool,
     /// Its loot table (`loot.ron`): rolled into its body when it dies.
     #[serde(default)]
     pub loot: Option<String>,
