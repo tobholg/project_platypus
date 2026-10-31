@@ -1,0 +1,64 @@
+// A zombie warlock: one of the dead that kept its craft. Upright, in a
+// tattered hooded robe, a skull of a face in the dark of its hood, its eyes
+// burning green; it shambles with its clawed hands held out ahead of it
+// (assets/art/zombie_warlock.ron, its legs legs.rs's, its walk in step with
+// them). It keeps its distance (`Range`) and works from there (moves.ron):
+// - its bolt: hands raised ahead of its hood, the grave-light gathering
+//   between them and its eyes flaring (most of a second: the tell), then a
+//   slow green ball thrust at you that bursts where it strikes, on
+//   whatever's near: you, and its own dead beside you;
+// - its call: arms flung up wide, eyes flaring, a long groan, then swept
+//   down at the ground, and two zombies claw up out of it either side of
+//   it, never more than three of its own up at once;
+// - come too close and it shoves you off.
+// Dead flesh like a zombie's: the void feeds it, fire and light undo it,
+// the sun burns it; its head off, it's done. Killed, it stays dead.
+(
+    name: "Zombie warlock",
+    loot: "zombie_warlock",
+    size: (9, 22),
+    health: 120,
+    team: Enemy,
+    faction: "undead",
+    kind: "rotting",
+    headless: Dies,
+    neck: 0.5,
+    behead: 0.35,
+    sunburns: true,
+    blood: "rot",
+    eyes: (150, 255, 100),
+    // (A faint green about it in the dark: its eyes, its craft.)
+    light: (color: (120, 255, 100), strength: 0.25),
+    // A low groan now and then.
+    voice: Some(("groan", (4.0, 11.0))),
+    fall_damage: (safe_height: 120, per_cell: 0.5),
+    movement: (
+        run_speed: 42,
+        jump_height: 24,
+        air_jumps: 0,
+        step_height: 5,
+        dash_speed: 0,
+    ),
+    art: "zombie_warlock",
+    // Its legs: bandaged shins and wrapped boots from under its hem, 10
+    // cells up; a slow, short shamble.
+    legs: (view: Side, rig: true, in_step: true, reach: 10.5, upper: 0.5, step: 0.3, lift: 2, stride: 6,
+           color: (118, 116, 96), joint: (96, 94, 78), shin: (84, 62, 50), outline: (14, 10, 18), width: [2.6, 2.4, 2.2], toes: 3,
+           body: "zombie_warlock",
+           each: [
+               (hip: (2, -1), gait: 0, knee: Forward),
+               (hip: (-2, -1), gait: 1, knee: Forward, far: true),
+           ]),
+    // Close in, it shoves you off; it calls up its dead; it casts.
+    moves: ["warlock_shove", "warlock_rouse", "warlock_bolt"],
+    stamina: 60,
+    poise: 30,
+    heft: 3,
+    // Its head's the place to hit.
+    zones: (head: 2.0, body: 1.0, arms: 0.8),
+    pace: 0.15,
+    brain: (
+        kind: "hunter",
+        params: (aggro: 300, close: Range(near: 80, far: 180), wander: (speed: 0.25, every: 4.0), senses: (dark: 1.0, hearing: 1.4, smell: 160, memory: 10, behind: 0.6)),
+    ),
+)

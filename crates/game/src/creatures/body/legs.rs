@@ -271,6 +271,10 @@ pub struct LegsDef {
     pub color: (u8, u8, u8),
     #[serde(default)]
     pub joint: Option<(u8, u8, u8)>,
+    /// Its shins and feet a colour of their own (bare under torn
+    /// trousers, bandaged under a robe); else the leg's.
+    #[serde(default)]
+    pub shin: Option<(u8, u8, u8)>,
     #[serde(default = "one")]
     pub thick: u8,
     /// The body's sprite (seen from above, pointing right).
@@ -281,6 +285,12 @@ pub struct LegsDef {
     /// riding or tilting with them (a lanky skeleton).
     #[serde(default)]
     pub rig: bool,
+    /// Its own art's run (`rig`) kept in step with its feet: the run's
+    /// frames are the gait's cycle, the first as its near foot comes down
+    /// (a hand planted as the far foot is, a lurch on one leg), not a
+    /// clock's.
+    #[serde(default)]
+    pub in_step: bool,
     /// Its pixels of this colour glow (eyes): drawn over the dark, at full
     /// brightness however dark it is.
     #[serde(default)]
@@ -793,6 +803,12 @@ impl Legs {
     /// Which way it's drawn facing (side: 1 right, -1 left).
     pub fn facing(&self) -> f32 {
         self.facing
+    }
+
+    /// Where its gait is in its cycle (0..1), if its art's run keeps in
+    /// step with it (`in_step`).
+    pub fn in_step(&self) -> Option<f32> {
+        (self.def.in_step && self.def.view == View::Side).then_some(self.phase)
     }
 
     /// Leg `i`'s preferred way, from the heading (radians): fanned front to
@@ -2804,8 +2820,11 @@ fn draw(
                     }
                     continue;
                 }
+                // (Below the thigh, its shin's own colour if it has one.)
+                let shin = legs.def.shin.map_or(leg, |s| rgb(if far { dark(s) } else { s }));
                 for (pass, grow) in [(rgb(line), 1.0), (leg, 0.0)] {
-                    for &(a, b, wa, wb) in &bones {
+                    for (j, &(a, b, wa, wb)) in bones.iter().enumerate() {
+                        let pass = if grow == 0.0 && j > 0 { shin } else { pass };
                         stroke(a, b, wa * 0.5 + grow, wb * 0.5 + grow, pass, to);
                     }
                 }

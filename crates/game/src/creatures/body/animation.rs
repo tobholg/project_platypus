@@ -161,7 +161,7 @@ impl Plugin for AnimationPlugin {
     }
 }
 
-type Animated<'a> = (&'a Kinematics, &'a mut Animator, &'a Children, Option<&'a mut Aiming>, Option<&'a mut HandPos>, Option<&'a mut Soles>, Option<&'a super::tumble::Tumble>, Option<&'a super::parts::Severed>, Option<&'a Hug>, Option<&'a crate::magic::field::Slowed>);
+type Animated<'a> = (&'a Kinematics, &'a mut Animator, &'a Children, Option<&'a mut Aiming>, Option<&'a mut HandPos>, Option<&'a mut Soles>, Option<&'a super::tumble::Tumble>, Option<&'a super::parts::Severed>, Option<&'a Hug>, Option<&'a crate::magic::field::Slowed>, Option<&'a super::legs::Legs>);
 type BodySprites = (With<CreatureSprite>, Without<ArmSprite>, Without<CreatureEyes>);
 type EyeSprites = (With<CreatureEyes>, Without<CreatureSprite>, Without<ArmSprite>);
 type Arms<'a> = (&'a mut Sprite, &'a mut Transform, &'a mut Visibility);
@@ -178,7 +178,7 @@ pub fn animate(
     mut arms: Query<Arms, With<ArmSprite>>,
     mut eyes: Query<(&mut Sprite, &mut Transform), EyeSprites>,
 ) {
-    for (k, mut anim, children, mut aiming, hand, soles, tumble, severed, hug, slowed) in &mut creatures {
+    for (k, mut anim, children, mut aiming, hand, soles, tumble, severed, hug, slowed, legs) in &mut creatures {
         let anim = &mut *anim;
         let def = anim.def.clone();
         let dt = time.delta_secs() * crate::magic::field::share(slowed);
@@ -224,6 +224,14 @@ pub fn animate(
                     anim.frame
                 };
             }
+        }
+        // In step with its feet (`legs::in_step`): the run's frame is where
+        // its gait is, whatever the clock says.
+        if anim.clip == "run"
+            && let Some(p) = legs.and_then(|l| l.in_step())
+        {
+            let n = clip.frames.len().max(1);
+            anim.frame = ((p * n as f32) as usize).min(n - 1);
         }
 
         let facing = k.loco.facing;

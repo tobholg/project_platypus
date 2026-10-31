@@ -116,6 +116,32 @@
             (name: "breathe", secs: 0.6, clip: Some("breathe"), acts: [Cast(spell: "frost_breath", at: 14, up: 7, count: 6, every: 0.1)]),
             (name: "recover", secs: 0.45, clip: Some("breathe")),
         ]),
+        // A zombie warlock's bolt: it raises both hands ahead of its hood,
+        // green grave-light gathering between them, its eyes flaring (the
+        // tell, most of a second), then thrusts them at you and the light
+        // flies: slow, straight, bursting where it strikes, on whatever's
+        // near (its own dead too).
+        (id: "warlock_bolt", every: 3.5, when: (range: (36, 240), line: true), phases: [
+            (name: "gather", secs: 0.8, clip: Some("gather"), acts: [Sound("cast")]),
+            (name: "cast", secs: 0.3, clip: Some("throw"), acts: [Cast(spell: "grave_bolt", at: 12, up: 12), Sound("pour")]),
+            (name: "recover", secs: 0.5, clip: Some("throw")),
+        ]),
+        // A zombie warlock's call: its arms flung up wide, its eyes flaring,
+        // a long groan (the tell); then it sweeps them down at the ground
+        // and two of the dead claw up out of it, either side of it. No more
+        // than three of its own up at once.
+        (id: "warlock_rouse", every: 12.0, when: (range: (0, 260)), phases: [
+            (name: "call", secs: 1.1, clip: Some("raise"), acts: [Sound("groan")]),
+            (name: "rouse", secs: 0.5, clip: Some("beckon"), acts: [Summon(kind: "zombie", count: 2, spread: 22, rise: true, most: Some(3))]),
+            (name: "recover", secs: 0.4, clip: Some("beckon")),
+        ]),
+        // Come too close to a zombie warlock: it draws its hands in to its
+        // chest and shoves you off with a cold of the grave.
+        (id: "warlock_shove", every: 2.5, when: (range: (0, 24), footing: true), phases: [
+            (name: "windup", secs: 0.4, clip: Some("draw"), acts: [Sound("snarl")]),
+            (name: "shove", secs: 0.2, clip: Some("throw"), acts: [Strike((at: 10, reach: 10, damage: 8, harm: void, knock: 300, up: 0.4, stun: 0.3))]),
+            (name: "recover", secs: 0.4, clip: Some("throw")),
+        ]),
         // A crimson head's vomit: its head blooms open (the Plaga in it:
         // four flaps peeling back from a red maw, tendrils), shudders, and
         // sprays poisoned blood at you in a fan.
