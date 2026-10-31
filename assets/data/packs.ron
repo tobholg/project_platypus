@@ -2,11 +2,11 @@
 // member and how many. A pack's members stand in a line across the cursor,
 // on the ground under it. Edit freely; it's read at every spawn.
 {
-    "warband": [("troll", 1), ("orc", 3), ("orc_archer", 2)],
+    "warband": [("troll", 1), ("orc", 3), ("orc_archer", 2), ("orc_shaman", 1)],
     // A raid on the village (events.rs).
     "raiders": [("orc", 3), ("orc_archer", 1)],
     "trolls": [("troll", 2)],
-    "orcs": [("orc", 4), ("orc_archer", 2)],
+    "orcs": [("orc", 4), ("orc_archer", 2), ("orc_shaman", 1)],
     "spiders": [("spider", 2), ("spiderling", 4), ("egg_sac", 2)],
     "underground": [("skeleton", 2), ("slime", 2), ("acid_slime", 1), ("vampire_bat", 2)],
 }

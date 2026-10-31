@@ -18,7 +18,7 @@
     // The start valley's caverns. (No spiders among them: they're met in
     // the deeper caves' nests.)
     (name: "orc den", depth: (0, 400), chance: 1.0, start: Dark, chest: true,
-     lining: "cobweb", density: 0.0, keepers: [("orc", 1), ("orc_archer", 1)]),
+     lining: "cobweb", density: 0.0, keepers: [("orc", 1), ("orc_archer", 1), ("orc_shaman", 1)]),
     (name: "bone crypt", depth: (0, 400), chance: 1.0, start: Any, chest: true,
      lining: "cobweb", density: 0.15, keepers: [("skeleton", 2)]),
     (name: "zombie burrow", depth: (0, 400), chance: 1.0, start: Dark, chest: true,

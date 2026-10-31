@@ -1,0 +1,330 @@
+// An orc archer: lean, hunched, green, in a brown cowl with its long ears
+// out of it. Drawn from the user's reference (orc_archer_ref.png) itself:
+// its pixels read off at its own grid, shrunk to 0.76 (44 cells hood to
+// sole), the colours its own, then cut into its hood and face (one amber
+// eye in a dark socket, the jaw thrust out, a tusk), its torso (the cowl's
+// cloth over its shoulders, a strap and buckle across the chest, the belt,
+// the torn tabard: leather to what's worn over it), its near arm (in front:
+// long, a dark wrap at the wrist, a big clawed hand), its far arm (behind,
+// an iron pauldron on its shoulder) and the longbow slung on its back.
+// Its legs aren't drawn here: they're its creature file's `legs` (legs.rs,
+// `rig`: bent green legs in brown boots), and its run keeps in step with
+// them (`in_step`). Drawing, it takes the bow off its back: the slung bow
+// is tagged with the near arm (`front_arm`), so it goes while the arm
+// that aims stands in, the bow in that hand. Facing right; the game
+// mirrors it.
+(
+    size: (54, 52),
+    feet: (23.5, 52),
+    outline: (17, 18, 9),
+    palette: {
+        'x': (17, 18, 9),           // the deepest shade
+        'y': (43, 35, 19),          // shade, brown-black
+        'G': (54, 65, 21),          // skin, deep
+        'n': (76, 89, 28),          // skin, shade
+        'N': (101, 115, 37),        // skin: green
+        'v': (128, 141, 49),        // skin, lit
+        'V': (154, 167, 63),        // skin, highlight
+        'Z': (54, 65, 21),          // hands and forearms (gloves go on them): deep
+        'S': (76, 89, 28),          // hands, shade
+        's': (101, 115, 37),        // hands
+        'W': (128, 141, 49),        // hands, lit
+        'r': (78, 49, 24),          // the cowl, shade
+        'R': (109, 71, 38),         // the cowl: brown
+        'u': (135, 95, 57),         // the cowl, lit
+        'T': (78, 49, 24),          // the tabard (leather to what is worn), shade
+        't': (109, 71, 38),         // the tabard
+        'L': (135, 95, 57),         // the tabard, lit
+        'b': (52, 40, 26),          // the strap and belt
+        'm': (65, 53, 42),          // the wrist wraps, shade
+        'M': (86, 75, 67),          // the wrist wraps
+        'D': (65, 53, 42),          // iron, deep
+        'i': (86, 75, 67),          // iron, shade
+        'I': (105, 93, 84),         // iron
+        'j': (136, 125, 116),       // iron, lit
+        'J': (175, 167, 153),       // iron, highlight
+        'w': (164, 139, 93),        // the bow, bone, shade; the tusk
+        'c': (192, 168, 118),       // the bow
+        'K': (216, 196, 147),       // the bow, lit
+        'E': (239, 223, 179),       // the bow and the tusk, highlight
+        'e': (237, 166, 31),        // its eye: amber (glows: the creature's `eyes`)
+    },
+    parts: {
+        "bow_slung": (pivot: (3, 8), rows: [
+            "..xx......",
+            "..xyx.....",
+            ".xwx......",
+            "xwx.......",
+            "xyx.......",
+            "xRRx......",
+            "xyyx......",
+            ".xwcx.....",
+            ".xxcEx....",
+            ".x.xcEx...",
+            ".x..xcKx..",
+            ".x...xcKx.",
+            ".x...xwcEx",
+            "..x...xcKx",
+            "..x...xwcx",
+            "..x...xwx.",
+            "..x....x..",
+            "...x......",
+        ]),
+        "torso": (pivot: (7, 19), rows: [
+            "......xxxyx.....",
+            ".....xrrRRrx....",
+            "....xrRrrRyx....",
+            "....xRRrryrx....",
+            ".....xRryryRRx..",
+            ".....yuRrrxrRx..",
+            ".....xuuRyyyRx..",
+            ".....xxRRrrrrry.",
+            ".....xIxxRyyrRx.",
+            "....xNnxxRryyRx.",
+            "...xnvvNxRRrrGx.",
+            "..xGGNVnxxRrxNx.",
+            "..yGGGvnGxxjDNx.",
+            "..xnGNvVvbxIxNnx",
+            "..xynnvnbbryxGnx",
+            "..yGnNGbbRrxGNx.",
+            ".xyxxbbyxxxGx...",
+            ".xbbbbbbbjbbx...",
+            ".yxyyLLtTttxx...",
+            ".TTyyTyxxyyyyx..",
+            "xyttxLTTyTytyx..",
+            "xttyxttTTttLyx..",
+            ".xxx.xLTTTtxx...",
+            ".....xLTyttx....",
+            ".....xtTTtx.....",
+            ".....xttTTx.....",
+            "......xTTx......",
+            "......xTtx......",
+            ".......xx.......",
+            ".......x........",
+        ]),
+        "head": (pivot: (11, 17), points: { "mouth": (13, 15), "brow": (14, 9) }, rows: [
+            "..xx..............",
+            "...xxx..xxx.......",
+            "....xrxxyrRxx.....",
+            "xx..xRrrRRRrrx....",
+            "xVxxyrRRRuuRrrx...",
+            ".xvNxxrrRRRRRrrx..",
+            "..xnVvNrrruRRuRrx.",
+            "..xGnNvnrRRRRuRRRx",
+            "...xGnNnyRruRxxyrx",
+            "yrrryGnyrRurxNvVx.",
+            "ryRryyrRRuuyenvVx.",
+            ".RrryrrRRRyvevVVNx",
+            ".........yGNnNnxx.",
+            ".........GnyENvyx.",
+            ".........GNnvvvNx.",
+            ".........yGNNNNnx.",
+            ".........GGnNNnx..",
+            ".........Gnyyxx...",
+            ".........xyxx.....",
+        ]),
+        "blink": (pivot: (11, 17), points: { "mouth": (13, 15), "brow": (14, 9) }, rows: [
+            "..xx..............",
+            "...xxx..xxx.......",
+            "....xrxxyrRxx.....",
+            "xx..xRrrRRRrrx....",
+            "xVxxyrRRRuuRrrx...",
+            ".xvNxxrrRRRRRrrx..",
+            "..xnVvNrrruRRuRrx.",
+            "..xGnNvnrRRRRuRRRx",
+            "...xGnNnyRruRxxyrx",
+            "yrrryGnyrRurxNvVx.",
+            "ryRryyrRRuuyGnvVx.",
+            ".RrryrrRRRyvGvVVNx",
+            ".........yGNnNnxx.",
+            ".........GnyENvyx.",
+            ".........GNnvvvNx.",
+            ".........yGNNNNnx.",
+            ".........GGnNNnx..",
+            ".........Gnyyxx...",
+            ".........xyxx.....",
+        ]),
+        "arm_near": (pivot: (2, 1), points: { "hand": (7, 13) }, rows: [
+            "xnnx........",
+            "yGNnx.......",
+            "xGNnx.......",
+            ".xGNnx......",
+            "..xNNnx.....",
+            "..xSsSx.....",
+            "...xmMmx....",
+            "...xmMMx....",
+            "....xmmxx...",
+            ".....xSSx...",
+            ".....xWWSx..",
+            ".....xsWWSx.",
+            ".....xxsZWSx",
+            ".....xWxxxWx",
+            ".....xSx.xSx",
+            "......x..xWx",
+            ".......xx...",
+        ]),
+        "arm_back": (pivot: (11, 6), points: { "hand": (3, 23) }, rows: [
+            "..........xxx.....",
+            "..........xJjx....",
+            "..........xjIyx...",
+            "........xxDiIDxx..",
+            "........xDyiIjiDx.",
+            ".......xyDjIiiiDx.",
+            "......xyIDxIiJiDx.",
+            "......xxyjIDiiiyDx",
+            ".......xxxIjxxyyyx",
+            ".......xvNDjIiDx..",
+            ".....xxNnNnx......",
+            "....xGnvvVnx......",
+            "....xvNnnGx.......",
+            "...xnVnNx.........",
+            "...xNvNx..........",
+            "...xnvGx..........",
+            "..xmMmx...........",
+            "..xmMmx...........",
+            "..xmmmx...........",
+            "..xMMmx...........",
+            "..xmmx............",
+            ".xSWWx............",
+            ".xsSWWx...........",
+            "xWZxWWx...........",
+            "xsWxxWx...........",
+            "xxsx.xx...........",
+            ".xSx..............",
+            "..x...............",
+        ]),
+    },
+    poses: {
+        // Standing hunched, breathing; a blink; a look about.
+        "stand": [
+            (part: "bow_slung", at: (14, 9), tag: "front_arm"),
+            (part: "arm_back", at: (17, 22), shade: 0.85, tag: "back_arm"),
+            (part: "torso", at: (23, 34)),
+            (part: "head", at: (33, 24)),
+            (part: "arm_near", at: (33, 28), outline: true, tag: "front_arm"),
+        ],
+        "breathe": [
+            (part: "bow_slung", at: (14, 8), tag: "front_arm"),
+            (part: "arm_back", at: (17, 21), shade: 0.85, turn: -2, tag: "back_arm"),
+            (part: "torso", at: (23, 33)),
+            (part: "head", at: (33, 23)),
+            (part: "arm_near", at: (33, 27), outline: true, turn: 2, tag: "front_arm"),
+        ],
+        "blink": [
+            (part: "bow_slung", at: (14, 9), tag: "front_arm"),
+            (part: "arm_back", at: (17, 22), shade: 0.85, tag: "back_arm"),
+            (part: "torso", at: (23, 34)),
+            (part: "blink", at: (33, 24)),
+            (part: "arm_near", at: (33, 28), outline: true, tag: "front_arm"),
+        ],
+        "look": [
+            (part: "bow_slung", at: (14, 9), tag: "front_arm"),
+            (part: "arm_back", at: (17, 22), shade: 0.85, tag: "back_arm"),
+            (part: "torso", at: (23, 34)),
+            (part: "head", at: (34, 25)),
+            (part: "arm_near", at: (33, 28), outline: true, turn: -2, tag: "front_arm"),
+        ],
+        // Running (`in_step`): the body down as a foot comes down, up as
+        // it passes; the arms swinging against the legs.
+        "run_0": [
+            (part: "bow_slung", at: (14, 10), tag: "front_arm"),
+            (part: "arm_back", at: (17, 23), shade: 0.85, turn: 16, tag: "back_arm"),
+            (part: "torso", at: (23, 35)),
+            (part: "head", at: (34, 25)),
+            (part: "arm_near", at: (33, 29), outline: true, turn: -16, tag: "front_arm"),
+        ],
+        "run_1": [
+            (part: "bow_slung", at: (14, 10), tag: "front_arm"),
+            (part: "arm_back", at: (17, 23), shade: 0.85, turn: 9, tag: "back_arm"),
+            (part: "torso", at: (23, 35)),
+            (part: "head", at: (34, 25)),
+            (part: "arm_near", at: (33, 29), outline: true, turn: -9, tag: "front_arm"),
+        ],
+        "run_2": [
+            (part: "bow_slung", at: (14, 9), tag: "front_arm"),
+            (part: "arm_back", at: (17, 22), shade: 0.85, tag: "back_arm"),
+            (part: "torso", at: (23, 34)),
+            (part: "head", at: (33, 24)),
+            (part: "arm_near", at: (33, 28), outline: true, tag: "front_arm"),
+        ],
+        "run_3": [
+            (part: "bow_slung", at: (14, 9), tag: "front_arm"),
+            (part: "arm_back", at: (17, 22), shade: 0.85, turn: -9, tag: "back_arm"),
+            (part: "torso", at: (23, 34)),
+            (part: "head", at: (33, 24)),
+            (part: "arm_near", at: (33, 28), outline: true, turn: 9, tag: "front_arm"),
+        ],
+        "run_4": [
+            (part: "bow_slung", at: (14, 10), tag: "front_arm"),
+            (part: "arm_back", at: (17, 23), shade: 0.85, turn: -16, tag: "back_arm"),
+            (part: "torso", at: (23, 35)),
+            (part: "head", at: (34, 25)),
+            (part: "arm_near", at: (33, 29), outline: true, turn: 16, tag: "front_arm"),
+        ],
+        "run_5": [
+            (part: "bow_slung", at: (14, 10), tag: "front_arm"),
+            (part: "arm_back", at: (17, 23), shade: 0.85, turn: -9, tag: "back_arm"),
+            (part: "torso", at: (23, 35)),
+            (part: "head", at: (34, 25)),
+            (part: "arm_near", at: (33, 29), outline: true, turn: 9, tag: "front_arm"),
+        ],
+        "run_6": [
+            (part: "bow_slung", at: (14, 9), tag: "front_arm"),
+            (part: "arm_back", at: (17, 22), shade: 0.85, tag: "back_arm"),
+            (part: "torso", at: (23, 34)),
+            (part: "head", at: (33, 24)),
+            (part: "arm_near", at: (33, 28), outline: true, tag: "front_arm"),
+        ],
+        "run_7": [
+            (part: "bow_slung", at: (14, 9), tag: "front_arm"),
+            (part: "arm_back", at: (17, 22), shade: 0.85, turn: 9, tag: "back_arm"),
+            (part: "torso", at: (23, 34)),
+            (part: "head", at: (33, 24)),
+            (part: "arm_near", at: (33, 28), outline: true, turn: -9, tag: "front_arm"),
+        ],
+        // Up: the arms up and back. Down: thrown out. Hit: rocked back.
+        "rise": [
+            (part: "bow_slung", at: (14, 8), tag: "front_arm"),
+            (part: "arm_back", at: (17, 21), shade: 0.85, turn: -25, tag: "back_arm"),
+            (part: "torso", at: (23, 33)),
+            (part: "head", at: (33, 22)),
+            (part: "arm_near", at: (33, 27), outline: true, turn: 35, tag: "front_arm"),
+        ],
+        "drop": [
+            (part: "bow_slung", at: (14, 9), tag: "front_arm"),
+            (part: "arm_back", at: (17, 22), shade: 0.85, turn: 45, tag: "back_arm"),
+            (part: "torso", at: (23, 34)),
+            (part: "head", at: (33, 24)),
+            (part: "arm_near", at: (33, 28), outline: true, turn: 60, tag: "front_arm"),
+        ],
+        "hurt": [
+            (part: "bow_slung", at: (13, 9), tag: "front_arm"),
+            (part: "arm_back", at: (16, 22), shade: 0.85, turn: 30, tag: "back_arm"),
+            (part: "torso", at: (22, 34)),
+            (part: "head", at: (31, 23)),
+            (part: "arm_near", at: (32, 28), outline: true, turn: -25, tag: "front_arm"),
+        ],
+    },
+    // The near arm at angles (the bow held out at what it aims at): the
+    // arm as drawn (hanging, -74 degrees), turned; shown instead of the
+    // pose's own near arm and the slung bow (`front_arm`) while it aims.
+    // (The far arm is tagged too: its hand, `back_arm.hand`, holds a torch.)
+    fans: {
+        "front_arm": [
+            (angle: -90, part: "arm_near", from: -74),
+            (angle: -60, part: "arm_near", from: -74),
+            (angle: -30, part: "arm_near", from: -74),
+            (angle: 0, part: "arm_near", from: -74),
+            (angle: 30, part: "arm_near", from: -74),
+            (angle: 60, part: "arm_near", from: -74),
+            (angle: 90, part: "arm_near", from: -74),
+        ],
+    },
+    clips: {
+        "idle": (frames: ["stand", "stand", "breathe", "breathe", "stand", "stand", "breathe", "breathe", "stand", "blink", "stand", "look", "look", "stand", "breathe", "breathe"], fps: 4),
+        "run": (frames: ["run_0", "run_1", "run_2", "run_3", "run_4", "run_5", "run_6", "run_7"], fps: 10),
+        "jump": (frames: ["rise"], fps: 5),
+        "fall": (frames: ["drop"], fps: 5),
+        "hurt": (frames: ["hurt"], fps: 5),
+    },
+)

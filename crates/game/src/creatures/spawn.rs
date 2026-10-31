@@ -60,7 +60,8 @@ pub struct Spawned(pub std::collections::HashSet<CellPos>);
 /// The orcs about the start: two camps out past the start valley's plain
 /// (3000 cells either side of the start), one each way, so the valley's
 /// own trouble is slimes by day and the dead by night (`life.ron`).
-const START_ENEMIES: [(&str, i32); 6] = [("orc", -3500), ("orc_archer", -3440), ("orc", -3380), ("orc", 3380), ("orc_archer", 3440), ("orc", 3500)];
+/// (Each camp has its shaman, at the back.)
+const START_ENEMIES: [(&str, i32); 8] = [("orc_shaman", -3560), ("orc", -3500), ("orc_archer", -3440), ("orc", -3380), ("orc", 3380), ("orc_archer", 3440), ("orc", 3500), ("orc_shaman", 3560)];
 
 impl Plugin for SpawnPlugin {
     fn build(&self, app: &mut App) {

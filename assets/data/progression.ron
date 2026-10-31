@@ -35,6 +35,8 @@
         // iron would skip the first dig.)
         (id: "orc_hunter", name: "Orc hunter",
             when: Killed("orc", 5), gives: [("small_health_potion", 3), ("bomb", 3)]),
+        (id: "shaman_slayer", name: "Fire-taker", about: "An orc shaman, put out",
+            when: Killed("orc_shaman", 1), gives: [("fire_ward_potion", 2)]),
         // (Trolls come only in packs the dev menu sends; a crypt's heart is
         // there to be won in play.)
         (id: "templar_slayer", name: "Templar's bane", about: "A crypt's heart, broken",

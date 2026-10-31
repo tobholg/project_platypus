@@ -241,7 +241,7 @@ mod tests {
     #[test]
     fn every_look_dresses_every_humanoid() {
         let gear: GearFile = crate::data::parse_ron(include_str!("../../../../assets/data/gear.ron")).unwrap();
-        for rig in [include_str!("../../../../assets/art/player.ron"), include_str!("../../../../assets/art/orc.ron"), include_str!("../../../../assets/art/skeleton.ron")] {
+        for rig in [include_str!("../../../../assets/art/player.ron"), include_str!("../../../../assets/art/orc.ron"), include_str!("../../../../assets/art/orc_archer.ron"), include_str!("../../../../assets/art/skeleton.ron")] {
             let file = platypus_art::parse(rig).unwrap();
             let bare = platypus_art::compile(&file).unwrap();
             for item in &gear.items {

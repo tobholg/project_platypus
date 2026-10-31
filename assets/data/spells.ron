@@ -91,6 +91,8 @@
             about: "Hold: a frost wraith's breath, a cone of ice that comes out tight and flares. It bites and chills what's in it, and freezes the water it lands in. Up close it's fierce; at reach it thins."),
         (id: "grave_bolt", name: "Grave bolt", runes: ["grave_orb", "grave_bite", "grave_burst"], delay: 0.1, recharge: 0.1, element: Void, beast: true,
             about: "A zombie warlock's: a slow ball of green grave-light that bursts where it strikes, on whatever's near."),
+        (id: "shaman_fire", name: "Shaman fire", runes: ["shaman_flame", "finger_burn", "ignite"], delay: 0.1, recharge: 0.1, element: Fire, beast: true,
+            about: "An orc shaman's: a ball of flame thrown off its staff. It burns what it strikes and sets alight what's near."),
         (id: "crimson_vomit", name: "Crimson vomit", runes: ["gravity", "arrow", "plague_bite", "plague_glob"], delay: 0.05, recharge: 0.05, beast: true,
             about: "A crimson head's vomit: poisoned blood, sprayed. It poisons, and gives off a miasma."),
         (id: "web_net", name: "Web net", runes: ["gravity", "arrow", "web_glob"], delay: 0.1, recharge: 0.1, beast: true,

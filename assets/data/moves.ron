@@ -143,6 +143,22 @@
             (name: "shove", secs: 0.2, clip: Some("throw"), acts: [Strike((at: 12, reach: 12, damage: 8, harm: void, knock: 300, up: 0.4, stun: 0.3))]),
             (name: "recover", secs: 0.4, clip: Some("throw")),
         ]),
+        // An orc shaman's fire: it lifts its staff, the fire on it flaring
+        // (the tell, most of a second), then thrusts it at you and a ball
+        // of flame flies off it: burning what it strikes, setting alight
+        // what's near (it's never careful where).
+        (id: "shaman_fire", every: 3.2, when: (range: (40, 230), line: true), phases: [
+            (name: "gather", secs: 0.75, clip: Some("gather"), acts: [Sound("cast")]),
+            (name: "cast", secs: 0.3, clip: Some("throw"), acts: [Cast(spell: "shaman_fire", at: 30, up: 26), Sound("ignite")]),
+            (name: "recover", secs: 0.5, clip: Some("throw")),
+        ]),
+        // Come too close to an orc shaman: it draws its staff back and rams
+        // its butt into you.
+        (id: "shaman_shove", every: 2.5, when: (range: (0, 30), footing: true), phases: [
+            (name: "windup", secs: 0.4, clip: Some("draw"), acts: [Sound("snarl")]),
+            (name: "shove", secs: 0.2, clip: Some("throw"), acts: [Strike((at: 14, reach: 14, damage: 9, harm: blunt, knock: 280, up: 0.4, stun: 0.3))]),
+            (name: "recover", secs: 0.4, clip: Some("throw")),
+        ]),
         // A crimson head's vomit: its head blooms open (the Plaga in it:
         // four flaps peeling back from a red maw, tendrils), shudders, and
         // sprays poisoned blood at you in a fan.

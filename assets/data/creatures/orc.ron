@@ -1,6 +1,10 @@
 // An orc swordsman: comes at you with a cleaver, hacks twice and backs off a
-// step; a couple of solid hits stagger it. Drawn on the humanoid rig
-// (assets/art/orc.ron), its weapon from weapons.ron.
+// step; a couple of solid hits stagger it. Drawn as the archer is (the
+// user's reference), bare: hunched, green, a bald skull, one amber eye, a
+// tusk, an iron pauldron, its cleaver from weapons.ron (assets/art/orc.ron),
+// on two bent legs that step (legs.rs, `rig`), its run in step with them.
+// (Its legs aren't its art's: trousers and boots it wears aren't drawn on
+// them, but it has them on it.)
 (
     name: "Orc",
     // What it may have on it when it dies (loot.ron), besides what it wears.
@@ -9,6 +13,7 @@
     wears: [("leather_cap", 0.5), ("leather_jerkin", 0.4), ("leather_trousers", 0.3), ("leather_boots", 0.4), ("iron_helm", 0.1)],
     size: (13, 29),
     health: 70,
+    eyes: (237, 166, 31),
     team: Enemy,
     faction: "orcs",
     // Its kind (kinds.ron): how it takes each kind of hurt.
@@ -26,6 +31,15 @@
         dash_speed: 0,
     ),
     art: "orc",
+    // Its legs (box 29 high: hips 16 up, under its tabard): bent green
+    // legs set wide, in brown boots, the far foot back.
+    legs: (view: Side, rig: true, in_step: true, reach: 18, upper: 0.5, step: 0.24, lift: 2.5, stride: 8, run: (13, 4, 0.8),
+           color: (101, 115, 37), joint: (76, 89, 28), shin: (92, 58, 30), outline: (17, 18, 9), width: [4.4, 3.8, 3.3], toes: 5,
+           body: "orc",
+           each: [
+               (hip: (4.5, 1.5), lean: 4, gait: 0, knee: Forward),
+               (hip: (-4.5, 1.5), lean: -4, gait: 1, knee: Forward, far: true),
+           ]),
     weapon: "cleaver",
     stamina: 60,
     // Hits it shrugs off before one staggers it (damage), and how hard it

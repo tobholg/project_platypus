@@ -1,0 +1,60 @@
+// An orc shaman: an old orc, more bent than the others, pale, under a
+// great headdress of feathers and bone, in a ragged teal robe, a skull at
+// its belt; it leans on a gnarled staff with fire on its head (that fire
+// lights it in the dark: `light`, and its core glows as its eyes do).
+// Drawn from the user's reference (assets/art/orc_shaman.ron), on two
+// legs that step from under its hem (legs.rs, `rig`), its walk in step
+// with them. It keeps behind its warband (`Range`) and works from there
+// (moves.ron):
+// - its fire: the staff lifted, the fire on it flaring (the tell, most of
+//   a second), then thrust at you and a ball of flame flies off it,
+//   slow enough to jump: it burns you, and sets alight what's near (grass,
+//   wood, its own kind: it's never careful where);
+// - come too close and it rams the staff's butt into you.
+(
+    name: "Orc shaman",
+    loot: "orc_shaman",
+    // (Its headdress is its head: no cap or helm on it.)
+    bare_head: true,
+    size: (13, 27),
+    health: 75,
+    team: Enemy,
+    faction: "orcs",
+    kind: "humanoid",
+    // Its eyes amber, and its staff's fire (the same colour at its core).
+    eyes: (255, 226, 112),
+    light: (color: (255, 170, 70), strength: 0.55),
+    fall_damage: (safe_height: 105, per_cell: 0.53),
+    movement: (
+        // (Its body grown 1.2 times, canon42: as the other orcs, in its
+        // own body heights: `scale`.)
+        scale: 1.2,
+        run_speed: 66,
+        jump_height: 30,
+        air_jumps: 0,
+        step_height: 5,
+        dash_speed: 0,
+    ),
+    art: "orc_shaman",
+    // Its legs (box 27 high: hips 14 up, under its robe): wrapped shins and
+    // brown boots from under its hem, set wide, the far foot well back.
+    legs: (view: Side, rig: true, in_step: true, reach: 16, upper: 0.5, step: 0.3, lift: 2, stride: 7,
+           color: (70, 56, 38), joint: (56, 44, 30), shin: (110, 88, 60), outline: (14, 13, 8), width: [3.4, 3.0, 2.7], toes: 4,
+           body: "orc_shaman",
+           each: [
+               (hip: (4, 0.5), lean: 4, gait: 0, knee: Forward),
+               (hip: (-5, 0.5), lean: -5, gait: 1, knee: Forward, far: true),
+           ]),
+    // Close in, it shoves you off; further, it throws fire.
+    moves: ["shaman_shove", "shaman_fire"],
+    stamina: 60,
+    poise: 12,
+    heft: 1.2,
+    // Its head's the place to hit.
+    zones: (head: 1.6, body: 1.0, arms: 0.8),
+    pace: 0.15,
+    brain: (
+        kind: "hunter",
+        params: (aggro: 360, close: Range(near: 90, far: 200), wander: (speed: 0.3, every: 3.5), tactics: (flee: 0.3, call: 250)),
+    ),
+)

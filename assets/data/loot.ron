@@ -151,6 +151,16 @@
             (item: "leather_gloves", weight: 4, count: (1, 1)),
             (item: "bow", weight: 3, count: (1, 1)),
         ]),
+        // An orc shaman's: what it carried of its craft: bones, feathers, a
+        // charm against fire, now and then a wand or its burning staff.
+        (name: "orc_shaman", rolls: (1, 2), gold: (8, 22), entries: [
+            (item: "nothing", weight: 10, count: (1, 1)),
+            (item: "small_health_potion", weight: 5, count: (1, 2)),
+            (item: "fire_ward_potion", weight: 4, count: (1, 1)),
+            (item: "torch", weight: 4, count: (2, 4)),
+            (item: "fire_wand", weight: 2, count: (1, 1)),
+            (item: "fire_staff", weight: 1, count: (1, 1)),
+        ]),
         // A frost wraith: what's left of it, and now and then its breath,
         // caught in a staff.
         (name: "frost_wraith", rolls: (1, 2), gold: (20, 45), entries: [
