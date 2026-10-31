@@ -35,7 +35,7 @@
         'P': (108, 116, 112),       // skin, lit
         'Q': (130, 135, 129),       // skin, lit
         'R': (162, 174, 167),       // skin, highlight: grey, a blue-green in it
-        'e': (255, 50, 40),         // its one eye, burning red
+        'e': (255, 54, 40),         // its one eye, burning red (glows: the creature's `eyes`)
     },
     parts: {
         "head": (pivot: (0, 0), points: { "mouth": (8, 14) }, rows: [

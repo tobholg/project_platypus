@@ -831,6 +831,13 @@ mod tests {
         assert!(of("star_wisp", Harm::Fire) < 0.0 && of("star_wisp", Harm::Frost) > 1.0);
         assert!(defs["troll"].regen.as_ref().is_some_and(|r| r.stopped_by.contains(&Harm::Fire)));
         assert_eq!(of("dummy", Harm::Slash), 1.0, "practice dummies take hits as anyone (readouts stay honest)");
+        // Eyes glow by their colour: its art must have that colour, exactly
+        // (the zombie's redrawn eye was a shade off, and never glowed).
+        for (id, def) in &defs {
+            if let (Some((r, g, b)), Some(file)) = (def.eyes, &def.art_file) {
+                assert!(file.palette.values().any(|c| c.rgba()[..3] == [r, g, b]), "{id}: its eyes ({r}, {g}, {b}) aren't a colour in its art, so they don't glow");
+            }
+        }
         // What bleeds acid isn't hurt by it: else a scratch bleeds onto
         // it, the acid eats it, it bleeds more, and it melts away.
         for (id, def) in &defs {

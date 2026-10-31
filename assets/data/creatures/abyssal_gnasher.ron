@@ -19,7 +19,7 @@
     catches: 0.6,
     blood: "blood",
     art: "abyssal_gnasher",
-    eyes: (255, 110, 140),
+    eyes: (255, 90, 120),
     light: (color: (240, 60, 90), strength: 0.3),
     movement: (
         run_speed: 75,

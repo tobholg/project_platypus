@@ -15,7 +15,7 @@
     kind: "beast",
     blood: "blood",
     art: "angler_lurker",
-    eyes: (150, 200, 180),
+    eyes: (180, 255, 226),
     light: (color: (110, 235, 195), strength: 0.28),
     movement: (
         run_speed: 70,
