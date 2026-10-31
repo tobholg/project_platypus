@@ -179,6 +179,8 @@
                 ".......w.w...",
                 "........w....",
                 ".......w.w...",
+                "........w....",
+                ".......w.w...",
             ]),
             // (The player: all of the torso, and pauldrons on the arms.)
             (parts: ["hero_torso*"], at: (0, 0), clip: true, rows: [
@@ -320,6 +322,8 @@
                 "..d.d.d.d.d..",
                 ".............",
                 ".d.d.d.d.d.d.",
+                ".............",
+                "..d.d.d.d.d..",
                 ".............",
             ]),
             // (The player: all of the torso, and pauldrons on the arms.)
@@ -500,6 +504,8 @@
                 ".............",
                 ".d.d.d.d.d.d.",
                 ".............",
+                "..d.d.d.d.d..",
+                ".............",
             ]),
             // (The player: all of the torso, and pauldrons on the arms.)
             (parts: ["hero_torso*"], at: (0, 0), clip: true, rows: [
@@ -598,6 +604,8 @@
                 "..d.d.d.d.d..",
                 ".............",
                 ".d.d.d.d.d.d.",
+                ".............",
+                "..d.d.d.d.d..",
                 ".............",
             ]),
             // (The player: all of the torso, and pauldrons on the arms.)
@@ -698,6 +706,8 @@
                 "..d.d.d.d.d..",
                 ".............",
                 ".d.d.d.d.d.d.",
+                ".............",
+                "..d.d.d.d.d..",
                 ".............",
             ]),
             // (The player: all of the torso, and pauldrons on the arms.)
@@ -801,6 +811,8 @@
                 "..d.d.d.d.d..",
                 ".............",
                 ".d.d.d.d.d.d.",
+                ".............",
+                "..d.d.d.d.d..",
                 ".............",
             ]),
             // (The player: all of the torso, and pauldrons on the arms.)
