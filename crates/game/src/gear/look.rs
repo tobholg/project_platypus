@@ -248,7 +248,7 @@ mod tests {
                 let Some(look) = item.gear.as_ref().and_then(|g| g.look.as_ref()) else {
                     continue;
                 };
-                if !file.parts.contains_key("legs") && item.gear.as_ref().is_some_and(|g| matches!(g.slot, Slot::Legs | Slot::Feet)) {
+                if !file.parts.keys().any(|k| k.starts_with("legs")) && item.gear.as_ref().is_some_and(|g| matches!(g.slot, Slot::Legs | Slot::Feet)) {
                     continue;
                 }
                 let art = platypus_art::compile(&platypus_art::dress::dress(&file, &[look]).unwrap_or_else(|e| panic!("{}: {e}", item.id))).unwrap_or_else(|e| panic!("{}: {e}", item.id));
