@@ -27,8 +27,25 @@ pub struct Wardrobe(HashMap<String, Arc<CreatureDef>>);
 /// The order skins go on: what's under first.
 const LAYERS: [Slot; 6] = [Slot::Feet, Slot::Legs, Slot::Body, Slot::Hands, Slot::Head, Slot::Trinket];
 
-/// The skins of what's worn, under to over, and a name for the outfit.
-fn outfit<'a>(items: &'a Items, eq: &Equipment) -> (Vec<&'a Skin>, String) {
+/// The tag of the layers that are the pack on the player's back: off it
+/// while something else is worn there (a cape, a thruster pack).
+const PACK: &str = "pack";
+
+/// Its art without the pack on its back.
+pub fn unpacked(file: &mut platypus_art::ArtFile) {
+    for layers in file.poses.values_mut() {
+        layers.retain(|l| l.tag.as_deref() != Some(PACK));
+    }
+}
+
+/// Is any of these (what a body wore) worn on the back?
+pub fn backed(items: &Items, stacks: &[crate::hands::items::Stack]) -> bool {
+    stacks.iter().any(|s| items.def(s.item).gear.as_ref().is_some_and(|g| g.slot == Slot::Back))
+}
+
+/// The skins of what's worn, under to over, and a name for the outfit
+/// (`+back`: something on the back, the pack off).
+fn outfit<'a>(items: &'a Items, eq: &Equipment) -> (Vec<&'a Skin>, String, bool) {
     let mut skins = Vec::new();
     let mut name = String::new();
     for layer in LAYERS {
@@ -45,7 +62,11 @@ fn outfit<'a>(items: &'a Items, eq: &Equipment) -> (Vec<&'a Skin>, String) {
             }
         }
     }
-    (skins, name)
+    let back = eq.worn.iter().zip(WORN).any(|(s, slot)| slot == Slot::Back && s.is_some());
+    if back {
+        name.push_str("+back");
+    }
+    (skins, name, back)
 }
 
 /// The skins of these things (what a body wore), under to over, wherever
@@ -86,11 +107,14 @@ fn without(file: &mut platypus_art::ArtFile, lost: &[Limb]) {
 }
 
 /// Draw a creature in skins (its art as written, dressed and compiled),
-/// without what it's lost.
-fn dressed(base: &CreatureDef, kind: &str, skins: &[&Skin], name: &str, lost: &[Limb]) -> Result<CreatureDef, String> {
+/// without what it's lost (and its pack, with something on its back).
+fn dressed(base: &CreatureDef, kind: &str, skins: &[&Skin], name: &str, lost: &[Limb], back: bool) -> Result<CreatureDef, String> {
     let file = base.art_file.as_ref().ok_or("not drawn as text")?;
     let mut file = platypus_art::dress::dress(file, skins)?;
     without(&mut file, lost);
+    if back {
+        unpacked(&mut file);
+    }
     let art = platypus_art::compile(&file)?;
     let mut def = base.clone();
     set_art(&mut def, &format!("{kind}{name}"), art);
@@ -136,7 +160,7 @@ pub fn dress(
         if base.art_file.is_none() {
             continue;
         }
-        let (mut skins, mut name) = outfit(&items, &eq);
+        let (mut skins, mut name, back) = outfit(&items, &eq);
         for l in &lost {
             name.push_str(&format!("-{l:?}"));
         }
@@ -145,10 +169,10 @@ pub fn dress(
         if let Some(m) = &marked {
             skins.push(m);
         }
-        let want = if skins.is_empty() && lost.is_empty() {
+        let want = if skins.is_empty() && lost.is_empty() && !back {
             base.clone()
         } else if marked.is_some() {
-            match dressed(base, &c.kind, &skins, &format!("{name}+wounds"), &lost) {
+            match dressed(base, &c.kind, &skins, &format!("{name}+wounds"), &lost, back) {
                 Ok(d) => Arc::new(d),
                 Err(e) => {
                     warn!("{} wounded: {e}", c.kind);
@@ -159,7 +183,7 @@ pub fn dress(
             let key = format!("{}{name}", c.kind);
             match wardrobe.0.get(&key) {
                 Some(d) => d.clone(),
-                None => match dressed(base, &c.kind, &skins, &name, &lost) {
+                None => match dressed(base, &c.kind, &skins, &name, &lost, back) {
                     Ok(d) => {
                         let d = Arc::new(d);
                         wardrobe.0.insert(key, d.clone());

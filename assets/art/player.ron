@@ -1,112 +1,167 @@
-// The player: a red-haired adventurer in a vest over a blue shirt, drawn
+// The player: a brown-haired traveller in a cream tunic, a blue scarf, a
+// strap across the chest and a pack on his back (a bedroll on top), drawn
 // on the humanoid rig (parts put together into poses; crates/art) in a
 // three-quarter view: the near arm hangs at the back of the body, the far
 // arm peeks out in front of it, the near leg in front. Facing right; the
-// game mirrors it. (The old green-tunic adventurer: player_classic.ron.)
+// game mirrors it. The pack is the first layer of every pose (tagged
+// `pack`): it comes off while something's worn on the back, a cape, a
+// thruster pack (gear/look.rs). (The red-haired one in a vest:
+// player_hero17.ron; the old green-tunic adventurer: player_classic.ron.)
 (
     size: (36, 38),
     feet: (17.5, 38),
-    outline: (38, 18, 12),
+    outline: (38, 22, 12),
     palette: {
-        'H': (76, 32, 19),        // hair, shade
-        'h': (101, 42, 26),       // hair
-        'j': (131, 55, 33),       // hair, lit
-        'J': (160, 67, 41),       // hair, bright
-        'K': (208, 87, 53),       // hair, tips
-        'W': (255, 132, 96),      // skin, lit
-        's': (235, 115, 83),      // skin
-        'S': (215, 105, 76),      // skin, shade
-        'Z': (190, 93, 67),       // skin, deep shade
-        'w': (240, 236, 230),     // eye white
-        'k': (38, 18, 12),        // eye
-        'A': (147, 166, 198),     // shirt sleeve, lit
-        'a': (119, 134, 160),     // shirt sleeve
-        'L': (175, 165, 140),     // vest, lit
-        't': (144, 136, 115),     // vest
-        'T': (110, 104, 88),      // vest, shade
-        'X': (75, 71, 60),        // vest edge and stitches
-        'i': (210, 200, 172),     // shirt front
-        'b': (50, 45, 34),        // belt
-        'y': (148, 133, 102),     // buckle
-        'P': (227, 205, 156),     // trousers, lit
-        'p': (190, 171, 130),     // trousers
-        'q': (148, 133, 102),     // trousers, the far leg
-        'Q': (110, 99, 75),       // trousers, the far leg in shade
-        'B': (103, 68, 39),       // boots
-        'U': (154, 101, 58),      // boots, lit
-        'C': (69, 45, 26),        // boots, the far foot
-        'o': (50, 45, 34),        // soles
+        'H': (58, 36, 20),        // hair, shade
+        'h': (88, 55, 31),        // hair
+        'j': (114, 72, 40),       // hair, lit
+        'J': (140, 92, 52),       // hair, bright
+        'K': (170, 118, 68),      // hair, tips
+        'W': (252, 192, 126),     // skin, lit
+        's': (238, 168, 102),     // skin
+        'S': (212, 138, 76),      // skin, shade
+        'Z': (182, 112, 60),      // skin, deep shade
+        'w': (244, 240, 232),     // eye white
+        'k': (34, 20, 12),        // eye
+        'A': (238, 224, 198),     // sleeve, lit
+        'a': (206, 186, 152),     // sleeve
+        'L': (242, 228, 202),     // tunic, lit
+        't': (216, 196, 162),     // tunic
+        'T': (184, 160, 122),     // tunic, shade
+        'X': (146, 118, 82),      // tunic folds
+        'F': (62, 94, 160),       // scarf, lit
+        'f': (40, 64, 122),       // scarf
+        'g': (26, 38, 82),        // scarf, shade
+        'R': (138, 90, 46),       // strap, lit
+        'r': (98, 62, 30),        // strap
+        'b': (72, 46, 22),        // belt
+        'y': (218, 176, 86),      // buckle
+        'M': (176, 116, 60),      // bracer, lit
+        'm': (128, 82, 42),       // bracer
+        'P': (180, 152, 110),     // trousers, lit
+        'p': (150, 124, 88),      // trousers
+        'q': (120, 98, 68),       // trousers, the far leg
+        'Q': (94, 76, 52),        // trousers, the far leg in shade
+        'B': (114, 72, 36),       // boots
+        'U': (168, 112, 60),      // boots, lit (the cuff)
+        'C': (78, 50, 26),        // boots, the far foot
+        'o': (48, 34, 20),        // soles
+        'V': (204, 178, 136),     // pack: the bedroll, lit
+        'v': (166, 138, 98),      // the bedroll
+        'u': (112, 88, 58),       // the bedroll, its roll
+        'N': (142, 96, 54),       // pack: the bag, lit
+        'n': (110, 74, 40),       // the bag
+        'G': (76, 48, 24),        // the bag, shade
     },
     parts: {
         // (`brow`: a mining helmet's lamp, where its beam leaves: light/mod.rs.)
-        "hero_head": (points: { "brow": (17, 4) }, rows: [
-            "..................",
-            "......K...J..K....",
-            "...J.JKj.JKj.Jj...",
-            "...jjHjJKjJKjhJj..",
-            "..KHJjhjJjhjJKjHj.",
-            "...HhJKjhjJKjhjJK.",
-            "..KhJhjJjhHjhJKjh.",
-            "...jjKjhHjJjhjHhj.",
-            "..JhhhjjhjJhjhjjh.",
+        "hero_head": (points: { "brow": (17, 1) }, rows: [
+            "....K..JK..K......",
+            "..K.jJKjJjJjK.K...",
+            "..HjJjhJjJjhJjJjK.",
+            ".KHhjhhjJhhjJjhJj.",
+            "..HhhhHjhhhjhhjJjK",
+            "..HHhhhhhhjhhJhjh.",
             "...HhhZsssswkshh..",
             "...HhSZsssswkss...",
             "...HhSSsssswksss..",
             "...HhSSssssssss...",
             "....h.Ssssssss....",
-            "....H.ZSSSSSs.....",
-            ".......ZS.........",
+            "....H.gfSSSSs.....",
+            "......gfFFFf......",
         ]),
-        "hero_head_blink": (points: { "brow": (17, 4) }, rows: [
-            "..................",
-            "......K...J..K....",
-            "...J.JKj.JKj.Jj...",
-            "...jjHjJKjJKjhJj..",
-            "..KHJjhjJjhjJKjHj.",
-            "...HhJKjhjJKjhjJK.",
-            "..KhJhjJjhHjhJKjh.",
-            "...jjKjhHjJjhjHhj.",
-            "..JhhhjjhjJhjhjjh.",
+        "hero_head_blink": (points: { "brow": (17, 1) }, rows: [
+            "....K..JK..K......",
+            "..K.jJKjJjJjK.K...",
+            "..HjJjhJjJjhJjJjK.",
+            ".KHhjhhjJhhjJjhJj.",
+            "..HhhhHjhhhjhhjJjK",
+            "..HHhhhhhhjhhJhjh.",
             "...HhhZssssskshh..",
             "...HhSZssskkkss...",
             "...HhSSsssssksss..",
             "...HhSSssssssss...",
             "....h.Ssssssss....",
-            "....H.ZSSSSSs.....",
-            ".......ZS.........",
+            "....H.gfSSSSs.....",
+            "......gfFFFf......",
         ]),
-        // The vest, open over the shirt (the near arm covers its back).
+        // The tunic: the scarf wound round the neck, a pack strap across
+        // the chest, the belt, and the hem over the hips (the near arm
+        // covers its back).
         "hero_torso": (rows: [
-            "..TTTTSSiLtTT..",
-            ".TTTTTttXiLLT..",
-            ".TTTTTXtXiLLT..",
-            ".TTTTTttXiLTT..",
-            ".TTTTTXtXiLtT..",
-            ".TTTTTttXiTTT..",
-            ".TTTTTTTXitTT..",
-            ".bbbbbbbbybbb..",
+            "..TgffFFFFFfg..",
+            ".TTTggffFFfgT..",
+            ".TTrrtLLgfLLT..",
+            ".TTtTrrtLgLLT..",
+            ".TTtXtTrrLLtT..",
+            ".TTttXtLRrLtT..",
+            ".TTttXtLLRrLT..",
+            ".TTTtXttLLRRT..",
+            ".TTTtXttLLLtT..",
+            ".bbbbbbbbbybb..",
+            "..TTtXtLLtLtT..",
         ]),
-        // The torso again, its pivot at the hips: turned, it leans (a crouch).
-        "hero_torso_hip": (pivot: (7, 7), rows: [
-            "..TTTTSSiLtTT..",
-            ".TTTTTttXiLLT..",
-            ".TTTTTXtXiLLT..",
-            ".TTTTTttXiLTT..",
-            ".TTTTTXtXiLtT..",
-            ".TTTTTttXiTTT..",
-            ".TTTTTTTXitTT..",
-            ".bbbbbbbbybbb..",
+        // The torso again, its pivot at the hips (the belt): turned, it
+        // leans (a crouch).
+        "hero_torso_hip": (pivot: (7, 9), rows: [
+            "..TgffFFFFFfg..",
+            ".TTTggffFFfgT..",
+            ".TTrrtLLgfLLT..",
+            ".TTtTrrtLgLLT..",
+            ".TTtXtTrrLLtT..",
+            ".TTttXtLRrLtT..",
+            ".TTttXtLLRrLT..",
+            ".TTTtXttLLRRT..",
+            ".TTTtXttLLLtT..",
+            ".bbbbbbbbbybb..",
+            "..TTtXtLLtLtT..",
+        ]),
+        "pack_hip": (pivot: (13, 12), rows: [
+            "...uuuu.",
+            "..uVVVVu",
+            ".uvuVVVv",
+            ".uuvvvvv",
+            "..uuuuuu",
+            "..GnnNNn",
+            "..GnNNNn",
+            "..GrRRNn",
+            "..GnyNNn",
+            "..GnNNNn",
+            "..GnnNnn",
+            "..GGnnnn",
+            "...GGGGG",
+        ]),
+        // The pack on his back, the bedroll strapped on top: laid where the
+        // torso is and turned with it (its pivot is the torso's), first, so
+        // all of him is in front of it. (`pack_hip`: for the hip torso.)
+        "pack": (pivot: (6, 3), rows: [
+            "...uuuu.",
+            "..uVVVVu",
+            ".uvuVVVv",
+            ".uuvvvvv",
+            "..uuuuuu",
+            "..GnnNNn",
+            "..GnNNNn",
+            "..GrRRNn",
+            "..GnyNNn",
+            "..GnNNNn",
+            "..GnnNnn",
+            "..GGnnnn",
+            "...GGGGG",
         ]),
         // Arms hang from the shoulder (pivot); the hand is where a weapon goes.
         // The near arm hangs at the back of the body, its hand forward; the far
-        // one (the same, shaded) peeks out in front.
-        "arm": (pivot: (1, 0), points: { "hand": (4, 7) }, rows: [
+        // one (the same, shaded) peeks out in front. A leather bracer on the
+        // forearm, the sleeve rolled to it.
+        "arm": (pivot: (1, 0), points: { "hand": (4, 9) }, rows: [
             "AA...",
             "AAa..",
             "Aaa..",
             "Aaa..",
             "Aaa..",
             "Aaa..",
+            "MMm..",
+            "Mmm..",
             "WWsss",
             "WsssS",
             "sSSSZ",
@@ -418,249 +473,282 @@
             "...ooooooo.............",
         ]),
         // Pumping (a sprint): bent at the elbow, the fist up in front; and swung back.
-        "arm_pump_fwd": (pivot: (1, 0), points: { "hand": (7, 2) }, rows: [
+        "arm_pump_fwd": (pivot: (1, 0), points: { "hand": (7, 4) }, rows: [
+            "AAa......",
+            "AAa......",
             "AAa......",
             "AAaa..WWs",
-            ".Aaa.aWss",
-            "..aaaasSS",
+            ".Aaa.MWss",
+            "..aaMmsSS",
             "...aaa...",
         ]),
-        "arm_pump_back": (pivot: (4, 0), points: { "hand": (1, 7) }, rows: [
+        "arm_pump_back": (pivot: (4, 0), points: { "hand": (1, 9) }, rows: [
+            "...AAa",
             "...AAa",
             "..AAaa",
             ".AAaa.",
             "AAaa..",
             "Aaa...",
-            "Aaa...",
+            "MMm...",
+            "Mmm...",
             "WWs...",
             "Wss...",
             "sSS...",
         ]),
         // The near arm straight out (aiming: the fan below turns it to every angle).
-        "aim": (pivot: (0, 1), points: { "hand": (7, 1) }, rows: [
-            "AAAAAWWs.",
-            "aaaaaWsss",
-            "aaaaasSSS",
+        "aim": (pivot: (0, 1), points: { "hand": (9, 1) }, rows: [
+            "AAAAAMMWWs.",
+            "aaaaaMmWsss",
+            "aaaaammsSSS",
         ]),
     },
     poses: {
         // Standing; breathing in (the chest and head a pixel up); a blink.
         "stand": [
-            (part: "arm", at: (22, 18), shade: 0.72, tag: "back_arm"),
+            (part: "pack", at: (10, 16), tag: "pack"),
+            (part: "arm", at: (22, 16), shade: 0.72, tag: "back_arm"),
             (part: "legs", at: (12, 26)),
-            (part: "hero_torso", at: (10, 18)),
-            (part: "hero_head", at: (9, 2)),
-            (part: "arm", at: (12, 18), outline: true, tag: "front_arm"),
+            (part: "hero_torso", at: (10, 16)),
+            (part: "hero_head", at: (9, 3)),
+            (part: "arm", at: (12, 16), outline: true, tag: "front_arm"),
         ],
         "breathe": [
-            (part: "arm", at: (22, 17), shade: 0.72, tag: "back_arm"),
+            (part: "pack", at: (10, 15), tag: "pack"),
+            (part: "arm", at: (22, 15), shade: 0.72, tag: "back_arm"),
             (part: "legs", at: (12, 26)),
-            (part: "hero_torso", at: (10, 17)),
-            (part: "hero_head", at: (9, 1)),
-            (part: "arm", at: (12, 17), outline: true, tag: "front_arm"),
+            (part: "hero_torso", at: (10, 15)),
+            (part: "hero_head", at: (9, 2)),
+            (part: "arm", at: (12, 15), outline: true, tag: "front_arm"),
         ],
         "blink": [
-            (part: "arm", at: (22, 18), shade: 0.72, tag: "back_arm"),
+            (part: "pack", at: (10, 16), tag: "pack"),
+            (part: "arm", at: (22, 16), shade: 0.72, tag: "back_arm"),
             (part: "legs", at: (12, 26)),
-            (part: "hero_torso", at: (10, 18)),
-            (part: "hero_head_blink", at: (9, 2)),
-            (part: "arm", at: (12, 18), outline: true, tag: "front_arm"),
+            (part: "hero_torso", at: (10, 16)),
+            (part: "hero_head_blink", at: (9, 3)),
+            (part: "arm", at: (12, 16), outline: true, tag: "front_arm"),
         ],
         // Running: eight steps, the arms swinging against the legs, the
         // body dipping as a foot takes the weight, lifting as it pushes off.
         "run_1": [
-            (part: "arm", at: (22, 18), turn: 35, shade: 0.72, tag: "back_arm"),
+            (part: "pack", at: (10, 16), tag: "pack"),
+            (part: "arm", at: (22, 16), turn: 35, shade: 0.72, tag: "back_arm"),
             (part: "stride1", at: (9, 26)),
-            (part: "hero_torso", at: (10, 18)),
-            (part: "hero_head", at: (9, 2)),
-            (part: "arm", at: (12, 18), turn: -35, outline: true, tag: "front_arm"),
+            (part: "hero_torso", at: (10, 16)),
+            (part: "hero_head", at: (9, 3)),
+            (part: "arm", at: (12, 16), turn: -35, outline: true, tag: "front_arm"),
         ],
         "run_2": [
-            (part: "arm", at: (22, 19), turn: 18, shade: 0.72, tag: "back_arm"),
+            (part: "pack", at: (10, 17), tag: "pack"),
+            (part: "arm", at: (22, 17), turn: 18, shade: 0.72, tag: "back_arm"),
             (part: "stride2", at: (9, 27)),
-            (part: "hero_torso", at: (10, 19)),
-            (part: "hero_head", at: (9, 3)),
-            (part: "arm", at: (12, 19), turn: -18, outline: true, tag: "front_arm"),
+            (part: "hero_torso", at: (10, 17)),
+            (part: "hero_head", at: (9, 4)),
+            (part: "arm", at: (12, 17), turn: -18, outline: true, tag: "front_arm"),
         ],
         "run_3": [
-            (part: "arm", at: (22, 18), shade: 0.72, tag: "back_arm"),
+            (part: "pack", at: (10, 16), tag: "pack"),
+            (part: "arm", at: (22, 16), shade: 0.72, tag: "back_arm"),
             (part: "stride3", at: (9, 26)),
-            (part: "hero_torso", at: (10, 18)),
-            (part: "hero_head", at: (9, 2)),
-            (part: "arm", at: (12, 18), outline: true, tag: "front_arm"),
+            (part: "hero_torso", at: (10, 16)),
+            (part: "hero_head", at: (9, 3)),
+            (part: "arm", at: (12, 16), outline: true, tag: "front_arm"),
         ],
         "run_4": [
-            (part: "arm", at: (23, 17), turn: -18, shade: 0.72, tag: "back_arm"),
+            (part: "pack", at: (10, 15), tag: "pack"),
+            (part: "arm", at: (23, 15), turn: -18, shade: 0.72, tag: "back_arm"),
             (part: "stride4", at: (9, 25)),
-            (part: "hero_torso", at: (10, 17)),
-            (part: "hero_head", at: (9, 1)),
-            (part: "arm", at: (12, 17), turn: 18, outline: true, tag: "front_arm"),
+            (part: "hero_torso", at: (10, 15)),
+            (part: "hero_head", at: (9, 2)),
+            (part: "arm", at: (12, 15), turn: 18, outline: true, tag: "front_arm"),
         ],
         "run_5": [
-            (part: "arm", at: (23, 18), turn: -35, shade: 0.72, tag: "back_arm"),
+            (part: "pack", at: (10, 16), tag: "pack"),
+            (part: "arm", at: (23, 16), turn: -35, shade: 0.72, tag: "back_arm"),
             (part: "stride5", at: (9, 26)),
-            (part: "hero_torso", at: (10, 18)),
-            (part: "hero_head", at: (9, 2)),
-            (part: "arm", at: (12, 18), turn: 35, outline: true, tag: "front_arm"),
+            (part: "hero_torso", at: (10, 16)),
+            (part: "hero_head", at: (9, 3)),
+            (part: "arm", at: (12, 16), turn: 35, outline: true, tag: "front_arm"),
         ],
         "run_6": [
-            (part: "arm", at: (23, 19), turn: -18, shade: 0.72, tag: "back_arm"),
+            (part: "pack", at: (10, 17), tag: "pack"),
+            (part: "arm", at: (23, 17), turn: -18, shade: 0.72, tag: "back_arm"),
             (part: "stride6", at: (9, 27)),
-            (part: "hero_torso", at: (10, 19)),
-            (part: "hero_head", at: (9, 3)),
-            (part: "arm", at: (12, 19), turn: 18, outline: true, tag: "front_arm"),
+            (part: "hero_torso", at: (10, 17)),
+            (part: "hero_head", at: (9, 4)),
+            (part: "arm", at: (12, 17), turn: 18, outline: true, tag: "front_arm"),
         ],
         "run_7": [
-            (part: "arm", at: (22, 18), shade: 0.72, tag: "back_arm"),
+            (part: "pack", at: (10, 16), tag: "pack"),
+            (part: "arm", at: (22, 16), shade: 0.72, tag: "back_arm"),
             (part: "stride7", at: (9, 26)),
-            (part: "hero_torso", at: (10, 18)),
-            (part: "hero_head", at: (9, 2)),
-            (part: "arm", at: (12, 18), outline: true, tag: "front_arm"),
+            (part: "hero_torso", at: (10, 16)),
+            (part: "hero_head", at: (9, 3)),
+            (part: "arm", at: (12, 16), outline: true, tag: "front_arm"),
         ],
         "run_8": [
-            (part: "arm", at: (22, 17), turn: 18, shade: 0.72, tag: "back_arm"),
+            (part: "pack", at: (10, 15), tag: "pack"),
+            (part: "arm", at: (22, 15), turn: 18, shade: 0.72, tag: "back_arm"),
             (part: "stride8", at: (9, 25)),
-            (part: "hero_torso", at: (10, 17)),
-            (part: "hero_head", at: (9, 1)),
-            (part: "arm", at: (12, 17), turn: -18, outline: true, tag: "front_arm"),
+            (part: "hero_torso", at: (10, 15)),
+            (part: "hero_head", at: (9, 2)),
+            (part: "arm", at: (12, 15), turn: -18, outline: true, tag: "front_arm"),
         ],
         // Sprinting: leaning in from the hips, the head forward, the arms
         // pumping, bent at the elbow.
         "sprint_1": [
-            (part: "arm_pump_fwd", at: (24, 18), shade: 0.72, tag: "back_arm"),
+            (part: "pack_hip", at: (17, 24), turn: -22, tag: "pack"),
+            (part: "arm_pump_fwd", at: (24, 16), shade: 0.72, tag: "back_arm"),
             (part: "sprint1", at: (8, 25)),
             (part: "hero_torso_hip", at: (17, 24), turn: -22),
-            (part: "hero_head", at: (13, 2)),
-            (part: "arm_pump_back", at: (14, 18), outline: true, tag: "front_arm"),
+            (part: "hero_head", at: (13, 3)),
+            (part: "arm_pump_back", at: (14, 16), outline: true, tag: "front_arm"),
         ],
         "sprint_2": [
-            (part: "arm_pump_fwd", at: (24, 19), shade: 0.72, tag: "back_arm"),
+            (part: "pack_hip", at: (17, 25), turn: -22, tag: "pack"),
+            (part: "arm_pump_fwd", at: (24, 17), shade: 0.72, tag: "back_arm"),
             (part: "sprint2", at: (8, 26)),
             (part: "hero_torso_hip", at: (17, 25), turn: -22),
-            (part: "hero_head", at: (13, 3)),
-            (part: "arm_pump_back", at: (14, 19), outline: true, tag: "front_arm"),
+            (part: "hero_head", at: (13, 4)),
+            (part: "arm_pump_back", at: (14, 17), outline: true, tag: "front_arm"),
         ],
         "sprint_3": [
-            (part: "arm", at: (25, 19), turn: -18, shade: 0.72, tag: "back_arm"),
+            (part: "pack_hip", at: (17, 25), turn: -22, tag: "pack"),
+            (part: "arm", at: (25, 17), turn: -18, shade: 0.72, tag: "back_arm"),
             (part: "sprint3", at: (8, 26)),
             (part: "hero_torso_hip", at: (17, 25), turn: -22),
-            (part: "hero_head", at: (13, 3)),
-            (part: "arm", at: (14, 19), turn: 18, outline: true, tag: "front_arm"),
+            (part: "hero_head", at: (13, 4)),
+            (part: "arm", at: (14, 17), turn: 18, outline: true, tag: "front_arm"),
         ],
         "sprint_4": [
-            (part: "arm_pump_back", at: (25, 18), shade: 0.72, tag: "back_arm"),
+            (part: "pack_hip", at: (17, 24), turn: -22, tag: "pack"),
+            (part: "arm_pump_back", at: (25, 16), shade: 0.72, tag: "back_arm"),
             (part: "sprint4", at: (8, 25)),
             (part: "hero_torso_hip", at: (17, 24), turn: -22),
-            (part: "hero_head", at: (13, 2)),
-            (part: "arm_pump_fwd", at: (14, 18), outline: true, tag: "front_arm"),
+            (part: "hero_head", at: (13, 3)),
+            (part: "arm_pump_fwd", at: (14, 16), outline: true, tag: "front_arm"),
         ],
         "sprint_5": [
-            (part: "arm_pump_back", at: (25, 19), shade: 0.72, tag: "back_arm"),
+            (part: "pack_hip", at: (17, 25), turn: -22, tag: "pack"),
+            (part: "arm_pump_back", at: (25, 17), shade: 0.72, tag: "back_arm"),
             (part: "sprint5", at: (8, 26)),
             (part: "hero_torso_hip", at: (17, 25), turn: -22),
-            (part: "hero_head", at: (13, 3)),
-            (part: "arm_pump_fwd", at: (14, 19), outline: true, tag: "front_arm"),
+            (part: "hero_head", at: (13, 4)),
+            (part: "arm_pump_fwd", at: (14, 17), outline: true, tag: "front_arm"),
         ],
         "sprint_6": [
-            (part: "arm", at: (24, 19), turn: 18, shade: 0.72, tag: "back_arm"),
+            (part: "pack_hip", at: (17, 25), turn: -22, tag: "pack"),
+            (part: "arm", at: (24, 17), turn: 18, shade: 0.72, tag: "back_arm"),
             (part: "sprint6", at: (8, 26)),
             (part: "hero_torso_hip", at: (17, 25), turn: -22),
-            (part: "hero_head", at: (13, 3)),
-            (part: "arm", at: (14, 19), turn: -18, outline: true, tag: "front_arm"),
+            (part: "hero_head", at: (13, 4)),
+            (part: "arm", at: (14, 17), turn: -18, outline: true, tag: "front_arm"),
         ],
         // Rising: knees up, an arm thrown up. Falling: legs down, arms out.
         "rise": [
-            (part: "arm", at: (22, 17), turn: 110, shade: 0.72, tag: "back_arm"),
+            (part: "pack", at: (10, 16), tag: "pack"),
+            (part: "arm", at: (22, 15), turn: 110, shade: 0.72, tag: "back_arm"),
             (part: "tuck", at: (10, 26)),
-            (part: "hero_torso", at: (10, 18)),
-            (part: "hero_head", at: (9, 2)),
-            (part: "arm", at: (14, 21), turn: 40, outline: true, tag: "front_arm"),
+            (part: "hero_torso", at: (10, 16)),
+            (part: "hero_head", at: (9, 3)),
+            (part: "arm", at: (14, 19), turn: 40, outline: true, tag: "front_arm"),
         ],
         "drop": [
-            (part: "arm", at: (22, 18), turn: 165, shade: 0.72, tag: "back_arm"),
+            (part: "pack", at: (10, 16), tag: "pack"),
+            (part: "arm", at: (22, 16), turn: 165, shade: 0.72, tag: "back_arm"),
             (part: "dangle", at: (10, 26)),
-            (part: "hero_torso", at: (10, 18)),
-            (part: "hero_head", at: (9, 2)),
-            (part: "arm", at: (12, 18), turn: 35, outline: true, tag: "front_arm"),
+            (part: "hero_torso", at: (10, 16)),
+            (part: "hero_head", at: (9, 3)),
+            (part: "arm", at: (12, 16), turn: 35, outline: true, tag: "front_arm"),
         ],
         // Striking down: tucked, the head down over the blade. Plunging:
         // knees up high, the back arm up for balance.
         "strike_down": [
-            (part: "arm", at: (22, 18), turn: -35, shade: 0.72, tag: "back_arm"),
+            (part: "pack", at: (10, 16), tag: "pack"),
+            (part: "arm", at: (22, 16), turn: -35, shade: 0.72, tag: "back_arm"),
             (part: "tuck", at: (10, 24)),
-            (part: "hero_torso", at: (10, 18)),
-            (part: "hero_head", at: (11, 4)),
-            (part: "arm", at: (12, 18), outline: true, tag: "front_arm"),
+            (part: "hero_torso", at: (10, 16)),
+            (part: "hero_head", at: (11, 5)),
+            (part: "arm", at: (12, 16), outline: true, tag: "front_arm"),
         ],
         "plunge_pose": [
-            (part: "arm", at: (22, 18), turn: 165, shade: 0.72, tag: "back_arm"),
+            (part: "pack", at: (10, 16), tag: "pack"),
+            (part: "arm", at: (22, 16), turn: 165, shade: 0.72, tag: "back_arm"),
             (part: "knees", at: (10, 24)),
-            (part: "hero_torso", at: (10, 18)),
-            (part: "hero_head", at: (9, 2)),
-            (part: "arm", at: (12, 18), outline: true, tag: "front_arm"),
+            (part: "hero_torso", at: (10, 16)),
+            (part: "hero_head", at: (9, 3)),
+            (part: "arm", at: (12, 16), outline: true, tag: "front_arm"),
         ],
         // Kicking: the knee up, leaning back a little, the arms swung
         // against the leg for balance; then the leg out, leaning back more.
         "kick_wind": [
-            (part: "arm", at: (20, 18), turn: 35, shade: 0.72, tag: "back_arm"),
+            (part: "pack", at: (9, 16), tag: "pack"),
+            (part: "arm", at: (20, 16), turn: 35, shade: 0.72, tag: "back_arm"),
             (part: "kick_knee", at: (10, 26)),
-            (part: "hero_torso", at: (9, 18)),
-            (part: "hero_head", at: (8, 2)),
-            (part: "arm", at: (11, 18), turn: -35, outline: true, tag: "front_arm"),
+            (part: "hero_torso", at: (9, 16)),
+            (part: "hero_head", at: (8, 3)),
+            (part: "arm", at: (11, 16), turn: -35, outline: true, tag: "front_arm"),
         ],
         "kick_out": [
-            (part: "arm", at: (19, 18), turn: 35, shade: 0.72, tag: "back_arm"),
+            (part: "pack", at: (9, 16), tag: "pack"),
+            (part: "arm", at: (19, 16), turn: 35, shade: 0.72, tag: "back_arm"),
             (part: "kick_leg", at: (10, 26)),
-            (part: "hero_torso", at: (9, 18)),
-            (part: "hero_head", at: (6, 4)),
-            (part: "arm", at: (9, 18), turn: -35, outline: true, tag: "front_arm"),
+            (part: "hero_torso", at: (9, 16)),
+            (part: "hero_head", at: (6, 5)),
+            (part: "arm", at: (9, 16), turn: -35, outline: true, tag: "front_arm"),
         ],
         // Crouched: leaning in from the hips over bent knees, the head low
         // and forward, the front arm out; creeping, the arms swinging a
         // little against the stride.
         "crouch_pose": [
-            (part: "arm", at: (27, 22), shade: 0.72, tag: "back_arm"),
+            (part: "pack_hip", at: (17, 30), turn: -35, tag: "pack"),
+            (part: "arm", at: (27, 20), shade: 0.72, tag: "back_arm"),
             (part: "crouch", at: (8, 31)),
             (part: "hero_torso_hip", at: (17, 30), turn: -35),
-            (part: "hero_head", at: (14, 9)),
-            (part: "arm", at: (16, 25), turn: 35, outline: true, tag: "front_arm"),
+            (part: "hero_head", at: (14, 10)),
+            (part: "arm", at: (16, 23), turn: 35, outline: true, tag: "front_arm"),
         ],
         "crouch_a": [
-            (part: "arm", at: (27, 22), turn: 35, shade: 0.72, tag: "back_arm"),
+            (part: "pack_hip", at: (17, 30), turn: -35, tag: "pack"),
+            (part: "arm", at: (27, 20), turn: 35, shade: 0.72, tag: "back_arm"),
             (part: "crouch1", at: (8, 31)),
             (part: "hero_torso_hip", at: (17, 30), turn: -35),
-            (part: "hero_head", at: (14, 9)),
-            (part: "arm", at: (16, 25), outline: true, tag: "front_arm"),
+            (part: "hero_head", at: (14, 10)),
+            (part: "arm", at: (16, 23), outline: true, tag: "front_arm"),
         ],
         "crouch_b": [
-            (part: "arm", at: (27, 22), shade: 0.72, tag: "back_arm"),
+            (part: "pack_hip", at: (17, 30), turn: -35, tag: "pack"),
+            (part: "arm", at: (27, 20), shade: 0.72, tag: "back_arm"),
             (part: "crouch2", at: (8, 31)),
             (part: "hero_torso_hip", at: (17, 30), turn: -35),
-            (part: "hero_head", at: (14, 9)),
-            (part: "arm", at: (16, 25), turn: 35, outline: true, tag: "front_arm"),
+            (part: "hero_head", at: (14, 10)),
+            (part: "arm", at: (16, 23), turn: 35, outline: true, tag: "front_arm"),
         ],
         "crouch_c": [
-            (part: "arm", at: (27, 22), shade: 0.72, tag: "back_arm"),
+            (part: "pack_hip", at: (17, 30), turn: -35, tag: "pack"),
+            (part: "arm", at: (27, 20), shade: 0.72, tag: "back_arm"),
             (part: "crouch3", at: (8, 31)),
             (part: "hero_torso_hip", at: (17, 30), turn: -35),
-            (part: "hero_head", at: (14, 9)),
-            (part: "arm", at: (16, 25), turn: 35, outline: true, tag: "front_arm"),
+            (part: "hero_head", at: (14, 10)),
+            (part: "arm", at: (16, 23), turn: 35, outline: true, tag: "front_arm"),
         ],
         // Dashing: leaning in, arms back.
         "dash": [
-            (part: "arm", at: (22, 20), turn: -35, shade: 0.72, tag: "back_arm"),
+            (part: "pack", at: (12, 17), tag: "pack"),
+            (part: "arm", at: (22, 18), turn: -35, shade: 0.72, tag: "back_arm"),
             (part: "run1", at: (7, 26)),
-            (part: "hero_torso", at: (12, 19)),
-            (part: "hero_head", at: (12, 5)),
-            (part: "arm", at: (11, 20), turn: -35, outline: true, tag: "front_arm"),
+            (part: "hero_torso", at: (12, 17)),
+            (part: "hero_head", at: (12, 6)),
+            (part: "arm", at: (11, 18), turn: -35, outline: true, tag: "front_arm"),
         ],
         // Sliding down a wall (on the right): a hand on it.
         "wall": [
-            (part: "arm", at: (22, 18), turn: 120, shade: 0.72, tag: "back_arm"),
+            (part: "pack", at: (10, 16), tag: "pack"),
+            (part: "arm", at: (22, 16), turn: 120, shade: 0.72, tag: "back_arm"),
             (part: "dangle", at: (10, 26)),
-            (part: "hero_torso", at: (10, 18)),
-            (part: "hero_head", at: (9, 2)),
-            (part: "arm", at: (14, 18), turn: 10, outline: true, tag: "front_arm"),
+            (part: "hero_torso", at: (10, 16)),
+            (part: "hero_head", at: (9, 3)),
+            (part: "arm", at: (14, 16), turn: 10, outline: true, tag: "front_arm"),
         ],
     },
     // The front arm at angles: shown instead of the pose's own front arm

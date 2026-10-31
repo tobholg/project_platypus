@@ -223,8 +223,16 @@
 //!   up between them cuts it);
 //!   `PLATYPUS_SPIDER_SHOTS=dir`: pictures of each web's tell, its flight,
 //!   the player reeled in, the bite, a miss
+//! - `outfits`    (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`, try
+//!   `PLATYPUS_ZOOM=4`) the player's looks in a row, each on a body drawn
+//!   as the player: the starter, leather, copper, iron, silver, gold,
+//!   mithril, the starter in a cape (`PLATYPUS_OUTFITS`: others, e.g.
+//!   `iron-bare` without its helm, `starter+torch` a torch in the off
+//!   hand); the player is the middle one. Logs each one's armour
 //!
 //! Prints one line per second and a summary, then exits.
+//! `PLATYPUS_OUTFIT=mithril` (any scenario): the player dressed in that
+//! look at 0.3 s (as `outfits` names them).
 //! `PLATYPUS_FILM=dir,from,every`: a picture every `every` seconds from
 //! `from` (`dir/0000.png`, ...): to watch something move.
 //! `PLATYPUS_SCREENSHOT=out.png` saves the window one second before the end
@@ -414,7 +422,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, fall_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, save_script)
             .add_systems(Update, (ratbend_script, bladesplash_script, dryout_script, hearts_script, signs_script, brew_script, herbs_script, slimeswing_script, wardrobe_script, herbcut_script, zombiejump_script, crushcheck_script, batcount_script, airswing_script, dive_script, paint_script, firewall_script, fields_script, ward_script, seam_script))
-            .add_systems(Update, (sky_script, drift_script, high_script))
+            .add_systems(Update, (sky_script, drift_script, high_script, outfit_script, outfits_script))
             .add_systems(PreUpdate, craft_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pack_script.after(bevy::ui::UiSystems::Focus).before(crate::pause::key))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
@@ -18144,5 +18152,127 @@ fn hearts_script(
     if *killed == kills && t > *next + 3.0 && *step == 2 {
         *step = 3;
         info!("hearts: {kills} kills held at {:.0} % health: {} red, {} gold hearts; healed {:.0} in all (the player now {:.0} of {:.0})", share * 100.0, *red, *gold, *healed, h.hp, h.max);
+    }
+}
+
+/// What each look is (`outfits`, `PLATYPUS_OUTFIT`): a set's helm, body,
+/// hands, legs and feet by its metal (`leather`, `copper`, `iron`,
+/// `silver`, `gold`, `mithril`; `iron-bare`: all but the helm); `starter`:
+/// nothing on; `cape`: nothing but a traveller's cape (the pack off); and
+/// anything else worn after a `+` (`iron+lantern`: one in the off hand).
+fn outfit_ids(look: &str) -> Vec<String> {
+    let mut extra = look.split('+');
+    let look = extra.next().unwrap_or("");
+    let (set, bare) = look.strip_suffix("-bare").map_or((look, false), |s| (s, true));
+    let mut ids: Vec<String> = match set {
+        "starter" | "" => Vec::new(),
+        "cape" => vec!["travelers_cape".into()],
+        "leather" => ["leather_cap", "leather_jerkin", "leather_gloves", "leather_trousers", "leather_boots"].map(String::from).to_vec(),
+        "iron" => ["iron_helm", "chainmail", "iron_gauntlets", "iron_greaves", "iron_boots"].map(String::from).to_vec(),
+        m => ["helm", "mail", "gauntlets", "greaves", "boots"].map(|p| format!("{m}_{p}")).to_vec(),
+    };
+    if bare && !ids.is_empty() {
+        ids.remove(0);
+    }
+    ids.extend(extra.map(String::from));
+    ids
+}
+
+/// Equipment wearing these (and nothing else).
+fn outfit_of(items: &crate::hands::items::Items, ids: &[String]) -> crate::gear::Equipment {
+    let mut eq = crate::gear::Equipment::default();
+    for id in ids {
+        let Some(item) = items.id(id) else {
+            warn!("outfit: no {id}");
+            continue;
+        };
+        let stack = crate::hands::items::Stack::new(item, 1);
+        if let Some(k) = (0..eq.worn.len()).find(|&k| eq.worn[k].is_none() && crate::gear::Equipment::fits(items, k, &stack)) {
+            eq.worn[k] = Some(stack);
+        }
+    }
+    eq
+}
+
+/// `PLATYPUS_OUTFIT=iron` (any scenario): the player dressed in that look
+/// at 0.3 s (`outfit_ids`), what it wore taken off.
+fn outfit_script(s: Res<Scenario>, items: Option<Res<crate::hands::items::Items>>, mut player: Query<&mut crate::gear::Equipment, With<LocalPlayer>>, mut done: Local<bool>) {
+    let Ok(look) = std::env::var("PLATYPUS_OUTFIT") else { return };
+    if *done || s.elapsed < 0.3 || s.name == "outfits" {
+        return;
+    }
+    let (Some(items), Ok(mut eq)) = (items, player.single_mut()) else { return };
+    let held = eq.held.take();
+    *eq = outfit_of(&items, &outfit_ids(&look));
+    eq.held = held;
+    *done = true;
+}
+
+/// Where in the row of `outfits` a body stands.
+#[derive(Component)]
+struct OutfitAt(usize);
+
+/// `outfits` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): the player's
+/// looks side by side, 28 cells apart, each on a body drawn as the player
+/// (brainless), held where it stands: `PLATYPUS_OUTFITS` (comma-separated
+/// `outfit_ids`; by default the starter, then leather up to mithril, and
+/// the starter in a cape). The player is the one in the middle. Logs each
+/// and its armour.
+fn outfits_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut player: Query<(&mut Kinematics, &mut crate::gear::Equipment), With<LocalPlayer>>,
+    mut them: Query<(Entity, &crate::creatures::Creature, &mut Kinematics, &crate::creatures::Health, Option<&OutfitAt>), Without<LocalPlayer>>,
+    mut state: Local<u8>,
+) {
+    if s.name != "outfits" {
+        return;
+    }
+    menu.open = false;
+    let Some(items) = items else { return };
+    let looks: Vec<String> = std::env::var("PLATYPUS_OUTFITS").unwrap_or_else(|_| "starter,leather,copper,iron,silver,gold,mithril,cape".into()).split(',').map(|l| l.trim().to_string()).collect();
+    let mid = looks.len() / 2;
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    let (x0, gap) = (1000.0, 28.0);
+    let Ok((mut pk, mut eq)) = player.single_mut() else { return };
+    if *state == 0 && s.elapsed > 0.4 {
+        for (e, c, ..) in &them {
+            if c.kind == "dummy" || c.kind == "sandbag" {
+                commands.entity(e).despawn();
+            }
+        }
+        for (i, look) in looks.iter().enumerate() {
+            let worn = outfit_of(&items, &outfit_ids(look));
+            if i == mid {
+                *eq = worn;
+                continue;
+            }
+            crate::creatures::def::spawn_creature(&mut commands, "player", Vec2::new(x0 + i as f32 * gap, fl + 2.0), move |e| {
+                e.insert((worn, OutfitAt(i)));
+            });
+        }
+        *state = 1;
+    }
+    // (Each held where it was put, facing right; the player too.)
+    pk.body.pos.x = x0 + mid as f32 * gap;
+    pk.body.vel.x = 0.0;
+    pk.loco.facing = 1.0;
+    for (_, _, mut k, _, at) in &mut them {
+        if let Some(OutfitAt(i)) = at {
+            k.body.pos.x = x0 + *i as f32 * gap;
+            k.body.vel.x = 0.0;
+            k.loco.facing = 1.0;
+        }
+    }
+    if *state == 1 && s.elapsed > 1.5 {
+        *state = 2;
+        let mut all: Vec<(usize, f32)> = them.iter().filter_map(|(_, _, _, h, at)| at.map(|a| (a.0, h.ward.armor))).collect();
+        all.sort_by_key(|a| a.0);
+        for (i, armor) in all {
+            info!("outfits: {} ({}): armour {armor:.0}", looks[i], outfit_ids(&looks[i]).join(", "));
+        }
+        info!("outfits: the player in the middle: {}", looks[mid]);
     }
 }
