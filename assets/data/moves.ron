@@ -61,13 +61,14 @@
         // The zombie's grab: close in, its arms go up and out with a snarl
         // (dash through it then and it misses), it lunges and catches you,
         // and bites, and bites; mash jump, dash, and the keys to shake it
-        // off (it reels), or strike it senseless.
-        (id: "zombie_grab", every: 2.5, when: (range: (0, 24), footing: true), phases: [
+        // off (it reels), or strike it senseless. (At the canon its long
+        // arms reach further: it grabs from 40 cells, middle to middle.)
+        (id: "zombie_grab", every: 2.5, when: (range: (0, 40), footing: true), phases: [
             (name: "windup", secs: 0.18, clip: Some("tell"), acts: [Sound("snarl")]),
-            (name: "grab", secs: 0.28, clip: Some("lunge"), acts: [Lunge(speed: 280, up: 35), Grab((at: 9, reach: 9, from: 0.1))]),
-            (name: "bite", secs: 0.8, clip: Some("bite"), acts: [Strike((at: 9, reach: 9, damage: 14, harm: pierce, knock: 0, stun: 0.2, from: 0.6))]),
-            (name: "bite", secs: 0.8, clip: Some("bite"), acts: [Strike((at: 9, reach: 9, damage: 14, harm: pierce, knock: 0, stun: 0.2, from: 0.6))]),
-            (name: "bite", secs: 0.8, clip: Some("bite"), acts: [Strike((at: 9, reach: 9, damage: 14, harm: pierce, knock: 0, stun: 0.2, from: 0.6))]),
+            (name: "grab", secs: 0.28, clip: Some("lunge"), acts: [Lunge(speed: 280, up: 35), Grab((at: 14, reach: 12, from: 0.1))]),
+            (name: "bite", secs: 0.8, clip: Some("bite"), acts: [Strike((at: 14, reach: 12, damage: 14, harm: pierce, knock: 0, stun: 0.2, from: 0.6))]),
+            (name: "bite", secs: 0.8, clip: Some("bite"), acts: [Strike((at: 14, reach: 12, damage: 14, harm: pierce, knock: 0, stun: 0.2, from: 0.6))]),
+            (name: "bite", secs: 0.8, clip: Some("bite"), acts: [Strike((at: 14, reach: 12, damage: 14, harm: pierce, knock: 0, stun: 0.2, from: 0.6))]),
             (name: "shove", secs: 0.0, clip: Some("lunge"), acts: [Throw(speed: 140, up: 80, stun: 0.3)]),
             (name: "recover", secs: 0.35, clip: Some("lunge")),
         ]),
@@ -98,12 +99,12 @@
         ]),
         // A crimson head's grab: quicker to come (a shorter tell), from
         // further, and it bites harder.
-        (id: "crimson_grab", every: 3.0, when: (range: (0, 36), footing: true), phases: [
+        (id: "crimson_grab", every: 3.0, when: (range: (0, 50), footing: true), phases: [
             (name: "windup", secs: 0.32, clip: Some("tell"), acts: [Sound("snarl")]),
-            (name: "grab", secs: 0.28, clip: Some("lunge"), acts: [Lunge(speed: 260, up: 35), Grab((at: 9, reach: 9, from: 0.1))]),
-            (name: "bite", secs: 0.7, clip: Some("bite"), acts: [Strike((at: 9, reach: 9, damage: 18, harm: pierce, knock: 0, stun: 0.2, from: 0.6))]),
-            (name: "bite", secs: 0.7, clip: Some("bite"), acts: [Strike((at: 9, reach: 9, damage: 18, harm: pierce, knock: 0, stun: 0.2, from: 0.6))]),
-            (name: "bite", secs: 0.7, clip: Some("bite"), acts: [Strike((at: 9, reach: 9, damage: 18, harm: pierce, knock: 0, stun: 0.2, from: 0.6))]),
+            (name: "grab", secs: 0.28, clip: Some("lunge"), acts: [Lunge(speed: 260, up: 35), Grab((at: 14, reach: 12, from: 0.1))]),
+            (name: "bite", secs: 0.7, clip: Some("bite"), acts: [Strike((at: 14, reach: 12, damage: 18, harm: pierce, knock: 0, stun: 0.2, from: 0.6))]),
+            (name: "bite", secs: 0.7, clip: Some("bite"), acts: [Strike((at: 14, reach: 12, damage: 18, harm: pierce, knock: 0, stun: 0.2, from: 0.6))]),
+            (name: "bite", secs: 0.7, clip: Some("bite"), acts: [Strike((at: 14, reach: 12, damage: 18, harm: pierce, knock: 0, stun: 0.2, from: 0.6))]),
             (name: "shove", secs: 0.0, clip: Some("lunge"), acts: [Throw(speed: 160, up: 90, stun: 0.3)]),
             (name: "recover", secs: 0.5, clip: Some("lunge")),
         ]),

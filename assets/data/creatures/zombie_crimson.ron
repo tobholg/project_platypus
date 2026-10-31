@@ -45,12 +45,13 @@
     art: "zombie_crimson",
     // Its legs: a zombie's, running: long quick strides, the bad leg
     // still trailing; shins bare and flushed under its torn trousers.
-    legs: (view: Side, rig: true, in_step: true, reach: 15, upper: 0.5, step: 0.13, lift: 3, stride: 9,
-           color: (58, 50, 66), joint: (76, 68, 84), shin: (160, 78, 68), outline: (20, 16, 20), width: [3.0, 2.6, 2.0], toes: 3,
+    // (At the canon: hips 15 up, for a box 24 high.)
+    legs: (view: Side, rig: true, in_step: true, reach: 19, upper: 0.5, step: 0.13, lift: 4, stride: 11,
+           color: (58, 50, 66), joint: (76, 68, 84), shin: (160, 78, 68), outline: (20, 16, 20), width: [3.6, 3.1, 2.4], toes: 4,
            body: "zombie",
            each: [
-               (hip: (2, 2), lean: 1, gait: 0, knee: Forward),
-               (hip: (-1, 2), lean: -3, gait: 1, knee: Forward, far: true),
+               (hip: (2.5, 3), lean: 1.25, gait: 0, knee: Forward),
+               (hip: (-1.5, 3), lean: -4, gait: 1, knee: Forward, far: true),
            ]),
     // Close in, it grabs sooner and harder.
     moves: ["crimson_grab", "crimson_vomit"],
