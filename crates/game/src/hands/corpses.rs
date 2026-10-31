@@ -118,7 +118,11 @@ fn limp_of(d: &Died, items: &Items, blood: (u8, u8, u8)) -> Option<(ragdoll::Lim
     if let Some(m) = &marked {
         skins.push(m);
     }
-    let dressed = if skins.is_empty() { (**file).clone() } else { platypus_art::dress::dress(file, &skins).ok()? };
+    let mut dressed = if skins.is_empty() { (**file).clone() } else { platypus_art::dress::dress(file, &skins).ok()? };
+    // (A cape on its back: no pack under it.)
+    if crate::gear::look::backed(items, &d.worn) {
+        crate::gear::look::unpacked(&mut dressed);
+    }
     // (What it had lost lies apart.)
     let cuts: Vec<ragdoll::Cut> = ragdoll::cut(&dressed, frame).into_iter().filter(|c| c.limb().is_none_or(|l| !d.severed.contains(&l))).collect();
     if cuts.len() < 2 {
