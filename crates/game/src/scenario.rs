@@ -228,7 +228,8 @@
 //!   as the player: the starter, leather, copper, iron, silver, gold,
 //!   mithril, the starter in a cape (`PLATYPUS_OUTFITS`: others, e.g.
 //!   `iron-bare` without its helm, `starter+torch` a torch in the off
-//!   hand); the player is the middle one. Logs each one's armour
+//!   hand, `kind:zombie` a zombie for scale); the player is the middle
+//!   one. Logs each one's armour
 //!
 //! Prints one line per second and a summary, then exits.
 //! `PLATYPUS_OUTFIT=mithril` (any scenario): the player dressed in that
@@ -18619,11 +18620,11 @@ fn outfit_script(s: Res<Scenario>, items: Option<Res<crate::hands::items::Items>
 struct OutfitAt(usize);
 
 /// `outfits` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): the player's
-/// looks side by side, 28 cells apart, each on a body drawn as the player
+/// looks side by side, 34 cells apart, each on a body drawn as the player
 /// (brainless), held where it stands: `PLATYPUS_OUTFITS` (comma-separated
 /// `outfit_ids`; by default the starter, then leather up to mithril, and
-/// the starter in a cape). The player is the one in the middle. Logs each
-/// and its armour.
+/// the starter in a cape; `kind:orc`: an orc, for scale). The player is
+/// the one in the middle. Logs each and its armour.
 fn outfits_script(
     mut commands: Commands,
     s: Res<Scenario>,
@@ -18641,7 +18642,7 @@ fn outfits_script(
     let looks: Vec<String> = std::env::var("PLATYPUS_OUTFITS").unwrap_or_else(|_| "starter,leather,copper,iron,silver,gold,mithril,cape".into()).split(',').map(|l| l.trim().to_string()).collect();
     let mid = looks.len() / 2;
     let fl = platypus_worldgen::arena::FLOOR as f32;
-    let (x0, gap) = (1000.0, 28.0);
+    let (x0, gap) = (1000.0, 34.0);
     let Ok((mut pk, mut eq)) = player.single_mut() else { return };
     if *state == 0 && s.elapsed > 0.4 {
         for (e, c, ..) in &them {
@@ -18650,6 +18651,14 @@ fn outfits_script(
             }
         }
         for (i, look) in looks.iter().enumerate() {
+            // (`kind:orc`: an orc stands in the row, brainless, for scale.)
+            if let Some(kind) = look.strip_prefix("kind:") {
+                crate::creatures::def::spawn_creature(&mut commands, kind, Vec2::new(x0 + i as f32 * gap, fl + 2.0), move |e| {
+                    e.remove::<crate::creatures::brain::hunter::Hunter>();
+                    e.insert(OutfitAt(i));
+                });
+                continue;
+            }
             let worn = outfit_of(&items, &outfit_ids(look));
             if i == mid {
                 *eq = worn;
