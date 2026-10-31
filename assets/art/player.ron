@@ -3,8 +3,12 @@
 // rucksack on his back, the bedroll on top: the user's figure, 42 cells
 // head to sole (the humanoids' size), drawn on the humanoid rig (parts put
 // together into poses; crates/art) in a three-quarter view: the near arm
-// hangs at the back of the body, its hand back by the pack, the far arm
-// peeks out in front of it, the near leg in front. Facing right; the game
+// (`arm_near`) hangs at the back of the body, its hand back by the pack,
+// the far arm peeks out in front of it, the near leg in front. Standing,
+// he stands as the user's figure 2 does (the leather set worn is that
+// figure): the near hand low at the hip (a sword held there points down
+// and ahead), the far forearm out in front, its fist at the chest's height
+// (`arm_lantern`: a lantern hangs from it), the legs apart. Facing right; the game
 // mirrors it. The legs standing are drawn; every other pose's legs are
 // made for it (two-bone legs reaching where the feet go: hero17's poses,
 // 1.2 times the size; the hips close, the near thigh over the far; on the
@@ -182,22 +186,22 @@
         // by the pack; the far one (`arm_far`, shaded) hangs straight, its
         // hand out in front. The sleeve rolled to a leather bracer, a big
         // hand to hold a tool.
-        "arm": (pivot: (3, 0), points: { "hand": (1, 11) }, rows: [
-            "..aAA",
-            "..aAA",
-            "..aAA",
-            ".aAAa",
-            ".aAAa",
-            ".TAAa",
-            ".TaAa",
-            ".XaaX",
-            ".MMm.",
-            "MMMm.",
-            "WWss.",
-            "WWWs.",
-            "sssS.",
-            "sSSS.",
-            ".SS..",
+        "arm_near": (pivot: (4, 0), points: { "hand": (1, 13) }, rows: [
+            "...aAA",
+            "...aAA",
+            "..aAAa",
+            "..aAAa",
+            "..aAAa",
+            ".aAAa.",
+            ".TAAa.",
+            ".TaAa.",
+            ".XaaX.",
+            ".MMMm.",
+            "MMMm..",
+            "mmmm..",
+            "WWss..",
+            "WsssS.",
+            ".sSS..",
         ]),
         "arm_far": (pivot: (1, 0), points: { "hand": (3, 11) }, rows: [
             "aAa..",
@@ -215,6 +219,19 @@
             ".sssS",
             ".sSSS",
             "..SS.",
+        ]),
+        // The far arm standing, as the user's figure stands: bent at the
+        // elbow, the forearm out in front, the fist (`hand`) at the chest's
+        // height, ahead of the body: where a lantern hangs from.
+        "arm_lantern": (pivot: (1, 0), points: { "hand": (5, 6) }, rows: [
+            ".......",
+            ".......",
+            ".......",
+            ".......",
+            ".......",
+            "..MmSWW",
+            "..mmWHs",
+            "..mmsS.",
         ]),
         // Pumping (a sprint): bent at the elbow, the fist up in front; and swung back.
         "arm_pump_fwd": (pivot: (1, 0), points: { "hand": (8, 3) }, rows: [
@@ -249,20 +266,20 @@
         ]),
         // Legs from the hips, standing: the near leg in front (lit), the far
         // one behind it, apart; tall boots, the cuffs turned down.
-        "legs_stand": (points: { "foot_near": (5, 12), "foot_far": (11, 12) }, rows: [
-            "....PPPPpqqQ..",
-            "....PPPPpqqQ..",
-            "....PPPPpqqQ..",
-            "....PPPPoqqQ..",
-            "....PPPp.qqQ..",
-            "....PPPp.qqQ..",
-            "....PPPp.qqQ..",
-            "....PPPp.qqQ..",
-            "...UUUUB.BBC..",
-            "...BBBBB.CCC..",
-            "...BBBB..CCC..",
-            "...BBBBUUCCCB.",
-            "...oooooooooo.",
+        "legs_stand": (points: { "foot_near": (2, 12), "foot_far": (10, 12) }, rows: [
+            ".pPPPPqqqqQ...",
+            ".pPPPPoqqqQ...",
+            ".pPPPo.qqqQ...",
+            ".pPPP..qqqqQ..",
+            ".pPPP..qqqqQ..",
+            ".pPPP...qqqQ..",
+            ".pPPP...qqqQ..",
+            ".pPPP...qqqQQ.",
+            ".pPPP...qqqqQ.",
+            ".UUUU...BBBBB.",
+            ".BUUBB..CBBCC.",
+            "BBUUBB..CCBBCC",
+            "oooooo..oooooo",
         ]),
         // Legs from the hips, one for each pose (made: two-bone legs
         // reaching where the feet go): the near leg in front (lit), the far
@@ -691,28 +708,28 @@
     poses: {
         // Standing; breathing in (the chest and head a pixel up); a blink.
         "stand": [
-            (part: "pack", at: (17, 19), tag: "pack"),
-            (part: "arm_far", at: (26, 22), shade: 0.72, tag: "back_arm"),
+            (part: "pack", at: (18, 19), tag: "pack"),
             (part: "legs_stand", at: (15, 36)),
             (part: "hero_torso", at: (17, 19)),
+            (part: "arm_lantern", at: (25, 22), outline: true, tag: "back_arm"),
             (part: "hero_head", at: (17, 8)),
-            (part: "arm", at: (17, 21), outline: true, tag: "front_arm"),
+            (part: "arm_near", at: (17, 21), outline: true, tag: "front_arm"),
         ],
         "breathe": [
-            (part: "pack", at: (17, 18), tag: "pack"),
-            (part: "arm_far", at: (26, 21), shade: 0.72, tag: "back_arm"),
+            (part: "pack", at: (18, 18), tag: "pack"),
             (part: "legs_stand", at: (15, 36)),
             (part: "hero_torso", at: (17, 18)),
+            (part: "arm_lantern", at: (25, 21), outline: true, tag: "back_arm"),
             (part: "hero_head", at: (17, 7)),
-            (part: "arm", at: (17, 20), outline: true, tag: "front_arm"),
+            (part: "arm_near", at: (17, 20), outline: true, tag: "front_arm"),
         ],
         "blink": [
-            (part: "pack", at: (17, 19), tag: "pack"),
-            (part: "arm_far", at: (26, 22), shade: 0.72, tag: "back_arm"),
+            (part: "pack", at: (18, 19), tag: "pack"),
             (part: "legs_stand", at: (15, 36)),
             (part: "hero_torso", at: (17, 19)),
+            (part: "arm_lantern", at: (25, 22), outline: true, tag: "back_arm"),
             (part: "hero_head_blink", at: (17, 8)),
-            (part: "arm", at: (17, 21), outline: true, tag: "front_arm"),
+            (part: "arm_near", at: (17, 21), outline: true, tag: "front_arm"),
         ],
         // Running: eight steps, the arms swinging against the legs, the
         // body dipping as a foot takes the weight, lifting as it pushes off.
@@ -722,7 +739,7 @@
             (part: "legs_run_1", at: (15, 33)),
             (part: "hero_torso", at: (17, 19)),
             (part: "hero_head", at: (17, 8)),
-            (part: "arm", at: (17, 21), turn: -35, outline: true, tag: "front_arm"),
+            (part: "arm_near", at: (17, 21), turn: -35, outline: true, tag: "front_arm"),
         ],
         "run_2": [
             (part: "pack", at: (17, 20), tag: "pack"),
@@ -730,7 +747,7 @@
             (part: "legs_run_2", at: (10, 34)),
             (part: "hero_torso", at: (17, 20)),
             (part: "hero_head", at: (17, 9)),
-            (part: "arm", at: (17, 22), turn: -18, outline: true, tag: "front_arm"),
+            (part: "arm_near", at: (17, 22), turn: -18, outline: true, tag: "front_arm"),
         ],
         "run_3": [
             (part: "pack", at: (17, 19), tag: "pack"),
@@ -738,7 +755,7 @@
             (part: "legs_run_3", at: (18, 33)),
             (part: "hero_torso", at: (17, 19)),
             (part: "hero_head", at: (17, 8)),
-            (part: "arm", at: (17, 21), outline: true, tag: "front_arm"),
+            (part: "arm_near", at: (17, 21), outline: true, tag: "front_arm"),
         ],
         "run_4": [
             (part: "pack", at: (17, 18), tag: "pack"),
@@ -746,7 +763,7 @@
             (part: "legs_run_4", at: (14, 32)),
             (part: "hero_torso", at: (17, 18)),
             (part: "hero_head", at: (17, 7)),
-            (part: "arm", at: (17, 20), turn: 18, outline: true, tag: "front_arm"),
+            (part: "arm_near", at: (17, 20), turn: 18, outline: true, tag: "front_arm"),
         ],
         "run_5": [
             (part: "pack", at: (17, 19), tag: "pack"),
@@ -754,7 +771,7 @@
             (part: "legs_run_5", at: (12, 33)),
             (part: "hero_torso", at: (17, 19)),
             (part: "hero_head", at: (17, 8)),
-            (part: "arm", at: (17, 21), turn: 35, outline: true, tag: "front_arm"),
+            (part: "arm_near", at: (17, 21), turn: 35, outline: true, tag: "front_arm"),
         ],
         "run_6": [
             (part: "pack", at: (17, 20), tag: "pack"),
@@ -762,7 +779,7 @@
             (part: "legs_run_6", at: (10, 34)),
             (part: "hero_torso", at: (17, 20)),
             (part: "hero_head", at: (17, 9)),
-            (part: "arm", at: (17, 22), turn: 18, outline: true, tag: "front_arm"),
+            (part: "arm_near", at: (17, 22), turn: 18, outline: true, tag: "front_arm"),
         ],
         "run_7": [
             (part: "pack", at: (17, 19), tag: "pack"),
@@ -770,7 +787,7 @@
             (part: "legs_run_7", at: (18, 33)),
             (part: "hero_torso", at: (17, 19)),
             (part: "hero_head", at: (17, 8)),
-            (part: "arm", at: (17, 21), outline: true, tag: "front_arm"),
+            (part: "arm_near", at: (17, 21), outline: true, tag: "front_arm"),
         ],
         "run_8": [
             (part: "pack", at: (17, 18), tag: "pack"),
@@ -778,7 +795,7 @@
             (part: "legs_run_8", at: (17, 32)),
             (part: "hero_torso", at: (17, 18)),
             (part: "hero_head", at: (17, 7)),
-            (part: "arm", at: (17, 20), turn: -18, outline: true, tag: "front_arm"),
+            (part: "arm_near", at: (17, 20), turn: -18, outline: true, tag: "front_arm"),
         ],
         // Sprinting: leaning in from the hips, the head forward, the arms
         // pumping, bent at the elbow.
@@ -804,7 +821,7 @@
             (part: "legs_sprint_3", at: (15, 33)),
             (part: "hero_torso_hip", at: (22, 33), turn: -22),
             (part: "hero_head", at: (22, 9)),
-            (part: "arm", at: (19, 22), turn: 18, outline: true, tag: "front_arm"),
+            (part: "arm_near", at: (19, 22), turn: 18, outline: true, tag: "front_arm"),
         ],
         "sprint_4": [
             (part: "pack_hip", at: (22, 32), turn: -22, tag: "pack"),
@@ -828,7 +845,7 @@
             (part: "legs_sprint_6", at: (15, 33)),
             (part: "hero_torso_hip", at: (22, 33), turn: -22),
             (part: "hero_head", at: (22, 9)),
-            (part: "arm", at: (19, 22), turn: -18, outline: true, tag: "front_arm"),
+            (part: "arm_near", at: (19, 22), turn: -18, outline: true, tag: "front_arm"),
         ],
         // Rising: knees up, an arm thrown up. Falling: legs down, arms out.
         "rise": [
@@ -837,7 +854,7 @@
             (part: "legs_rise", at: (16, 33)),
             (part: "hero_torso", at: (17, 19)),
             (part: "hero_head", at: (17, 8)),
-            (part: "arm", at: (19, 25), turn: 40, outline: true, tag: "front_arm"),
+            (part: "arm_near", at: (19, 25), turn: 40, outline: true, tag: "front_arm"),
         ],
         "drop": [
             (part: "pack", at: (17, 19), tag: "pack"),
@@ -845,7 +862,7 @@
             (part: "legs_drop", at: (15, 33)),
             (part: "hero_torso", at: (17, 19)),
             (part: "hero_head", at: (17, 8)),
-            (part: "arm", at: (17, 21), turn: 35, outline: true, tag: "front_arm"),
+            (part: "arm_near", at: (17, 21), turn: 35, outline: true, tag: "front_arm"),
         ],
         // Striking down: tucked, the head down over the blade. Plunging:
         // knees up high, the back arm up for balance.
@@ -855,7 +872,7 @@
             (part: "legs_strike_down", at: (16, 33)),
             (part: "hero_torso", at: (17, 19)),
             (part: "hero_head", at: (19, 10)),
-            (part: "arm", at: (17, 21), outline: true, tag: "front_arm"),
+            (part: "arm_near", at: (17, 21), outline: true, tag: "front_arm"),
         ],
         "plunge_pose": [
             (part: "pack", at: (17, 19), tag: "pack"),
@@ -863,7 +880,7 @@
             (part: "legs_plunge_pose", at: (14, 31)),
             (part: "hero_torso", at: (17, 19)),
             (part: "hero_head", at: (17, 8)),
-            (part: "arm", at: (17, 21), outline: true, tag: "front_arm"),
+            (part: "arm_near", at: (17, 21), outline: true, tag: "front_arm"),
         ],
         // Kicking: the knee up, leaning back a little, the arms swung
         // against the leg for balance; then the leg out, leaning back more.
@@ -873,7 +890,7 @@
             (part: "hero_torso", at: (16, 19)),
             (part: "legs_kick_wind", at: (17, 33)),
             (part: "hero_head", at: (16, 8)),
-            (part: "arm", at: (16, 21), turn: -35, outline: true, tag: "front_arm"),
+            (part: "arm_near", at: (16, 21), turn: -35, outline: true, tag: "front_arm"),
         ],
         "kick_out": [
             (part: "pack", at: (16, 19), tag: "pack"),
@@ -881,7 +898,7 @@
             (part: "hero_torso", at: (16, 19)),
             (part: "legs_kick_out", at: (17, 28)),
             (part: "hero_head", at: (13, 10)),
-            (part: "arm", at: (13, 21), turn: -35, outline: true, tag: "front_arm"),
+            (part: "arm_near", at: (13, 21), turn: -35, outline: true, tag: "front_arm"),
         ],
         // Crouched: leaning in from the hips over bent knees, the head low
         // and forward, the front arm out; creeping, the arms swinging a
@@ -892,7 +909,7 @@
             (part: "legs_crouch_pose", at: (13, 39)),
             (part: "hero_torso_hip", at: (22, 39), turn: -35),
             (part: "hero_head", at: (23, 16)),
-            (part: "arm", at: (22, 29), turn: 35, outline: true, tag: "front_arm"),
+            (part: "arm_near", at: (22, 29), turn: 35, outline: true, tag: "front_arm"),
         ],
         "crouch_a": [
             (part: "pack_hip", at: (22, 39), turn: -35, tag: "pack"),
@@ -900,7 +917,7 @@
             (part: "legs_crouch_a", at: (11, 39)),
             (part: "hero_torso_hip", at: (22, 39), turn: -35),
             (part: "hero_head", at: (23, 16)),
-            (part: "arm", at: (22, 29), outline: true, tag: "front_arm"),
+            (part: "arm_near", at: (22, 29), outline: true, tag: "front_arm"),
         ],
         "crouch_b": [
             (part: "pack_hip", at: (22, 39), turn: -35, tag: "pack"),
@@ -908,7 +925,7 @@
             (part: "legs_crouch_b", at: (17, 39)),
             (part: "hero_torso_hip", at: (22, 39), turn: -35),
             (part: "hero_head", at: (23, 16)),
-            (part: "arm", at: (22, 29), turn: 35, outline: true, tag: "front_arm"),
+            (part: "arm_near", at: (22, 29), turn: 35, outline: true, tag: "front_arm"),
         ],
         "crouch_c": [
             (part: "pack_hip", at: (22, 39), turn: -35, tag: "pack"),
@@ -916,7 +933,7 @@
             (part: "legs_crouch_c", at: (11, 39)),
             (part: "hero_torso_hip", at: (22, 39), turn: -35),
             (part: "hero_head", at: (23, 16)),
-            (part: "arm", at: (22, 29), turn: 35, outline: true, tag: "front_arm"),
+            (part: "arm_near", at: (22, 29), turn: 35, outline: true, tag: "front_arm"),
         ],
         // Dashing: leaning in, arms back.
         "dash": [
@@ -925,7 +942,7 @@
             (part: "legs_dash", at: (11, 34)),
             (part: "hero_torso", at: (19, 20)),
             (part: "hero_head", at: (21, 12)),
-            (part: "arm", at: (16, 23), turn: -35, outline: true, tag: "front_arm"),
+            (part: "arm_near", at: (16, 23), turn: -35, outline: true, tag: "front_arm"),
         ],
         // Sliding down a wall (on the right): a hand on it.
         "wall": [
@@ -934,7 +951,7 @@
             (part: "legs_drop", at: (15, 33)),
             (part: "hero_torso", at: (17, 19)),
             (part: "hero_head", at: (17, 8)),
-            (part: "arm", at: (19, 21), turn: 10, outline: true, tag: "front_arm"),
+            (part: "arm_near", at: (19, 21), turn: 10, outline: true, tag: "front_arm"),
         ],
     },
     // The front arm at angles: shown instead of the pose's own front arm

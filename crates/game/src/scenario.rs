@@ -223,6 +223,9 @@
 //!   up between them cuts it);
 //!   `PLATYPUS_SPIDER_SHOTS=dir`: pictures of each web's tell, its flight,
 //!   the player reeled in, the bite, a miss
+//! - `hold`       (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`) the player stands
+//!   still, `PLATYPUS_HOLD` in its hand (an item id; the iron shortsword) and
+//!   `PLATYPUS_CARRY` in the off hand (lantern; torch, flashlight, none)
 //! - `outfits`    (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`, try
 //!   `PLATYPUS_ZOOM=4`) the player's looks in a row, each on a body drawn
 //!   as the player: the starter, leather, copper, iron, silver, gold,
@@ -340,6 +343,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, aimswing_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, gauntlet_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, switch_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, hold_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, lightthrow_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, groundbuild_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, ladder::ladder_script.after(InputSystems).before(crate::camera::track_cursor))
@@ -11768,6 +11772,42 @@ fn death_script(
             None => info!("death: t {t:.1} alive, health {:.0} at {:.0}; the rope {:?}", hp.hp, pk.body.pos, rope.and_then(|r| r.tether()).map(|(p, l)| (p.round(), l.round()))),
         }
     }
+}
+
+/// `hold` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`): the player stands
+/// still, facing right, `PLATYPUS_HOLD` in its hand (an item id, put in its
+/// last slot; the iron shortsword by default) and `PLATYPUS_CARRY` in the
+/// off hand (a lantern by default; torch, flashlight, none): how what's in
+/// the hands is held, to look at (`PLATYPUS_SCREENSHOT`, `PLATYPUS_FILM`).
+fn hold_script(
+    s: Res<Scenario>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    mut hand: ResMut<crate::hands::Hand>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut toggles: ResMut<crate::light::LightToggles>,
+    mut cursor: ResMut<CursorOverride>,
+    mut player: Query<(&Kinematics, &mut crate::hands::items::Inventory), With<LocalPlayer>>,
+) {
+    if s.name != "hold" {
+        return;
+    }
+    menu.open = false;
+    let Ok((k, mut inv)) = player.single_mut() else { return };
+    toggles.carry = match std::env::var("PLATYPUS_CARRY").as_deref() {
+        Ok("torch") => crate::light::Carry::Torch,
+        Ok("flashlight") => crate::light::Carry::BigBeam,
+        Ok("none") => crate::light::Carry::Nothing,
+        _ => crate::light::Carry::Lantern,
+    };
+    cursor.0 = Some(k.body.pos + Vec2::new(200.0, 0.0));
+    let hold = std::env::var("PLATYPUS_HOLD").unwrap_or_else(|_| "iron_shortsword".into());
+    let Some(items) = items else { return };
+    let Some(item) = items.id(&hold) else { return };
+    if !inv.slots.iter().any(|st| st.is_some_and(|st| st.item == item)) {
+        let last = inv.slots.len() - 1;
+        inv.slots[last] = Some(crate::hands::items::Stack::new(item, 1));
+    }
+    take_up(&mut hand, &inv, Some(&items), &hold);
 }
 
 /// `switch` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat PLATYPUS_HOUR=23`):

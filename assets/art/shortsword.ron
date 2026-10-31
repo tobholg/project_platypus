@@ -1,31 +1,33 @@
 // A shortsword, pointing right, held at its grip (the game turns it to
-// every angle it swings through, and its pixels are what hits).
+// every angle it swings through, and its pixels are what hits): the user's
+// figure's, a slim blade (a white lit edge, steel, a shaded edge), a brass
+// crossguard, a leather grip, a brass pommel. Held low at the hip, it
+// points down and ahead (`rest` in weapons.ron). (A clear cell all round:
+// its outline's drawn there.)
 (
-    size: (25, 9),
-    feet: (13, 9),
+    size: (24, 7),
+    feet: (12, 7),
     outline: (30, 28, 34),
     palette: {
-        'L': (232, 236, 242),   // steel, the lit edge
-        'M': (182, 190, 200),   // steel
-        'D': (124, 132, 146),   // steel, the shaded edge
-        't': (200, 208, 218),   // the point
-        'y': (214, 172, 64),    // crossguard
-        'w': (112, 72, 42),     // leather wrap
-        'b': (190, 150, 60),    // pommel
+        'L': (246, 246, 246),   // steel, the lit edge
+        'M': (192, 194, 200),   // steel
+        'D': (128, 130, 138),   // steel, the shaded edge
+        't': (214, 216, 222),   // the point
+        'y': (214, 150, 66),    // crossguard
+        'w': (70, 44, 24),      // leather wrap
+        'b': (226, 160, 80),    // pommel
     },
     frames: {
         "sword": [
-            ".....y...................",
-            ".....yy..................",
-            ".....yLLLLLLLLLLLLLLLLL..",
-            "bwwwwyMMMMMMMMMMMMMMMMMt.",
-            "bwwwwyMMMMMMMMMMMMMMMMMtt",
-            "bwwwwyMMMMMMMMMMMMMMMMMt.",
-            ".....yDDDDDDDDDDDDDDDDD..",
-            ".....yy..................",
-            ".....y...................",
+            "........................",
+            "......y.................",
+            ".b....yLLLLLLLLLLLLLL...",
+            ".bwwwwyMMMMMMMMMMMMMMMt.",
+            ".b....yDDDDDDDDDDDDDD...",
+            "......y.................",
+            "........................",
         ],
     },
     clips: { "held": (frames: ["sword"], fps: 1) },
-    anchors: { "grip": { "sword": (3, 4) } },
+    anchors: { "grip": { "sword": (3, 3) } },
 )

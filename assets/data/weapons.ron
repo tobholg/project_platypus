@@ -56,7 +56,7 @@
         (
             // The starting blade: rusty copper (the metals' are its tiers).
             id: "shortsword", art: "rusty_copper_shortsword",
-            damage: 12, knock: 225, stun: 0.18, rest: -35, crit: 8,
+            damage: 12, knock: 225, stun: 0.18, rest: -42, crit: 8,
             moves: [
                 (name: "slash", from: 105, to: -75, windup: 0.05, active: 0.09, recovery: 0.09, stamina: 8, lunge: 75),
                 (name: "backslash", from: -75, to: 100, windup: 0.04, active: 0.09, recovery: 0.1, stamina: 8, lunge: 60),

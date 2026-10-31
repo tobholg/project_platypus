@@ -1,34 +1,35 @@
-// A lantern, held in the off hand (light/torch.rs): an iron cage on a
-// bail, a glass body, a flame inside. Hangs upright from `grip` (its
-// bail); its light comes from `flame`.
+// A lantern, held in the off hand (light/torch.rs): the user's figure's,
+// small, an iron cap and foot, a glass body, a flame inside. Hangs upright
+// from `grip`, the hand that holds it (its bail in the fist, the cap's knob
+// just under it); its light comes from `flame`. (A clear cell round it:
+// its outline's drawn there.)
 (
-    size: (9, 13),
-    feet: (4.5, 13),
+    size: (5, 10),
+    feet: (2.5, 10),
     outline: (18, 18, 22),
     palette: {
         'i': (70, 66, 64),      // iron
-        'I': (108, 102, 96),    // iron, lit
-        'g': (226, 196, 120),   // glass, lit from inside
-        'G': (255, 236, 170),   // glass, brightest
+        'I': (118, 112, 108),   // iron, lit
+        'k': (40, 38, 38),      // iron, the band under the cap
+        'r': (232, 110, 24),    // glass, the flame's red at its edge
+        'g': (250, 182, 40),    // glass, lit from inside
+        'G': (255, 222, 110),   // glass, brightest
         'f': (255, 250, 220),   // the flame
     },
     frames: {
         "lantern": [
-            "...iII...",
-            "..i...I..",
-            "..i...i..",
-            "...iIi...",
-            ".IiiiiIi.",
-            ".gGGGGGg.",
-            ".gGGfGGg.",
-            ".gGGfGGg.",
-            ".gGGGGGg.",
-            ".gggGggg.",
-            ".IiiiiIi.",
-            "...iIi...",
-            ".........",
+            ".....",
+            ".....",
+            "..I..",
+            ".iIi.",
+            ".kkk.",
+            ".rGr.",
+            ".gfg.",
+            ".iIi.",
+            ".iIi.",
+            ".....",
         ],
     },
     clips: { "on": (frames: ["lantern"], fps: 1) },
-    anchors: { "grip": { "lantern": (4, 1) }, "flame": { "lantern": (4, 7) } },
+    anchors: { "grip": { "lantern": (2, 0) }, "flame": { "lantern": (2, 6) } },
 )

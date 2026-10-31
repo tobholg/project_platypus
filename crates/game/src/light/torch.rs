@@ -69,10 +69,11 @@ pub struct HeldTorch;
 /// A torch held in the off hand (behind the body): leaning this far ahead
 /// of upright (degrees), its head out in front of you.
 const TORCH_LEAN: f32 = -55.0;
-/// A lantern carried out in front (cells from the back hand, which hangs at
-/// the front of the body: ahead, and down to hang from it), swinging back
-/// as you go: degrees a cell a second of speed, at most so many.
-const LANTERN_REACH: (f32, f32) = (3.6, 6.0);
+/// A lantern hangs from the back hand (cells from it: none, its `grip` is
+/// in the fist; standing, that hand's held out in front of the chest),
+/// swinging back as you go: degrees a cell a second of speed, at most so
+/// many.
+const LANTERN_REACH: (f32, f32) = (0.0, 0.0);
 const LANTERN_SWAY: f32 = 0.08;
 const LANTERN_SWAY_MOST: f32 = 18.0;
 /// And held this far ahead of the back hand and up (cells): just out past
