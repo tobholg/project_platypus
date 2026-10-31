@@ -3,7 +3,7 @@
 // villager (actors/villager.rs, talk.rs) who doesn't live here.
 (
     name: "Pedlar",
-    size: (11, 24),
+    size: (13, 29),
     health: 140,
     team: Villager,
     // Its kind (kinds.ron): how it takes each kind of hurt.

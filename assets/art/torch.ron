@@ -1,9 +1,10 @@
-// A torch: a pitch-soaked head on a stick. The game lights it: flames,
-// a wisp of smoke and the odd ember rise from `flame`; held, it's gripped
-// at `grip` (in the back hand, `back_arm.hand`).
+// A torch, held: a pitch-soaked head on a stick, sized to the hand (planted
+// in the world it's torch_planted.ron, sized to the blocks). The game lights
+// it: flames, a wisp of smoke and the odd ember rise from `flame`; it's
+// gripped at `grip` (in the back hand, `back_arm.hand`).
 (
-    size: (5, 15),
-    feet: (2.5, 15),
+    size: (6, 18),
+    feet: (3, 18),
     outline: (24, 18, 14),
     palette: {
         'p': (52, 34, 26),      // pitch, charred
@@ -15,23 +16,26 @@
     },
     frames: {
         "torch": [
-            "..e..",
-            ".pep.",
-            "pppep",
-            "pPPQP",
-            "ppppp",
-            "pPPQP",
-            ".pPQ.",
-            "..Ww.",
-            "..Ww.",
-            "..Ww.",
-            "..WW.",
-            "..Ww.",
-            "..Ww.",
-            "..Ww.",
-            "..WW.",
+            "..ee..",
+            ".peep.",
+            "pppepp",
+            "ppeppp",
+            "pPPPQP",
+            "pppppp",
+            "pPPPQP",
+            ".pPPQ.",
+            "..Ww..",
+            "..Ww..",
+            "..Ww..",
+            "..Ww..",
+            "..WW..",
+            "..Ww..",
+            "..Ww..",
+            "..Ww..",
+            "..Ww..",
+            "..WW..",
         ],
     },
     clips: { "lit": (frames: ["torch"], fps: 1) },
-    anchors: { "flame": { "torch": (2, 0) }, "grip": { "torch": (2, 9) } },
+    anchors: { "flame": { "torch": (2, 0) }, "grip": { "torch": (2, 11) } },
 )

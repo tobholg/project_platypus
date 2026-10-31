@@ -29,7 +29,7 @@
 //   cells (then it's over), and a landing slams what's within `slam` cells.
 //   Any other down-strike is quick, however long its move: a windup of
 //   0.04 s at most, live 0.15 s (its whole sweep), back in 0.07 s, reaching
-//   4 cells further down and striking what's within 2.5 cells of a body's
+//   5 cells further down and striking what's within 3 cells of a body's
 //   box; while it's live over what it strikes, and a moment after a bounce,
 //   that can't hurt you by touch. A pogo's to be timed. Only a fresh click
 //   strikes down: holding it doesn't.
@@ -60,9 +60,9 @@
             moves: [
                 (name: "slash", from: 105, to: -75, windup: 0.05, active: 0.09, recovery: 0.09, stamina: 8, lunge: 75),
                 (name: "backslash", from: -75, to: 100, windup: 0.04, active: 0.09, recovery: 0.1, stamina: 8, lunge: 60),
-                (name: "thrust", harm: pierce, from: 0, to: 0, thrust: 8, windup: 0.07, active: 0.08, recovery: 0.13, stamina: 11, lunge: 195, damage: 1.4, knock: 1.3, crit: 5),
+                (name: "thrust", harm: pierce, from: 0, to: 0, thrust: 10, windup: 0.07, active: 0.08, recovery: 0.13, stamina: 11, lunge: 195, damage: 1.4, knock: 1.3, crit: 5),
             ],
-            down: (name: "down slash", from: 55, to: -55, thrust: 6, windup: 0.02, active: 0.14, recovery: 0.08, stamina: 8),
+            down: (name: "down slash", from: 55, to: -55, thrust: 7, windup: 0.02, active: 0.14, recovery: 0.08, stamina: 8),
             dash: (name: "rising slash", from: -95, to: 115, windup: 0.04, active: 0.12, recovery: 0.22, stamina: 14, lunge: 110, hop: 230, damage: 1.35, knock: 1.2, launch: 0.9),
         ),
         (
@@ -71,10 +71,10 @@
             moves: [
                 (name: "cleave", from: 125, to: -95, windup: 0.13, active: 0.15, recovery: 0.18, stamina: 16, lunge: 60),
                 (name: "sweep", from: -95, to: 115, windup: 0.09, active: 0.15, recovery: 0.2, stamina: 16, lunge: 45),
-                (name: "drive", harm: pierce, from: 5, to: -5, thrust: 11, windup: 0.15, active: 0.1, recovery: 0.24, stamina: 22, lunge: 255, damage: 1.6, knock: 1.5),
+                (name: "drive", harm: pierce, from: 5, to: -5, thrust: 13, windup: 0.15, active: 0.1, recovery: 0.24, stamina: 22, lunge: 255, damage: 1.6, knock: 1.5),
             ],
-            down: (name: "plunge", harm: pierce, from: 0, to: 0, thrust: 5, windup: 0.08, active: 4, recovery: 0.22, stamina: 14, dive: 780, slam: 21, damage: 1.2),
-            dash: (name: "leaping smash", from: 130, to: -70, windup: 0.1, active: 0.2, recovery: 0.3, stamina: 24, lunge: 90, hop: 260, damage: 1.5, knock: 1.4, slam: 16),
+            down: (name: "plunge", harm: pierce, from: 0, to: 0, thrust: 6, windup: 0.08, active: 4, recovery: 0.22, stamina: 14, dive: 780, slam: 25, damage: 1.2),
+            dash: (name: "leaping smash", from: 130, to: -70, windup: 0.1, active: 0.2, recovery: 0.3, stamina: 24, lunge: 90, hop: 260, damage: 1.5, knock: 1.4, slam: 19),
         ),
         // Enemies' weapons: slower, with windups to read.
         (
@@ -100,20 +100,20 @@
             id: "fang", art: "fang", harm: pierce,
             damage: 8, knock: 105, stun: 0.12, rest: -30, crit: 12,
             moves: [
-                (name: "stab", from: 10, to: -10, thrust: 6, windup: 0.03, active: 0.06, recovery: 0.06, stamina: 5, lunge: 105),
+                (name: "stab", from: 10, to: -10, thrust: 7, windup: 0.03, active: 0.06, recovery: 0.06, stamina: 5, lunge: 105),
                 (name: "slash", from: 80, to: -60, windup: 0.03, active: 0.07, recovery: 0.06, stamina: 5, lunge: 60),
-                (name: "stab", from: -5, to: 5, thrust: 8, windup: 0.04, active: 0.06, recovery: 0.1, stamina: 7, lunge: 165, damage: 1.5),
+                (name: "stab", from: -5, to: 5, thrust: 10, windup: 0.04, active: 0.06, recovery: 0.1, stamina: 7, lunge: 165, damage: 1.5),
             ],
-            down: (name: "down slash", from: 50, to: -50, thrust: 6, windup: 0.02, active: 0.11, recovery: 0.06, stamina: 5),
-            dash: (name: "dash thrust", from: 0, to: 0, thrust: 12, windup: 0.03, active: 0.12, recovery: 0.2, stamina: 12, lunge: 340, damage: 1.6, knock: 1.4),
+            down: (name: "down slash", from: 50, to: -50, thrust: 7, windup: 0.02, active: 0.11, recovery: 0.06, stamina: 5),
+            dash: (name: "dash thrust", from: 0, to: 0, thrust: 14, windup: 0.03, active: 0.12, recovery: 0.2, stamina: 12, lunge: 340, damage: 1.6, knock: 1.4),
         ),
         // Bare bony fists: quick, weak jabs (a skeleton without its sword).
         (
             id: "bony_fists", art: "bony_fist", harm: blunt,
             damage: 4, knock: 120, stun: 0.1, rest: -20,
             moves: [
-                (name: "jab", from: 5, to: -5, thrust: 5, windup: 0.12, active: 0.07, recovery: 0.16, stamina: 6, lunge: 70),
-                (name: "cross", from: -5, to: 5, thrust: 6, windup: 0.1, active: 0.07, recovery: 0.24, stamina: 6, lunge: 90),
+                (name: "jab", from: 5, to: -5, thrust: 6, windup: 0.12, active: 0.07, recovery: 0.16, stamina: 6, lunge: 70),
+                (name: "cross", from: -5, to: 5, thrust: 7, windup: 0.1, active: 0.07, recovery: 0.24, stamina: 6, lunge: 90),
             ],
         ),
         // A zombie's hands: dead nails, raking (it has no weapon).
@@ -139,7 +139,7 @@
             id: "zombie_bite", art: "zombie_teeth", harm: pierce,
             damage: 9, knock: 60, stun: 0.2, rest: 0,
             moves: [
-                (name: "bite", from: 15, to: -15, thrust: 9, windup: 0.4, active: 0.14, recovery: 0.6, stamina: 10, lunge: 80),
+                (name: "bite", from: 15, to: -15, thrust: 11, windup: 0.4, active: 0.14, recovery: 0.6, stamina: 10, lunge: 80),
             ],
         ),
         (
@@ -149,7 +149,7 @@
                 (name: "smash", from: 120, to: -75, windup: 0.5, active: 0.16, recovery: 0.55, stamina: 40, lunge: 45),
                 (name: "sweep", from: -75, to: 70, windup: 0.4, active: 0.2, recovery: 0.5, stamina: 40, lunge: 30),
             ],
-            dash: (name: "leaping smash", from: 130, to: -70, windup: 0.1, active: 0.2, recovery: 0.3, stamina: 22, lunge: 90, hop: 260, damage: 1.5, knock: 1.4, slam: 16),
+            dash: (name: "leaping smash", from: 130, to: -70, windup: 0.1, active: 0.2, recovery: 0.3, stamina: 22, lunge: 90, hop: 260, damage: 1.5, knock: 1.4, slam: 19),
         ),
     ],    // Bows (archery.rs): hold to draw (fully in `draw` s), let go to loose;
     // the arrow's speed (cells/s), damage and knockback go from the first
@@ -176,7 +176,7 @@
     // stone or earth for `stuck` s, come back to you within `pickup`
     // cells; through fire or lava they catch and burn for `burn` s,
     // setting alight what they strike (water puts them out).
-    arrow: (art: "arrow", gravity: 470, stuck: 60, pickup: 18, burn: 6),
+    arrow: (art: "arrow", gravity: 470, stuck: 60, pickup: 22, burn: 6),
     // Everything else you hold, by its icon's shape (icons.ron): drawn from
     // the sprite of that name (assets/art/<shape>.ron: pointing right, a
     // `grip`), in the item's icon colours with `recolor` (one pickaxe

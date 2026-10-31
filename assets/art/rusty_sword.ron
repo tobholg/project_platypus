@@ -1,7 +1,7 @@
 // A rusty sword: the shortsword's drawing, pitted and brown (a skeleton's).
 (
-    size: (21, 8),
-    feet: (11, 8),
+    size: (25, 9),
+    feet: (13, 9),
     outline: (30, 28, 34),
     palette: {
         'L': (176, 150, 130),   // steel, the lit edge
@@ -15,16 +15,17 @@
     },
     frames: {
         "sword": [
-            "....y................",
-            "....yy...............",
-            "....yLLLLL.LLLLLLLL..",
-            "bwWwyMMDMMMMMMDMMMMtt",
-            "bwwWyMMMMMDMMMMMMMMt.",
-            "....yDDDDDDDDD.DDD...",
-            "....yy...............",
-            "....y................",
+            ".....y...................",
+            ".....yy..................",
+            ".....yLLLLLL.LLLLLLLLL...",
+            "bwWwwyMMDMMMMMMMDMMMMMMt.",
+            "bwwWwyMMMMMMDMMMMMMMMMMtt",
+            "bWwwWyMMMMMMMMMMMDMMMMMt.",
+            ".....yDDDDDDDDDD.DDDD....",
+            ".....yy..................",
+            ".....y...................",
         ],
     },
     clips: { "held": (frames: ["sword"], fps: 1) },
-    anchors: { "grip": { "sword": (2, 3) } },
+    anchors: { "grip": { "sword": (3, 4) } },
 )

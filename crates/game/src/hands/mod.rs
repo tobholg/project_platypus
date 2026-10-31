@@ -53,8 +53,8 @@ const VESSEL_RATE: u32 = 14;
 const VESSEL_POUR: u32 = 2;
 /// Items on the ground drift to a player within this many cells...
 const MAGNET: f32 = 72.0;
-/// ... and are picked up within this many.
-const GRAB: f32 = 9.0;
+/// ... and are picked up within this many (inside your box: canon42).
+const GRAB: f32 = 11.0;
 
 /// The dev toolbelt in hand instead of the hands (the dev menu's Tools tab).
 #[derive(Resource, Default)]

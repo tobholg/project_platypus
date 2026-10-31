@@ -7,7 +7,7 @@
     loot: "orc",
     // What it may wear (and the chance of each), found as gear is where it stands.
     wears: [("leather_cap", 0.5), ("leather_jerkin", 0.4), ("leather_trousers", 0.3), ("leather_boots", 0.4), ("iron_helm", 0.1)],
-    size: (11, 24),
+    size: (13, 29),
     health: 70,
     team: Enemy,
     faction: "orcs",
@@ -31,6 +31,6 @@
     heft: 1.2,
     brain: (
         kind: "hunter",
-        params: (aggro: 330, close: Walk(keep: 17, jump_to_reach: 27), attack: Swing(reach: 24, every: 1.1, combo: 2), wander: (speed: 0.4, every: 2.5), tactics: (flee: 0.2, call: 250)),
+        params: (aggro: 330, close: Walk(keep: 20.4, jump_to_reach: 27), attack: Swing(reach: 28.8, every: 1.1, combo: 2), wander: (speed: 0.4, every: 2.5), tactics: (flee: 0.2, call: 250)),
     ),
 )

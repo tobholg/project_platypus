@@ -1,0 +1,38 @@
+// A torch planted in the world (light/torch.rs `plant_torch`): a
+// pitch-soaked head on a stick, sized to the blocks it stands among (held,
+// it's torch.ron, sized to the hand). The game lights it: flames, a wisp of
+// smoke and the odd ember rise from `flame`.
+(
+    size: (5, 15),
+    feet: (2.5, 15),
+    outline: (24, 18, 14),
+    palette: {
+        'p': (52, 34, 26),      // pitch, charred
+        'P': (88, 54, 32),      // the wrap
+        'Q': (126, 82, 46),     // the wrap, lit
+        'e': (240, 150, 60),    // embers in it
+        'w': (132, 92, 54),     // the stick
+        'W': (98, 66, 38),      // the stick, shaded
+    },
+    frames: {
+        "torch": [
+            "..e..",
+            ".pep.",
+            "pppep",
+            "pPPQP",
+            "ppppp",
+            "pPPQP",
+            ".pPQ.",
+            "..Ww.",
+            "..Ww.",
+            "..Ww.",
+            "..WW.",
+            "..Ww.",
+            "..Ww.",
+            "..Ww.",
+            "..WW.",
+        ],
+    },
+    clips: { "lit": (frames: ["torch"], fps: 1) },
+    anchors: { "flame": { "torch": (2, 0) }, "grip": { "torch": (2, 9) } },
+)

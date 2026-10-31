@@ -3,8 +3,8 @@
 // a body, its head in it out of sight (the shaft ends at `entry`, where
 // it went in).
 (
-    size: (17, 5),
-    feet: (8, 5),
+    size: (20, 5),
+    feet: (10, 5),
     outline: (30, 22, 16),
     palette: {
         'a': (176, 136, 84),    // shaft
@@ -15,20 +15,20 @@
     },
     frames: {
         "arrow": [
-            "fff..............",
-            ".fFf.........HH..",
-            "aaaaaaaaaaaaahhHH",
-            ".fFf.........hh..",
-            "fff..............",
+            "ffff................",
+            ".fFFf...........HH..",
+            "aaaaaaaaaaaaaaaahhHH",
+            ".fFFf...........hh..",
+            "ffff................",
         ],
         "stuck": [
-            "fff..............",
-            ".fFf.............",
-            "aaaaaaaaaaaa.....",
-            ".fFf.............",
-            "fff..............",
+            "ffff................",
+            ".fFFf...............",
+            "aaaaaaaaaaaaaa......",
+            ".fFFf...............",
+            "ffff................",
         ],
     },
     clips: { "flying": (frames: ["arrow"], fps: 1), "stuck": (frames: ["stuck"], fps: 1) },
-    anchors: { "grip": { "arrow": (8, 2), "stuck": (8, 2) }, "tip": { "arrow": (16, 2) }, "entry": { "stuck": (12, 2) } },
+    anchors: { "grip": { "arrow": (10, 2), "stuck": (10, 2) }, "tip": { "arrow": (19, 2) }, "entry": { "stuck": (14, 2) } },
 )

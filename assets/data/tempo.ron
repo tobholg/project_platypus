@@ -18,8 +18,10 @@
 // `pace`: every other creature's (speeds × pace, accelerations × pace²);
 // `jump`, `gravity`: theirs × these (higher jumps, a lighter fall).
 //
-// In body heights (the player is 23 cells): Hollow Knight runs 6.3 a
-// second, jumps 2.7 high, 0.48 s in the air; Terraria 4.3, 2.5, 0.85 s.
+// In body heights (the player was 23 cells when these were set): Hollow
+// Knight runs 6.3 a second, jumps 2.7 high, 0.48 s in the air; Terraria
+// 4.3, 2.5, 0.85 s. (canon42 made the body 29 tall and kept the world's
+// numbers: in its heights, each of these × 0.79.)
 (
     default: "Experimental",
     presets: [
@@ -46,7 +48,8 @@
             "jump_height": 82, "jump_hold": 0.12, "jump_cut": 0.6,
         }),
         // Terraria's own numbers, scaled to our size (its player is 42 px
-        // tall, ours 23 cells: 0.548 cells a pixel; 60 ticks a second):
+        // tall, ours was 23 cells: 0.548 cells a pixel; 60 ticks a second;
+        // canon42's body, 29, kept them: they're the world's):
         // run 3 px/tick; accelerate 0.08, slow 0.2 (a turn: both, 0.28);
         // gravity 0.4, the same up and down; fall at most 10; jump 5.01
         // px/tick held for 15 ticks. Air control as slow as the ground's.

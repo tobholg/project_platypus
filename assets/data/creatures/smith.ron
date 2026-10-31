@@ -2,7 +2,7 @@
 // what comes off them for gold. A villager (actors/villager.rs, talk.rs).
 (
     name: "Smith",
-    size: (11, 24),
+    size: (13, 29),
     // (Tough and quick: a raid is a fight you can come to, not over in a moment.)
     health: 140,
     team: Villager,

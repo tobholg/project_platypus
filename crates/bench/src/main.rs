@@ -223,7 +223,7 @@ fn chaos(m: &Arc<MaterialTable>) -> Outcome {
 
 /// Finding the way over real terrain (around the surface, a 12 × 8 chunk
 /// region at the medium preset's start): every tile made cold for a
-/// walker 11 × 24 (an orc), then 200 searches between standing places
+/// walker 13 × 29 (an orc), then 200 searches between standing places
 /// 100–250 cells apart (each looking at no more than 4 000 nodes), and one
 /// map spreading from a target over 96 × 64 nodes. The budget is the
 /// average search.
@@ -235,7 +235,7 @@ fn nav(m: &Arc<MaterialTable>) -> Outcome {
     let cy = g.surface_at(cx * CHUNK) / CHUNK - 4;
     load_region(&mut w, &g, ChunkPos::new(cx - 6, cy), 12, 8);
     let grid = platypus_nav::world::WorldGrid(&w);
-    let p = Profile::new((11.0, 24.0), &platypus_physics::MovementStats::default(), 60.0);
+    let p = Profile::new((13.0, 29.0), &platypus_physics::MovementStats::default(), 60.0);
     let mut nav = Nav::default();
     let (lo, hi) = (ChunkPos::new(cx - 6, cy), ChunkPos::new(cx + 6, cy + 8));
     let t = Instant::now();

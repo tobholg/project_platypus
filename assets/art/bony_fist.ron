@@ -2,8 +2,8 @@
 // (`grip`). What a skeleton punches with once its sword's been taken from
 // its heap (`unarmed` in its creature file).
 (
-    size: (7, 5),
-    feet: (3, 5),
+    size: (8, 6),
+    feet: (4, 6),
     outline: (40, 36, 32),
     palette: {
         'b': (226, 220, 198),   // bone
@@ -11,11 +11,12 @@
     },
     frames: {
         "bony_fist": [
-            "...bbb.",
-            ".bbbbbb",
-            "BBbBbBb",
-            ".BBBBBB",
-            "...BBB.",
+            "...bbbb.",
+            ".bbbbbbb",
+            "BBbBbBbb",
+            "BBbBbBbB",
+            ".BBBBBBB",
+            "...BBBB.",
         ],
     },
     clips: { "held": (frames: ["bony_fist"], fps: 1) },

@@ -3,8 +3,8 @@
 // dark clothes), a lens. Pointing right;
 // gripped at `grip`, the beam leaves from `lens`.
 (
-    size: (10, 5),
-    feet: (5, 5),
+    size: (12, 6),
+    feet: (6, 6),
     outline: (18, 18, 22),
     palette: {
         'b': (92, 96, 108),     // the grip
@@ -15,13 +15,14 @@
     },
     frames: {
         "flashlight": [
-            "......hhH.",
-            "bBbBbbhhHL",
-            "bBbBbbhHHL",
-            "bBbBbbhhHL",
-            "......hhH.",
+            ".......hhhH.",
+            "bBbBbBbhhhHL",
+            "bBbBbBbhhHHL",
+            "bBbBbBbhhHHL",
+            "bBbBbBbhhhHL",
+            ".......hhhH.",
         ],
     },
     clips: { "on": (frames: ["flashlight"], fps: 1) },
-    anchors: { "grip": { "flashlight": (2, 2) }, "lens": { "flashlight": (9, 2) } },
+    anchors: { "grip": { "flashlight": (3, 2) }, "lens": { "flashlight": (11, 2) } },
 )

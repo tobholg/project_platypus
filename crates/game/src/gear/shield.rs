@@ -194,6 +194,10 @@ pub fn break_guard(guard: &mut Guard) {
 #[derive(Component)]
 pub struct ShieldSprite;
 
+/// Its picture's size on the body (cells: its 16-cell icon, a forearm's
+/// worth on the canon42 body, 42 drawn).
+const SHIELD_SIZE: f32 = 14.4;
+
 #[allow(clippy::type_complexity)]
 pub fn draw(
     mut commands: Commands,
@@ -225,7 +229,7 @@ pub fn draw(
             }
         }
         None => {
-            commands.spawn((Name::new("Shield"), ShieldSprite, Sprite { image: picture.clone(), custom_size: Some(Vec2::splat(12.0)), ..default() }, Transform::from_translation(at), ChildOf(me)));
+            commands.spawn((Name::new("Shield"), ShieldSprite, Sprite { image: picture.clone(), custom_size: Some(Vec2::splat(SHIELD_SIZE)), ..default() }, Transform::from_translation(at), ChildOf(me)));
         }
     }
 }

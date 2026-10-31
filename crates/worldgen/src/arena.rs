@@ -214,8 +214,9 @@ impl ArenaGen {
                 let end = stairs + COURSE_STEPS * COURSE_STEP_W;
                 // The tower, then its stairs down to the right (each step
                 // lower, the last 32 over the floor: a jump up), and under
-                // them all a passage 28 high: the way up is through it, out
-                // the far side and up the stairs.
+                // them all a passage 30 high (a man's 29: under the last
+                // step's 32): the way up is through it, out the far side and
+                // up the stairs.
                 let height = if (tx..stairs).contains(&x) {
                     f + top
                 } else if (stairs..end).contains(&x) {
@@ -233,7 +234,7 @@ impl ArenaGen {
                     // stand in it), its roof 44 up.
                     540..560 => y < f + 22,
                     560..640 => y < f || (f + 18..f + 44).contains(&y),
-                    x if (tx..end).contains(&x) => y < f || (f + 28..height).contains(&y),
+                    x if (tx..end).contains(&x) => y < f || (f + 30..height).contains(&y),
                     _ => y < height,
                 };
                 solid.then_some(self.stone)

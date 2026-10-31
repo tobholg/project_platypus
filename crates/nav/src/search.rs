@@ -328,7 +328,7 @@ mod tests {
     }
 
     fn walker() -> Profile {
-        Profile::new((9.0, 23.0), &MovementStats::default(), 40.0)
+        Profile::new((11.0, 29.0), &MovementStats::default(), 40.0)
     }
 
     fn feet(x: i32, y: i32) -> NodePos {
@@ -398,7 +398,7 @@ mod tests {
         let wall = room(200, 200, |x, y| ((100..112).contains(&x) && y < 150).then_some(b'#'));
         let path = find(&mut nav.view(&wall, flyer.size), &flyer, feet(30, 20), feet(170, 20), 0, 20000);
         assert!(path.whole && kinds(&path).iter().all(|k| *k == Kind::Fly), "{:?}", kinds(&path));
-        // A tunnel 14 high: the 23-tall walker can't; a 9 × 8 one can.
+        // A tunnel 14 high: the 29-tall walker can't; a 9 × 8 one can.
         let tunnel = room(200, 100, |x, y| ((60..140).contains(&x) && y >= 18).then_some(b'#'));
         let mut nav = Nav::default();
         let tall = walker();

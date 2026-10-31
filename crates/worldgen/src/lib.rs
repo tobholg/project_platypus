@@ -360,7 +360,7 @@ const HERB: [&str; 13] = [
 ];const TRAP_GRID: i32 = 60;
 const TRAP_CHANCE: u32 = 60;
 const TRAP_R: i32 = 6;
-const TRAP_UNDER: i32 = 29;
+const TRAP_UNDER: i32 = 35;
 const TRAP_WIDE: i32 = 42;
 
 /// A boulder trap: its middle, the floor's first open row, the boulder's
@@ -1967,7 +1967,7 @@ impl TerrainGen {
         }
         // Walking room near it (a player's height over bumps of 5), and rock
         // for the rope to hang from (the niche is cut round the boulder).
-        let walk = (ly + 5..ly + 26).step_by(3).all(|y| (cx - 14..=cx + 14).step_by(5).all(|x| open(x, y)));
+        let walk = (ly + 5..ly + 32).step_by(3).all(|y| (cx - 14..=cx + 14).step_by(5).all(|x| open(x, y)));
         let by = cy + TRAP_R;
         let anchor = rock(self.material_at(cx, by + TRAP_R + 3));
         (walk && anchor).then_some(Trap { cx, ly, by, plate: (h >> 24) & 1 == 1 })
@@ -3118,7 +3118,7 @@ mod tests {
     }
 
     /// Along the tunnels, as generated, there's room for the player (a
-    /// 9 × 23 box within a few cells of the path; ledges take half the width
+    /// 11 × 29 box within a few cells of the path; ledges take half the width
     /// at some heights).
     #[test]
     fn the_player_fits_through_the_tunnels() {
@@ -3138,7 +3138,7 @@ mod tests {
                     continue;
                 }
                 checked += 1;
-                let fits = (-12..=12).any(|dx| (-15..=3).any(|dy| (0..9).all(|bx| (0..23).all(|by| !solid(x + dx + bx - 4, y + dy + by - 11)))));
+                let fits = (-12..=12).any(|dx| (-15..=3).any(|dy| (0..11).all(|bx| (0..29).all(|by| !solid(x + dx + bx - 5, y + dy + by - 14)))));
                 if !fits {
                     blocked.push((x, y));
                 }
@@ -3595,7 +3595,10 @@ mod tests {
         let mut found = 0;
         let mut pos = None;
         for cx in -6..6 {
-            for cy in 1..10 {
+            // (Deep enough to find one whatever the caves under the start
+            // are like: canon42's wider tunnels moved the one that was in
+            // the top 9.)
+            for cy in 1..18 {
                 let p = ChunkPos::new(s.chunk().x + cx, s.chunk().y - cy);
                 let n = herbs(&g.generate(p));
                 found += n;
@@ -3605,7 +3608,7 @@ mod tests {
             }
         }
         let pos = pos.unwrap_or_else(|| panic!("a chunk with healroot under the start ({found} cells in all)"));
-        assert!(found < 2000, "now and then, not everywhere: {found} cells in 108 chunks");
+        assert!(found < 2000, "now and then, not everywhere: {found} cells in 204 chunks");
         let mut c = g.generate(pos);
         let had = herbs(&c);
         // Every sprig on it picked.

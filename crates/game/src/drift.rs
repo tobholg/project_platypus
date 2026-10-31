@@ -57,7 +57,7 @@ pub struct Recoil {
 }
 
 /// Shot this near them (cells), it was from their hand.
-pub(crate) const HAND: f32 = 24.0;
+pub(crate) const HAND: f32 = 29.0;
 
 /// Recoils: an arrow loosed (at full draw), a bolt or an orb cast, a
 /// lightning bolt; a stream or a beam held, each tick it's held.

@@ -7,7 +7,15 @@ two decimals. Prints each change; `--dry` writes nothing.
     python3 tools/scale/ron_scale.py RULES FILE... [--dry]
 
 RULES names a set below. A field matches only as a whole word followed by
-`:` (so `step` doesn't match `step_height`)."""
+`:` (so `step` doesn't match `step_height`).
+
+`body` is canon42's (2026-10-31): the upright humanoid drawn 42 tall, was
+~35, its box 1.2x. Only what's measured against the body scales (its box,
+its legs, how near it keeps, how far it swings from); what's measured
+against the world (jumps, steps, speeds, sight, an archer's range) stays.
+A body's lengths are floats, so they keep a decimal (`reach: 15` ->
+`18.0`); its box stays whole cells. The player's box is set by hand
+(11 x 29: what fits a 4-block gap and a 2-block shaft)."""
 import math, re, sys
 
 L, A, S = 1.5, 2.25, 1.5  # length, area, speed (and acceleration)
@@ -25,6 +33,14 @@ RULES = {
         "per_cell": 1 / L,
     },
 }
+B = 1.2  # canon42: a body's lengths
+RULES["body"] = {
+    "size": B, "keep": B, "reach": B, "lift": B, "stride": B, "hip": B, "lean": B, "toes": B, "ride": B, "bob": B,
+}
+# Body lengths that are floats in code: whole numbers get a decimal, not rounded.
+FLOATS = {"body": {"keep", "reach", "lift", "stride", "hip", "lean", "toes", "ride", "bob"}}
+# Lists scaled through (a leg's `width: [hip, knee, foot]`).
+LISTS = {"body": {"width": B}}
 # A villager's `wander: 60` (cells round its home) — not the hunter's `wander: (..)`.
 NUMBER_ONLY = {"creature": {"wander": L}}
 
@@ -75,16 +91,21 @@ def fmt(old: str, v: float) -> str:
     r = round(v, 2)
     return str(int(r)) + ".0" if r == int(r) else f"{r:g}"
 
-def scale_value(text: str, k: float) -> str:
-    return re.sub(NUM, lambda m: fmt(m.group(0), float(m.group(0)) * k), text)
+def scale_value(text: str, k: float, floats: bool = False) -> str:
+    def one(m):
+        old = m.group(0)
+        return fmt(old if not floats or "." in old else old + ".0", float(old) * k)
+    return re.sub(NUM, one, text)
 
-def apply(rules: dict, number_only: dict, s: str, changes: list) -> str:
-    def one(field, k, tuples):
+def apply(rules: dict, number_only: dict, s: str, changes: list, floats: set = frozenset(), lists: dict = {}) -> str:
+    def one(field, k, tuples, list_=False):
         nonlocal s
         val = rf"(?:{NUM}|\(\s*{NUM}\s*,\s*{NUM}\s*\))" if tuples else NUM
+        if list_:
+            val = rf"\[\s*{NUM}(?:\s*,\s*{NUM})*\s*\]"
         pat = re.compile(rf"(?<![\w])({re.escape(field)}:\s*)({val})(?![\w.])")
         def rep(m):
-            new = scale_value(m.group(2), k)
+            new = scale_value(m.group(2), k, field in floats or list_)
             if new != m.group(2):
                 changes.append(f"{field}: {m.group(2)} -> {new}")
             return m.group(1) + new
@@ -93,6 +114,8 @@ def apply(rules: dict, number_only: dict, s: str, changes: list) -> str:
         one(f, k, True)
     for f, k in number_only.items():
         one(f, k, False)
+    for f, k in lists.items():
+        one(f, k, False, True)
     return s
 
 def apply_context(rules, s, changes):
@@ -133,7 +156,7 @@ if __name__ == "__main__":
         if name in CONTEXT:
             out = apply_context(CONTEXT[name], src, changes)
         else:
-            out = apply(RULES[name], NUMBER_ONLY.get(name, {}), src, changes)
+            out = apply(RULES[name], NUMBER_ONLY.get(name, {}), src, changes, FLOATS.get(name, set()), LISTS.get(name, {}))
         print(f"{path}: {len(changes)} changes" + ("" if not changes else "\n  " + "; ".join(changes)))
         if not dry:
             open(path, "w").write(out)

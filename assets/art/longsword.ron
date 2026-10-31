@@ -1,8 +1,8 @@
 // A longsword, pointing right, held at its grip: longer in the blade and
 // the hilt, slower and heavier to swing (assets/data/weapons.ron).
 (
-    size: (33, 8),
-    feet: (17, 8),
+    size: (40, 9),
+    feet: (20, 9),
     outline: (30, 28, 34),
     palette: {
         'L': (226, 232, 240),   // steel, the lit edge
@@ -17,16 +17,17 @@
     },
     frames: {
         "sword": [
-            "........y........................",
-            "........yy.......................",
-            ".b......yLLLLLLLLLLLLLLLLLLLLL...",
-            "bbwWwwWwyMffffffffffffffffMMMMttt",
-            "bbWwwWwwyMMMMMMMMMMMMMMMMMMMMMtt.",
-            ".b......yDDDDDDDDDDDDDDDDDDDD....",
-            "........yy.......................",
-            "........y........................",
+            ".........y..............................",
+            ".........yy.............................",
+            ".b.......yLLLLLLLLLLLLLLLLLLLLLLLLLL....",
+            "bbwWwwWwwyMMMMMMMMMMMMMMMMMMMMMMMMMttt..",
+            "bbWwwWwwWyMffffffffffffffffffffMMMMttttt",
+            "bbwWwwWwwyMMMMMMMMMMMMMMMMMMMMMMMMMttt..",
+            ".b.......yDDDDDDDDDDDDDDDDDDDDDDDDD.....",
+            ".........yy.............................",
+            ".........y..............................",
         ],
     },
     clips: { "held": (frames: ["sword"], fps: 1) },
-    anchors: { "grip": { "sword": (3, 3) } },
+    anchors: { "grip": { "sword": (4, 4) } },
 )

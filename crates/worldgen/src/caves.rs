@@ -7,7 +7,7 @@
 //!   is easy), bigger in the caverns and the deep. Some hold a pool.
 //! - Tunnels: every chamber is joined to its neighbours (a spanning tree of
 //!   nearest links, so they all connect, and some more for loops), each a
-//!   wandering line at least 1.5 player heights wide.
+//!   wandering line at least 1.4 player heights wide.
 //! - Crevices: a few extra links are cracks too thin for the player (throw a
 //!   glow stick in), never the only way through; and dead-end fissures off
 //!   some chambers, going nowhere.
@@ -43,8 +43,9 @@ use noise::{NoiseFn, Perlin};
 use platypus_sim::CHUNK;
 use platypus_sim::rng::Rng;
 
-/// The player is 23 cells tall: tunnels are at least this wide.
-pub const MIN_TUNNEL: f32 = 33.0;
+/// The player is 29 cells tall (canon42: drawn 42): tunnels are at least
+/// this wide (5 blocks; it was 33 for a 23-tall player).
+pub const MIN_TUNNEL: f32 = 40.0;
 /// Crevices: this wide at most.
 pub const MAX_CREVICE: f32 = 10.5;
 /// Beside a ledge in a steep tunnel, at least this much open (a cave
@@ -454,11 +455,11 @@ impl Caves {
         let layer = |y: f32| {
             if y >= g.caverns_top as f32 {
                 // The underground (and inside the mountains): small, easy.
-                Layer { rx: (39.0, 90.0), ry: (27.0, 51.0), spacing: 300.0, width: (36.0, 54.0) }
+                Layer { rx: (39.0, 90.0), ry: (27.0, 51.0), spacing: 300.0, width: (43.0, 54.0) }
             } else if y >= g.deep_top as f32 {
-                Layer { rx: (67.5, 210.0), ry: (42.0, 120.0), spacing: 495.0, width: (36.0, 60.0) }
+                Layer { rx: (67.5, 210.0), ry: (42.0, 120.0), spacing: 495.0, width: (43.0, 60.0) }
             } else {
-                Layer { rx: (82.5, 255.0), ry: (52.5, 150.0), spacing: 570.0, width: (39.0, 66.0) }
+                Layer { rx: (82.5, 255.0), ry: (52.5, 150.0), spacing: 570.0, width: (47.0, 66.0) }
             }
         };
 
@@ -717,7 +718,7 @@ impl Caves {
             if d > 1_050.0 {
                 continue;
             }
-            let w = range(&mut rng, (33.0, 42.0));
+            let w = range(&mut rng, (MIN_TUNNEL, 46.0));
             tunnels.push(wander(top, (c.x, c.y), w, d, &noise, 10_000.0 + n as f64));
             made += 1;
         }
@@ -732,7 +733,7 @@ impl Caves {
             let x = c.x + side * (c.rx + 70.0);
             let top = (x, surface(x as i32) as f32 + 6.0);
             let d = ((c.x - top.0).powi(2) + (c.y - top.1).powi(2)).sqrt();
-            tunnels.push(wander(top, (c.x, c.y), 34.0, d, &noise, 30_000.0 + i as f64));
+            tunnels.push(wander(top, (c.x, c.y), MIN_TUNNEL + 1.0, d, &noise, 30_000.0 + i as f64));
         }
 
         // Each sea's branches: tubes off its walls and floor winding out into

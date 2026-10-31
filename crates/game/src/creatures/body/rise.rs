@@ -57,7 +57,7 @@ const JERK: f32 = 0.35;
 /// Loose bones this near a heap as it gets up fly back to it (cells).
 const GATHER: f32 = 48.0;
 /// Headless, it puts its skull back on this near it (cells).
-const REACH_SKULL: f32 = 8.0;
+const REACH_SKULL: f32 = 9.6;
 /// Standing where it can't (under a low roof), it tries again after this;
 /// past `STUCK_MOST` of trying, it stands anyway. Room is looked for this
 /// far up (on its ash) and to each side (cells).
@@ -860,7 +860,7 @@ pub struct Ablaze(f32);
 
 /// How long a body burns; how near a held torch's hand must come to it.
 const PYRE: f32 = 4.0;
-const TORCH_REACH: f32 = 6.0;
+const TORCH_REACH: f32 = 7.2;
 
 /// Bodies that get up catch: from a blow of fire, from flames on them, a
 /// torch held to them, or (the dead) the sun.

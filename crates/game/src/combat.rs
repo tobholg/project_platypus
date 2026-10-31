@@ -963,8 +963,8 @@ const PLUNGE_FALL: f32 = 70.0;
 /// within this of a body's box, not only its picture (a pogo's to be timed,
 /// not threaded).
 const DOWN_LIVE: f32 = 0.15;
-const DOWN_REACH: f32 = 4.0;
-const DOWN_GRACE: f32 = 2.5;
+const DOWN_REACH: f32 = 5.0;
+const DOWN_GRACE: f32 = 3.0;
 /// A pogo's bounce: this long after it, what it bounced off (anything)
 /// can't hurt you by touch (`PogoGrace`).
 const POGO_GRACE: f32 = 0.2;
@@ -1165,7 +1165,7 @@ fn start_swings(
 /// straight up, its blade raised this far (cells) to clear the head, its
 /// arc this much of the move's.
 const UP_AIM: f32 = 60.0;
-const UP_RAISE: f32 = 7.0;
+const UP_RAISE: f32 = 8.4;
 const UP_FOCUS: f32 = 0.65;
 /// A swing's arc drawn in round its middle to this share (where you point
 /// matters), and kept off the head and the legs: never further round than

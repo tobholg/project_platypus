@@ -1,8 +1,8 @@
 // A troll's club: a knotted tree limb, thick at the head, pointing right,
 // held at `grip`.
 (
-    size: (36, 12),
-    feet: (18, 12),
+    size: (44, 14),
+    feet: (22, 14),
     outline: (26, 20, 16),
     palette: {
         'w': (120, 86, 52),     // wood
@@ -13,20 +13,22 @@
     },
     frames: {
         "club": [
-            "......................ll..llll......",
-            ".....................lLlllwwwwll....",
-            "..................lllwkwwwwwWWwwll..",
-            "................llwwwwwwwwwwwwkLwwl.",
-            "........l.....llwwwWWWwwwwwwwwkkwwwl",
-            ".lllllllwlllllwwwwwwwwwwLwwwwwwwwwww",
-            "LwwwwwwkWwwwwwwwwwwWWWwwkwwwwWWWwwwW",
-            "WWWWWWWWWWWWWwwwwwwwwwwwwwwwwwwwwwWW",
-            "..............WWwwwwkLwwwwWWWwwwwWW.",
-            "................WWWwwwkkwwwwwwwWWW..",
-            "...................WWWWWwwwwWWWW....",
-            "......................WWW..WWW......",
+            "...........................ll...llll........",
+            "..........................lLllllwwwwlll.....",
+            "......................llllwkwwwwwwWWwwwll...",
+            "....................llwwwwwwwwwwwwwwkkLwwl..",
+            "..........l......lllwwwWWWWwwwwwwwwwkkkwwwll",
+            ".lllllllllwllllllwwwwwwwwwwwwLwwwwwwwwwwwwww",
+            "LwwwwwwwwwWwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww",
+            "LwwwwwwwwkWwwwwwwwwwwwwWWWWwwkwwwwwWWWWwwwWW",
+            "WWWWWWWWWWWWWWWWwwwwwwwwwwwwwwwwwwwwwwwwwWWW",
+            ".................WWWwwwwkkLwwwwwWWWwwwwwWW..",
+            "....................WWWwwwwkkwwwwwwwwwWWW...",
+            ".......................WWWWWWwwwwwWWWWW.....",
+            "........................WWWWWWWWWWWWWWW.....",
+            "...........................WWW...WWW........",
         ],
     },
     clips: { "held": (frames: ["club"], fps: 1) },
-    anchors: { "grip": { "club": (3, 6) } },
+    anchors: { "grip": { "club": (4, 6) } },
 )

@@ -298,7 +298,7 @@ mod tests {
     #[test]
     fn a_jump_reaches_as_high_and_far_as_the_physics_lets_it() {
         let stats = MovementStats::default();
-        let p = Profile::new((9.0, 23.0), &stats, 60.0);
+        let p = Profile::new((11.0, 29.0), &stats, 60.0);
         assert!(!p.jumps.is_empty());
         // Up onto something about its jump's height (60 cells: 15 nodes),
         // never higher.

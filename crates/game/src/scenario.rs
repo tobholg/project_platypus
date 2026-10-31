@@ -6848,7 +6848,7 @@ fn tempo_script(
             next = dt > 2.0;
         }
         _ => {
-            let h = 23.0;
+            let h = 29.0; // (The player's height: canon42.)
             info!(
                 "tempo: {preset}: to full run {:.2}s, top {:.0} cells/s ({:.1} heights/s), slide {:.1} cells, turn {:.2}s, jump {:.0} cells ({:.1} heights) {:.2}s in the air, tap {:.0} cells, fall at most {:.0} cells/s ({:.0} heights/s), 150 cells down in {:.2}s",
                 r[0], r[1], r[1] / h, r[2], r[3], r[4], r[4] / h, r[5], r[6], r[7], r[7] / h, r[8]
@@ -12311,8 +12311,9 @@ fn build_script(
     let fl = platypus_worldgen::arena::FLOOR;
     let g = fl.div_euclid(b);
     let x0 = 1000 / b;
-    // Sized to the player (drawn ~33 cells tall): a ground floor of seven
-    // blocks, an upper of six, a door of five.
+    // Sized to the player (drawn ~33 cells tall then, 42 since canon42,
+    // its box 29: still room): a ground floor of seven blocks, an upper of
+    // six, a door of five.
     let (l, r) = (x0, x0 + 24);
     let (up, ceil) = (g + 8, g + 15);
     let bare = std::env::var("PLATYPUS_BARE").is_ok();
@@ -12366,6 +12367,15 @@ fn build_script(
         *done = 3;
         if let Ok(mut k) = player.single_mut() {
             k.body.pos = Vec2::new(((r + 8) * b) as f32, ((g + 1) * b) as f32 + k.body.half.y + 0.5);
+            k.prev_pos = k.body.pos;
+        }
+    }
+    // `PLATYPUS_DOORWAY=1` (with `PLATYPUS_BARE=1`, the door a gap): the
+    // player stood in it, to see what it fits.
+    if (1..=2).contains(&*done) && t > 1.0 && std::env::var("PLATYPUS_DOORWAY").is_ok() {
+        *done = 3;
+        if let Ok(mut k) = player.single_mut() {
+            k.body.pos = Vec2::new((l * b) as f32 + b as f32 / 2.0, ((g + 1) * b) as f32 + k.body.half.y + 0.5);
             k.prev_pos = k.body.pos;
         }
     }
@@ -12894,7 +12904,7 @@ fn leap_script(
             }
             state.1 = state.1.max(feet - fl);
             if t - state.2 > 0.1 && k.loco.grounded() {
-                info!("leap: a full jump rose {:.0} cells ({:.1} bodies), {:.2} s in the air", state.1, state.1 / 23.0, t - state.2);
+                info!("leap: a full jump rose {:.0} cells ({:.1} bodies), {:.2} s in the air", state.1, state.1 / 29.0, t - state.2);
                 state.0 = 3;
             }
         }

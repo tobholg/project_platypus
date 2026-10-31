@@ -45,6 +45,10 @@ use crate::world::SimWorld;
 /// aside: `<name>.v<version>`). 2: the large world became 8× as big
 /// (DESIGN §13).
 const VERSION: u32 = 2;
+/// Half the player's height when a save kept only its middle (`pos`), not
+/// its feet: the 9 × 23 body before canon42 (2026-10-31). A save without
+/// `feet` stands it on the same ground with whatever box it has now.
+const MIDDLE_ONLY_HALF: f32 = 11.5;
 /// Seconds between saves while playing.
 const AUTOSAVE: f32 = 60.0;
 /// What starts `chunks.bin`.
@@ -217,7 +221,11 @@ pub fn slots() -> Vec<SlotInfo> {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct PlayerFile {
+    /// Its middle (kept for a game from before `feet`).
     pos: (f32, f32),
+    /// Where its feet are: its box can change (canon42), the ground can't.
+    #[serde(default)]
+    feet: Option<(f32, f32)>,
     hp: f32,
     #[serde(default)]
     mana: Option<f32>,
@@ -439,6 +447,7 @@ fn save(
     let stored = |x: f32| sim.world.canon_f(x);
     let me = PlayerFile {
         pos: (stored(k.body.pos.x), k.body.pos.y),
+        feet: Some((stored(k.body.pos.x), k.body.pos.y - k.body.half.y)),
         hp: health.hp,
         mana: mana.map(|m| m.cur),
         bar: hand.bar,
@@ -636,7 +645,8 @@ fn apply_player(mut commands: Commands, pending: Option<Res<PendingPlayer>>, ite
     let Ok((e, mut k, mana, pack, mut eq)) = player.single_mut() else { return };
     let (Some(mut mana), Some(mut pack)) = (mana, pack) else { return };
     let p = &pending.0;
-    k.body.pos = Vec2::new(p.pos.0, p.pos.1);
+    let (x, feet) = p.feet.unwrap_or((p.pos.0, p.pos.1 - MIDDLE_ONLY_HALF));
+    k.body.pos = Vec2::new(x, feet + k.body.half.y);
     k.body.vel = Vec2::ZERO;
     k.prev_pos = k.body.pos;
     if let Some(m) = p.mana {
@@ -675,7 +685,7 @@ fn apply_player(mut commands: Commands, pending: Option<Res<PendingPlayer>>, ite
     commands.insert_resource(crate::respawn::Checkpoint(p.checkpoint.map(|(x, y)| Vec2::new(x, y))));
     commands.entity(e).insert((PendingHp(p.hp), p.progress.clone(), crate::gold::Gold(p.gold), p.pickup));
     commands.remove_resource::<PendingPlayer>();
-    info!("save: the player is back at ({:.0}, {:.0})", p.pos.0, p.pos.1);
+    info!("save: the player is back at ({:.0}, {:.0}), feet at {:.0}{}", k.body.pos.x, k.body.pos.y, feet, if p.feet.is_none() { " (a save from before its feet were kept)" } else { "" });
 }
 
 fn settle_hp(mut commands: Commands, mut q: Query<(Entity, &mut Health, &PendingHp)>) {

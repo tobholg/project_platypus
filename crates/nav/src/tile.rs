@@ -288,6 +288,19 @@ impl<W: NavWorld> View<'_, W> {
         f(&self.nav.arena[i as usize], local)
     }
 
+    /// Whether a body walking along the ground (its feet at `y`) from one
+    /// cell to another has something under it all the way: two nodes may
+    /// each stand, half a cell over either rim of a gap a little wider than
+    /// the body, and the body fall in between them (canon42's 13-wide orc
+    /// into the course's 14-wide pit). Checked where its edges fall on
+    /// cells' edges, the fewest cells under it.
+    pub fn ground_along(&self, x0: i32, x1: i32, y: i32) -> bool {
+        let w = self.size.0 as i32;
+        let under = |x: i32| matches!(self.world.occupancy(x, y - 1), Occupancy::Solid | Occupancy::Platform);
+        let (a, b) = (x0.min(x1), x0.max(x1));
+        (a - w / 2..=b - w / 2).all(|s| (s..s + w).any(under))
+    }
+
     /// Where a body can stand in this node: the floor's height (cells).
     #[inline]
     pub fn stand(&mut self, n: NodePos) -> Option<i32> {

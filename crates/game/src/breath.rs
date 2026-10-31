@@ -49,7 +49,7 @@ const REFILL: f32 = 2.0;
 /// Out of breath, this share of its health a second.
 const DROWNING: f32 = 0.05;
 /// Its head: this far below the top of its body (cells).
-const HEAD_DOWN: f32 = 3.0;
+const HEAD_DOWN: f32 = 3.6;
 /// Bubbles off it a second: with all its breath, and with none.
 const BUBBLES: (f32, f32) = (1.5, 9.0);
 /// Surfacing with less than this share left, it gasps.

@@ -1,8 +1,8 @@
 // The Broodmother's Fang: a spider's fang made a dagger, pointing right,
 // held at its grip. Black chitin, a venom-green edge, a wrapped haft.
 (
-    size: (18, 8),
-    feet: (9, 8),
+    size: (22, 9),
+    feet: (11, 9),
     outline: (24, 20, 26),
     palette: {
         'c': (54, 44, 60),      // chitin
@@ -16,16 +16,17 @@
     },
     frames: {
         "fang": [
-            "...............gg.",
-            "............gggGc.",
-            ".b....ggggggGGcc..",
-            "bbwWwwckkkkkcccc..",
-            "bbWwwWcccccccccC..",
-            ".b....CCCCCCCCC...",
-            "......CCCC........",
-            "..................",
+            "...................gg.",
+            "..................gGc.",
+            "..............gggGGcc.",
+            ".b.....ggggggggGGccc..",
+            "bbwWwwWckkkkkkcccccc..",
+            "bbWwwWwccccccccccccC..",
+            ".b.....CCCCCCCCCCC....",
+            ".......CCCCC..........",
+            "......................",
         ],
     },
     clips: { "held": (frames: ["fang"], fps: 1) },
-    anchors: { "grip": { "fang": (3, 3) } },
+    anchors: { "grip": { "fang": (4, 4) } },
 )

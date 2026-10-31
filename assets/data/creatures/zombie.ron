@@ -16,7 +16,7 @@
     // rolled for it, none put on it getting up again; the upright
     // zombie_classic wore them).
     bare_head: true,
-    size: (9, 20),
+    size: (11, 24),
     health: 100,
     team: Enemy,
     // (Mindless: walks into a painted wall of fire.)
@@ -55,18 +55,18 @@
     // (The hunched design; the upright one, kept: "zombie_classic", on
     // its old legs: hips (2, 4), reach 14.5, no `lean`, no `shin`.)
     art: "zombie",
-    // Its legs: two bent legs from its seat, 12 cells up, in dark purple
+    // Its legs: two bent legs from its seat, 14 cells up, in dark purple
     // trousers torn off at the knee (bare grey shins and feet); a lurching
     // step, the feet barely lifting, the far leg the bad one, trailing
     // behind (`lean`). Its body keeps in step with them (`in_step`): it
     // rises on its good leg and drops on its bad one, a hand planted as
     // the other foot is.
-    legs: (view: Side, rig: true, in_step: true, reach: 15, upper: 0.5, step: 0.26, lift: 1.5, stride: 6,
-           color: (72, 60, 92), joint: (92, 80, 112), shin: (112, 124, 130), outline: (20, 16, 20), width: [3.0, 2.6, 2.0], toes: 3,
+    legs: (view: Side, rig: true, in_step: true, reach: 18.0, upper: 0.5, step: 0.26, lift: 1.8, stride: 7.2,
+           color: (72, 60, 92), joint: (92, 80, 112), shin: (112, 124, 130), outline: (20, 16, 20), width: [3.6, 3.12, 2.4], toes: 3.6,
            body: "zombie",
            each: [
-               (hip: (2, 2), lean: 1, gait: 0, knee: Forward),
-               (hip: (-1, 2), lean: -4, gait: 1, knee: Forward, far: true),
+               (hip: (2.4, 2.4), lean: 1.2, gait: 0, knee: Forward),
+               (hip: (-1.2, 2.4), lean: -4.8, gait: 1, knee: Forward, far: true),
            ]),
     // Close in, it grabs and bites (dash through its reach, or shake it
     // off).
@@ -85,6 +85,6 @@
     pace: 0.3,
     brain: (
         kind: "hunter",
-        params: (aggro: 260, close: Walk(keep: 12, jump_to_reach: 22), attack: Swing(reach: 20, every: 0.9, combo: 1), wander: (speed: 0.25, every: 4.0), senses: (dark: 1.0, hearing: 1.4, smell: 160, memory: 10, behind: 0.6)),
+        params: (aggro: 260, close: Walk(keep: 14.4, jump_to_reach: 22), attack: Swing(reach: 24.0, every: 0.9, combo: 1), wander: (speed: 0.25, every: 4.0), senses: (dark: 1.0, hearing: 1.4, smell: 160, memory: 10, behind: 0.6)),
     ),
 )

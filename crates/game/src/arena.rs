@@ -82,6 +82,11 @@ impl Plugin for ArenaPlugin {
             .add_systems(PreUpdate, (keys, act).chain().after(bevy::ui::UiSystems::Focus))
             .add_systems(PreUpdate, step.after(act))
             .add_systems(Update, (overlays, spawn_list));
+        // `PLATYPUS_OVERLAYS=1`: the boxes on from the start, anywhere (a
+        // screenshot of what a body fits).
+        if std::env::var("PLATYPUS_OVERLAYS").is_ok() {
+            app.insert_resource(ArenaView { open: false, overlays: true });
+        }
     }
 }
 

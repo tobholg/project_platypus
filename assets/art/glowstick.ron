@@ -1,7 +1,7 @@
 // A glow stick held in the hand. Drawn in its icon's colours.
 (
-    size: (5, 9),
-    feet: (2.5, 9),
+    size: (6, 11),
+    feet: (3, 11),
     outline: (24, 18, 16),
     palette: {
         'g': (150, 255, 170),   // glow
@@ -11,17 +11,19 @@
     },
     frames: {
         "stick": [
-            "..d..",
-            ".ddd.",
-            ".gwg.",
-            ".gwg.",
-            ".gwG.",
-            ".gwG.",
-            ".gGG.",
-            ".GGG.",
-            ".ddd.",
+            "..dd..",
+            ".dddd.",
+            ".gwgg.",
+            ".gwgg.",
+            ".gwgG.",
+            ".gwgG.",
+            ".gwGG.",
+            ".ggGG.",
+            ".gGGG.",
+            ".GGGG.",
+            ".dddd.",
         ],
     },
     clips: { "held": (frames: ["stick"], fps: 1) },
-    anchors: { "grip": { "stick": (2, 6) } },
+    anchors: { "grip": { "stick": (2, 7) } },
 )

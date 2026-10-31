@@ -1,7 +1,8 @@
 //! Torches: planted in the world (G, the torch item) or held in the off
 //! hand (L cycles to it, and to the flashlights: held in the off hand
 //! too, `flashlight.ron`, the beam leaving its lens; both pointed at the
-//! cursor). Drawn from `assets/art/torch.ron`; alight with a
+//! cursor). Drawn from `assets/art/torch.ron` held (sized to the hand)
+//! and `torch_planted.ron` planted (sized to the blocks); alight with a
 //! flame of rising motes, a wisp of smoke and the odd ember from its `flame`
 //! anchor (`lighting.ron`'s `fire`: looks only, the sim never sees them, so
 //! a torch sets nothing alight), and a light that flickers like fire.
@@ -71,12 +72,12 @@ const TORCH_LEAN: f32 = -55.0;
 /// A lantern carried out in front (cells from the back hand, which hangs at
 /// the front of the body: ahead, and down to hang from it), swinging back
 /// as you go: degrees a cell a second of speed, at most so many.
-const LANTERN_REACH: (f32, f32) = (3.0, 5.0);
+const LANTERN_REACH: (f32, f32) = (3.6, 6.0);
 const LANTERN_SWAY: f32 = 0.08;
 const LANTERN_SWAY_MOST: f32 = 18.0;
 /// And held this far ahead of the back hand and up (cells): just out past
 /// the chest.
-const TORCH_REACH: (f32, f32) = (1.0, 1.0);
+const TORCH_REACH: (f32, f32) = (1.2, 1.2);
 
 /// A safety lamp's flame in firedamp.
 const SAFETY_BLUE: (u8, u8, u8) = (110, 160, 255);
@@ -127,7 +128,7 @@ pub fn load_off_hand(mut commands: Commands, mut images: ResMut<Assets<Image>>, 
 }
 
 pub fn load_art(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
-    let path = assets_dir().join("art").join("torch.ron");
+    let path = assets_dir().join("art").join("torch_planted.ron");
     let art = std::fs::read_to_string(&path)
         .map_err(|e| e.to_string())
         .and_then(|t| platypus_art::parse(&t))

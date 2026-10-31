@@ -49,7 +49,7 @@ const HEFT: f32 = 13500.0;
 /// Force: half the cone's angle (radians), how near the hand it leaves
 /// alone (cells), and how near it drags things in a pull.
 const CONE: f32 = 0.7;
-const HAND: f32 = 6.0;
+const HAND: f32 = 7.2;
 const PULL_STOP: f32 = 15.0;
 /// The caster's recoil: up to this share of the force's power, times how
 /// solid the cone is, reached at most this share of the way a tick (so it

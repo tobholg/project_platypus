@@ -34,8 +34,8 @@ const LANDS: f32 = 1.0 / 16.0;
 /// The camera's jolt when a kick moves something.
 const JOLT: f32 = 0.12;
 /// How far in front of the feet the kick reaches, and how high (cells).
-const REACH: f32 = 12.0;
-const HEIGHT: f32 = 11.0;
+const REACH: f32 = 14.4;
+const HEIGHT: f32 = 13.2;
 /// A kick's impulse into the world (mass in cells, times `dir` below: a
 /// 675-cell log leaves at `dir`, 2.4 cells a tick, ~140 cells a second).
 const IMPULSE: f32 = 675.0;

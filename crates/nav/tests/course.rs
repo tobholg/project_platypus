@@ -50,7 +50,7 @@ fn reaches(size: (f32, f32), stats: MovementStats, drop: f32) -> (bool, usize) {
 #[test]
 fn walkers_climbers_and_the_troll() {
     let orc = MovementStats { run_speed: 93.0, jump_height: 36.0, step_height: 5, ..MovementStats::default() };
-    assert!(reaches((11.0, 24.0), orc, 105.0).0, "the orc");
+    assert!(reaches((13.0, 29.0), orc, 105.0).0, "the orc");
     let spider = MovementStats { run_speed: 123.0, jump_height: 33.0, step_height: 3, cling: true, ..MovementStats::default() };
     let s = reaches((24.0, 18.0), spider, 150.0);
     assert!(s.0, "the spider ({} nodes)", s.1);

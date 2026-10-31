@@ -1,7 +1,11 @@
-"""A text sprite at 1.5x: coordinates scaled, every grid upscaled (old even
-pixels become two, odd ones one). A starting point to redraw by hand."""
+"""A text sprite scaled (1.5x by default; canon42's held things at 1.2x):
+coordinates scaled, every grid upscaled (at 1.5x old even pixels become two,
+odd ones one; at 1.2x every fifth doubles). A starting point to redraw by
+hand.
+
+    python3 tools/scale/hd_art.py IN.ron OUT.ron [SCALE]"""
 import math, re, sys
-S = 1.5
+S = float(sys.argv[3]) if len(sys.argv) > 3 else 1.5
 def c(v): return math.ceil(S * v)
 def cx(v):
     f = math.floor(v); return c(f) + (v - f)

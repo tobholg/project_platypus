@@ -2,8 +2,8 @@
 // held at its wrist (`grip`). What a zombie rakes with (`unarmed` in its
 // creature file: it has no weapon).
 (
-    size: (7, 5),
-    feet: (3, 5),
+    size: (8, 6),
+    feet: (4, 6),
     outline: (24, 20, 18),
     palette: {
         'g': (112, 124, 130),   // skin: dead grey-blue
@@ -12,11 +12,12 @@
     },
     frames: {
         "rotten_claw": [
-            "...gg.n",
-            ".gggggn",
-            "DDggggn",
-            ".DDDDDn",
-            "...DD..",
+            "...ggg.n",
+            ".ggggggn",
+            "DDgggggn",
+            "DDDDDDDn",
+            ".DDDDD.n",
+            "...DD...",
         ],
     },
     clips: { "held": (frames: ["rotten_claw"], fps: 1) },

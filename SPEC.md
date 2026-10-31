@@ -226,8 +226,8 @@ checksums.
     explosives. `camplook` scenario: to the nearest camp;
   - tunnels: each chamber to its nearest few, a spanning tree of those so
     every chamber connects (tested: 95 %+ in one network) plus more for
-    loops; wandering lines 36–66 cells wide (the player is 23 tall; the
-    underground's 36–54, a tenth of its tree links galleries 60–78); a
+    loops; wandering lines 43–66 cells wide (the player is 29 tall; the
+    underground's 43–54, a tenth of its tree links galleries 60–78); a
     steep link (rising more than 0.55 of its length) 48–60 wide, with a rock
     ledge now and then (in each 45 cells up, three times in ten, somewhere
     in it, from either wall; a shelf every 45 cells, one wall then the
@@ -242,7 +242,7 @@ checksums.
   - noise only roughens the walls; a chunk asks only the shapes binned to it.
     In the caverns every cave below the water table is flooded, so where
     tunnels meet the flooded chambers the water is already level.
-  - Tests: tunnels fit the player (a 9 × 23 box along 160 sampled tunnels,
+  - Tests: tunnels fit the player (an 11 × 29 box along 160 sampled tunnels,
     ≤ 1 % blocked), the network connects without crevices, crevices are few
     among the links, fissures are there, steep links are wide, a ledge
     leaves 26+ open beside it and is 6+ to stand on. `platypus-worldview
@@ -386,7 +386,7 @@ DESIGN.md §4–5, stage 4 of the world arc.
   copper pick, 109 cells in 3 s (75 of dirt, then stone), falling as it
   goes.
 - Pace: a copper pickaxe (power 35, 6 hits/s) takes dirt in one hit, stone in
-  two; an iron one (power 60, 7/s) stone in one. The player's box is 9 × 23 cells, so it drops into a 2-block
+  two; an iron one (power 60, 7/s) stone in one. The player's box is 11 × 29 cells (canon42), so it drops into a 2-block
   shaft and walks a 4-block tunnel.
 - Chests are furniture: entities, not cells (`hands/chests.rs`), 18 × 15
   cells (`worldgen::CHEST_SIZE`), drawn from a text picture. A chest is a body
@@ -1449,8 +1449,8 @@ DESIGN §13 item 4, PLAN L1 `world-events`.
   lies over what's already drawn, so an arm in front of the body stands out).
   Poses are frames like any other (outlined as one shape) and a part's
   points become the pose's anchors: a weapon will find the hand in every
-  frame by itself. The player (`assets/art/player.ron`, ~33 px tall on its
-  9 × 23 body, the head may overhang it) is drawn this way: a head (and a
+  frame by itself. The player (`assets/art/player.ron`, 42 px tall on its
+  11 × 29 body since canon42, the head may overhang it) is drawn this way: a head (and a
   blinking one), a torso, arms hanging, forward, back, lifted and reaching,
   legs standing, four run strides, tucked and dangling; poses for standing,
   breathing, blinking, four run steps (arms swinging against the legs, a

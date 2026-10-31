@@ -2,8 +2,8 @@
 // bail, a glass body, a flame inside. Hangs upright from `grip` (its
 // bail); its light comes from `flame`.
 (
-    size: (7, 11),
-    feet: (3, 11),
+    size: (9, 13),
+    feet: (4.5, 13),
     outline: (18, 18, 22),
     palette: {
         'i': (70, 66, 64),      // iron
@@ -14,19 +14,21 @@
     },
     frames: {
         "lantern": [
-            "..iII..",
-            ".i...i.",
-            "..iIi..",
-            ".IiiIi.",
-            ".gGGGg.",
-            ".gGfGg.",
-            ".gGfGg.",
-            ".ggGgg.",
-            ".IiiIi.",
-            "..iIi..",
-            ".......",
+            "...iII...",
+            "..i...I..",
+            "..i...i..",
+            "...iIi...",
+            ".IiiiiIi.",
+            ".gGGGGGg.",
+            ".gGGfGGg.",
+            ".gGGfGGg.",
+            ".gGGGGGg.",
+            ".gggGggg.",
+            ".IiiiiIi.",
+            "...iIi...",
+            ".........",
         ],
     },
     clips: { "on": (frames: ["lantern"], fps: 1) },
-    anchors: { "grip": { "lantern": (3, 1) }, "flame": { "lantern": (3, 6) } },
+    anchors: { "grip": { "lantern": (4, 1) }, "flame": { "lantern": (4, 7) } },
 )

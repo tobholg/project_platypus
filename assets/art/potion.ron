@@ -1,8 +1,8 @@
 // A potion held in the hand: a small flask, gripped round its body. Drawn
 // in its icon's colours (`recolor`): the liquid says what it is.
 (
-    size: (8, 11),
-    feet: (3.5, 11),
+    size: (10, 13),
+    feet: (4.5, 13),
     outline: (24, 18, 16),
     palette: {
         'c': (176, 124, 70),   // cork
@@ -14,19 +14,21 @@
     },
     frames: {
         "flask": [
-            "..ccc...",
-            "..cCC...",
-            "..gwg...",
-            "..grg...",
-            ".grrwg..",
-            "grrrrwg.",
-            "rrrrrrw.",
-            "rrrrrrR.",
-            "rrrrrRR.",
-            "RrrrRRR.",
-            ".RRRRR..",
+            "...ccc....",
+            "...cCC....",
+            "...gwg....",
+            "...grg....",
+            "...grg....",
+            "..grrwg...",
+            ".grrrrwg..",
+            "grrrrrrwg.",
+            "rrrrrrrrw.",
+            "rrrrrrrrR.",
+            "rrrrrrrRR.",
+            "RrrrrrRRR.",
+            ".RRRRRRR..",
         ],
     },
     clips: { "held": (frames: ["flask"], fps: 1) },
-    anchors: { "grip": { "flask": (3, 6) } },
+    anchors: { "grip": { "flask": (4, 8) } },
 )

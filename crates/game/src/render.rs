@@ -699,7 +699,7 @@ fn excite_foliage(time: Res<Time>, mut springs: ResMut<FoliageSprings>, bodies: 
 
 impl FoliageSprings {
     /// How far (cells beyond its half-width) a body parts the foliage.
-    const REACH: f32 = 14.0;
+    const REACH: f32 = 17.0;
 
     fn push(&mut self, b: &platypus_physics::Body, dt: f32) {
         let speed = b.vel.length();

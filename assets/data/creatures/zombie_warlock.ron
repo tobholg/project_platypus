@@ -16,7 +16,7 @@
 (
     name: "Zombie warlock",
     loot: "zombie_warlock",
-    size: (9, 22),
+    size: (11, 26),
     health: 120,
     team: Enemy,
     faction: "undead",
@@ -41,14 +41,14 @@
         dash_speed: 0,
     ),
     art: "zombie_warlock",
-    // Its legs: bandaged shins and wrapped boots from under its hem, 10
+    // Its legs: bandaged shins and wrapped boots from under its hem, 12
     // cells up; a slow, short shamble.
-    legs: (view: Side, rig: true, in_step: true, reach: 10.5, upper: 0.5, step: 0.3, lift: 2, stride: 6,
-           color: (118, 116, 96), joint: (96, 94, 78), shin: (84, 62, 50), outline: (14, 10, 18), width: [2.6, 2.4, 2.2], toes: 3,
+    legs: (view: Side, rig: true, in_step: true, reach: 12.6, upper: 0.5, step: 0.3, lift: 2.4, stride: 7.2,
+           color: (118, 116, 96), joint: (96, 94, 78), shin: (84, 62, 50), outline: (14, 10, 18), width: [3.12, 2.88, 2.64], toes: 3.6,
            body: "zombie_warlock",
            each: [
-               (hip: (2, -1), gait: 0, knee: Forward),
-               (hip: (-2, -1), gait: 1, knee: Forward, far: true),
+               (hip: (2.4, -1.2), gait: 0, knee: Forward),
+               (hip: (-2.4, -1.2), gait: 1, knee: Forward, far: true),
            ]),
     // Close in, it shoves you off; it calls up its dead; it casts.
     moves: ["warlock_shove", "warlock_rouse", "warlock_bolt"],

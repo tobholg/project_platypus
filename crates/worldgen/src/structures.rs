@@ -956,7 +956,7 @@ mod tests {
         assert!(parse("room bad\n#..#").is_err(), "a room must be whole slots");
     }
 
-    /// A body the player's size, in blocks (the player is 9 × 23 cells).
+    /// A body the player's size, in blocks (the player is 11 × 29 cells).
     const BODY: (i32, i32) = (2, 4);
 
     /// Where a player-sized body can get to from `start` (its bottom-left

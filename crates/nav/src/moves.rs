@@ -114,7 +114,8 @@ pub fn check<W: NavWorld>(v: &mut View<W>, p: &Profile, from: NodePos, m: &Move)
     match m.kind {
         Kind::Dig => cost(v, p, from, m).is_some(),
         Kind::Walk => match (v.stand(from), v.stand(to)) {
-            (Some(a), Some(b)) => (b - a).abs() <= p.step.max(NODE - 1) && (b <= a || p.step > 0),
+            // (On the level, the ground under it all the way across.)
+            (Some(a), Some(b)) => (b - a).abs() <= p.step.max(NODE - 1) && (b <= a || p.step > 0) && (a != b || v.ground_along(from.x * NODE + NODE / 2, to.x * NODE + NODE / 2, a)),
             _ => false,
         },
         Kind::Drop => {

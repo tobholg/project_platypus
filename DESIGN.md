@@ -26,12 +26,16 @@ part moves into SPEC.md as its arc lands. Numbers are starting points.
 
 ## 2. Scale
 
-At 1 cell = 1 art pixel, the player is 9 × 23 cells and runs 143 cells/s.
+At 1 cell = 1 art pixel, the player is 11 × 29 cells and runs 143 cells/s. (Canon42,
+2026-10-31: an upright adult humanoid is drawn 42 cells head to sole, its box
+11 × 29; it was ~35 on 9 × 23. What's measured against the body scaled 1.2×,
+what's measured against the world (blocks, jumps, speeds, reach in blocks)
+stayed: `tools/scale/ron_scale.py body`.)
 
 | | Cells | In player heights | Terraria large (in player heights) |
 |---|---|---|---|
-| Width | 196 608 (was 49 152) | ~8 500 | ~2 800 |
-| Height | 49 152 (was 24 576) | ~2 100 | ~800 |
+| Width | 196 608 (was 49 152) | ~6 800 | ~2 800 |
+| Height | 49 152 (was 24 576) | ~1 700 | ~800 |
 
 Crossing the world on foot takes about 24 minutes (it was 6). Vertical bands, in the reference world (`medium`; the large world's sky, caverns and deep are taller: SPEC, presets) (sea level at about 25 % from the top):
 

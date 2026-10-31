@@ -79,7 +79,7 @@ const STREAM_DAMAGE: f32 = 2.0;
 const STREAM_HEAT: i16 = 12;
 /// A stream starts this far ahead of the hand (so it doesn't douse its
 /// caster).
-const STREAM_AHEAD: f32 = 9.0;
+const STREAM_AHEAD: f32 = 11.0;
 /// Meeting a liquid: an orb skips off it (at most this many times) when it
 /// comes in shallower than this (vertical to horizontal speed) and faster
 /// than this (cells/s)...
