@@ -20,8 +20,8 @@
 //
 // In body heights (the player was 23 cells when these were set): Hollow
 // Knight runs 6.3 a second, jumps 2.7 high, 0.48 s in the air; Terraria
-// 4.3, 2.5, 0.85 s. (canon42 made the body 29 tall and kept the world's
-// numbers: in its heights, each of these × 0.79.)
+// 4.3, 2.5, 0.85 s. (canon42 made the body 29 tall; its `scale`, 1.2,
+// makes every length here 1.2 times as long, so these hold in its heights.)
 (
     default: "Experimental",
     presets: [

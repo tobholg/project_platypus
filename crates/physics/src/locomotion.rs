@@ -208,6 +208,13 @@ pub struct MovementStats {
     /// in a tight cave flipped round every tick. 0: it turns at once (the
     /// player).
     pub turn_hold: f32,
+    /// Its body is this many times the size these numbers were set for
+    /// (the humanoids grown 1.2 times, canon42): every length in them (its
+    /// speeds, accelerations, gravity, jump, its boots') is this many times
+    /// as long, so it moves as it did in its own body heights, its timing
+    /// the same. Its `step_height` is the world's (a block and a cell).
+    /// `at_scale` applies it.
+    pub scale: f32,
     /// Weightless (set each tick where gravity's all but gone, not from a
     /// creature's file): it floats (`Locomotion::float`).
     #[serde(skip)]
@@ -273,6 +280,7 @@ impl Default for MovementStats {
             rocket_thrust: 3900.0,
             rocket_speed: 345.0,
             rocket_run: 0.0,
+            scale: 1.0,
             weightless: false,
         }
     }
@@ -284,6 +292,25 @@ impl MovementStats {
     pub fn jump_speed(&self) -> f32 {
         let (g, h) = (self.gravity.max(1.0), self.jump_hold.max(0.0));
         if h > 0.0 { g * (-h + (h * h + 2.0 * self.jump_height / g).sqrt()) } else { (2.0 * g * self.jump_height).sqrt() }
+    }
+
+    /// Its lengths at its `scale` (then at 1: applying it again changes
+    /// nothing).
+    pub fn at_scale(&self) -> MovementStats {
+        let k = self.scale;
+        if (k - 1.0).abs() < 1e-4 {
+            return self.clone();
+        }
+        let mut m = self.clone();
+        for v in [
+            &mut m.run_speed, &mut m.ground_accel, &mut m.ground_decel, &mut m.turn_accel, &mut m.air_accel, &mut m.gravity, &mut m.max_fall,
+            &mut m.jump_height, &mut m.dash_speed, &mut m.wall_slide_speed, &mut m.wall_jump_push, &mut m.swim_max_fall, &mut m.swim_stroke,
+            &mut m.fly_speed, &mut m.fly_accel, &mut m.swim_speed, &mut m.swim_accel, &mut m.rocket_thrust, &mut m.rocket_speed, &mut m.rocket_run,
+        ] {
+            *v *= k;
+        }
+        m.scale = 1.0;
+        m
     }
 
     /// Straight up to a full jump's height with no hold (a bounce: the

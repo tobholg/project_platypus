@@ -34,6 +34,9 @@
     voice: Some(("snarl", (2.0, 5.0))),
     fall_damage: (safe_height: 120, per_cell: 0.5),
     movement: (
+        // (Its body grown 1.2 times, canon42: these are as they were, in
+        // its own body heights: `scale`.)
+        scale: 1.2,
         run_speed: 78,
         jump_height: 28,
         air_jumps: 0,

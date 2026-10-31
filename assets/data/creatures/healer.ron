@@ -8,7 +8,9 @@
     team: Villager,
     // Its kind (kinds.ron): how it takes each kind of hurt.
     kind: "humanoid",
-    movement: (run_speed: 102, jump_height: 33, air_jumps: 0, step_height: 5, dash_speed: 0),
+    // (`scale`: its body grown 1.2 times, canon42; these as they were in
+    // its own body heights.)
+    movement: (scale: 1.2, run_speed: 102, jump_height: 33, air_jumps: 0, step_height: 5, dash_speed: 0),
     stamina: 60,
     poise: 10,
     heft: 1.0,

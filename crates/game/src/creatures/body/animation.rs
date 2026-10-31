@@ -204,7 +204,7 @@ pub fn animate(
             let mut rate = 1.0;
             let mut back = false;
             if name == "run" {
-                let run = def.movement.run_speed.max(1.0);
+                let run = (def.movement.run_speed * def.movement.scale).max(1.0);
                 rate = (k.body.vel.x.abs() / run).clamp(0.5, 1.5);
                 back = k.body.vel.x * k.loco.facing < 0.0;
             }

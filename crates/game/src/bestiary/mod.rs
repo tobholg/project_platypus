@@ -118,7 +118,7 @@ impl Entry {
             role,
             size: def.size,
             health: def.health,
-            speed: def.movement.run_speed,
+            speed: def.movement.run_speed * def.movement.scale,
             poise: def.poise,
             heft: def.heft,
             code: def.custom.as_ref().map(|c| c.name.clone()),

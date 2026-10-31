@@ -81,15 +81,16 @@ impl Tempo {
         self.presets.get(self.active).map_or("", |p| &p.name)
     }
 
-    /// A creature's movement at this tempo (`player`: it's the player's).
     /// Every creature's pace but the player's (1: as written).
     pub fn pace(&self) -> f32 {
         self.presets.get(self.active).map_or(1.0, |p| p.pace)
     }
 
+    /// A creature's movement at this tempo (`player`: it's the player's);
+    /// last, its lengths at its body's `scale`.
     pub fn apply(&self, s: &MovementStats, player: bool) -> MovementStats {
         let mut m = s.clone();
-        let Some(p) = self.presets.get(self.active) else { return m };
+        let Some(p) = self.presets.get(self.active) else { return m.at_scale() };
         if player {
             for (field, &v) in &p.player {
                 match field.as_str() {
@@ -120,13 +121,13 @@ impl Tempo {
                     _ => {}
                 }
             }
-            return m;
+            return m.at_scale();
         }
         m.jump_height *= p.jump;
         m.gravity *= p.gravity;
         let k = p.pace;
         if (k - 1.0).abs() < 1e-4 || k <= 0.0 {
-            return m;
+            return m.at_scale();
         }
         for v in [&mut m.run_speed, &mut m.max_fall, &mut m.dash_speed, &mut m.fly_speed, &mut m.swim_speed, &mut m.wall_slide_speed, &mut m.wall_jump_push, &mut m.rocket_speed, &mut m.rocket_run] {
             *v *= k;
@@ -137,7 +138,7 @@ impl Tempo {
         for v in [&mut m.dash_time, &mut m.jump_hold, &mut m.air_dash_recharge] {
             *v /= k;
         }
-        m
+        m.at_scale()
     }
 }
 
