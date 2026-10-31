@@ -9,8 +9,10 @@
 (
     name: "Crimson head",
     loot: "zombie",
-    // What it had on when it died: now and then a hood or a helmet.
-    wears: [("cloth_hood", 0.15), ("iron_helm", 0.08)],
+    // Nothing on its head: its bare skull is its face (no hood or helmet
+    // rolled for it, none put on it getting up again; the upright
+    // zombie_classic wore them).
+    bare_head: true,
     size: (9, 20),
     health: 160,
     team: Enemy,

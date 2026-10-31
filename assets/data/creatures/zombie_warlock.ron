@@ -27,8 +27,9 @@
     sunburns: true,
     blood: "rot",
     eyes: (150, 255, 100),
-    // (A faint green about it in the dark: its eyes, its craft.)
-    light: (color: (120, 255, 100), strength: 0.25),
+    // (A green glow about it in the dark, off its eyes and its craft: it
+    // reads at night.)
+    light: (color: (120, 255, 100), strength: 0.5),
     // A low groan now and then.
     voice: Some(("groan", (4.0, 11.0))),
     fall_damage: (safe_height: 120, per_cell: 0.5),

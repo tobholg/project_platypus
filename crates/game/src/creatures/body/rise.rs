@@ -531,23 +531,25 @@ pub fn stand(
         // arm held).
         let left: Vec<Stack> = chests.contents(corpse.key, &sim.world, &items).slots.iter().flatten().copied().collect();
         chests.forget(corpse.key);
+        // (The last time, it may get up something worse: `last`.)
+        let risen = pile.risen + 1;
+        let kind = pile.rise.last.as_ref().filter(|_| pile.rise.times.is_some_and(|t| risen >= t)).unwrap_or(&pile.kind).clone();
+        let def = creatures.get(&kind).cloned().unwrap_or_else(|| pile.def.clone());
         let mut eq = crate::gear::Equipment::default();
         let armless = missing.contains(&super::parts::Limb::Arm(0));
         for s in left {
-            let def = items.def(s.item);
-            let weapon = matches!(def.use_, Use::Melee(_) | Use::Bow(_)) && def.gear.is_some();
+            let def_s = items.def(s.item);
+            let weapon = matches!(def_s.use_, Use::Melee(_) | Use::Bow(_)) && def_s.gear.is_some();
+            // (Nothing on a bare head: a crimson head's is its face.)
+            let headgear = def_s.gear.as_ref().is_some_and(|g| g.slot == crate::gear::Slot::Head);
             if weapon && eq.held.is_none() && !armless {
                 eq.held = Some(s);
-            } else if let Some(i) = def.gear.as_ref().and(eq.slot_for(&items, &s)) {
+            } else if let Some(i) = def_s.gear.as_ref().filter(|_| !(def.bare_head && headgear)).and(eq.slot_for(&items, &s)) {
                 eq.worn[i] = Some(s);
             } else {
                 crate::hands::spawn_drop(&mut commands, &items, pos, s);
             }
         }
-        // (The last time, it may get up something worse: `last`.)
-        let risen = pile.risen + 1;
-        let kind = pile.rise.last.as_ref().filter(|_| pile.rise.times.is_some_and(|t| risen >= t)).unwrap_or(&pile.kind).clone();
-        let def = creatures.get(&kind).cloned().unwrap_or_else(|| pile.def.clone());
         // (Nothing in its hand: what it fights with bare, its fists.)
         let wielding = eq
             .held

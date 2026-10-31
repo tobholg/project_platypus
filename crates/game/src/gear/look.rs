@@ -27,14 +27,15 @@ pub struct Wardrobe(HashMap<String, Arc<CreatureDef>>);
 /// The order skins go on: what's under first.
 const LAYERS: [Slot; 6] = [Slot::Feet, Slot::Legs, Slot::Body, Slot::Hands, Slot::Head, Slot::Trinket];
 
-/// The skins of what's worn, under to over, and a name for the outfit.
-fn outfit<'a>(items: &'a Items, eq: &Equipment) -> (Vec<&'a Skin>, String) {
+/// The skins of what's worn, under to over, and a name for the outfit
+/// (nothing on its head, `bare_head`: none drawn there).
+fn outfit<'a>(items: &'a Items, eq: &Equipment, bare_head: bool) -> (Vec<&'a Skin>, String) {
     let mut skins = Vec::new();
     let mut name = String::new();
     for layer in LAYERS {
         for (i, s) in eq.worn.iter().enumerate() {
             let Some(s) = s else { continue };
-            if WORN[i] != layer {
+            if WORN[i] != layer || (bare_head && layer == Slot::Head) {
                 continue;
             }
             let def = items.def(s.item);
@@ -136,7 +137,7 @@ pub fn dress(
         if base.art_file.is_none() {
             continue;
         }
-        let (mut skins, mut name) = outfit(&items, &eq);
+        let (mut skins, mut name) = outfit(&items, &eq, base.bare_head);
         for l in &lost {
             name.push_str(&format!("-{l:?}"));
         }
