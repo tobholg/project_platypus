@@ -1,0 +1,139 @@
+{
+"rows": [
+"....................................BFNPPN...",
+"...................................FKQRRRRRL.",
+"..................................FHPQRRRRRR.",
+"..................................FKOMPRRRRRN",
+"..........................R..R...FBHMHNPRRRRP",
+".........................MRQHOM.BAFFHILIRFDIN",
+"......................QRFMHMKKHOCBFFLPJQQDQEM",
+".......................PPKKOOOHMHBCCNEJRRNFRQ",
+"....................RPJQOOMKOOMHHIICCPHCQNRPO",
+"....................MQRNMHHOOMMCMCJNEBLCFNQPO",
+"..................MIQRPFKFKMOKMCMIQNJEPIEOQO.",
+".................MKNQQIFKCHKMHHCMEEJICPJO.B..",
+"...............KKMIIOMPHHBFHFOFBLBCBBB.PQ....",
+"..............HHHOEBIILHHFBHCOHBCBCC...JQPF..",
+".............FKFKMCCCCAFHFBBIHMBAB.F....JN...",
+"............KMHCMOCECAAKKHBBIPMHB..B....FB...",
+"...........HKHFFOMFCAACHHFCHBQHMC............",
+"...........HHFBKOMCKMAACFFBKAOFMF............",
+"..........PIFCCMOCCBABAAFF.KBEQLKC...........",
+".........QQJCBHHMKCBCCBAF..KCBQNKF...........",
+".......QQPNBCAKCHMCCCCCBB..H.FIQHH...........",
+"......JNPQ.B.BHEHMCGCCEEC.....HOHMF..........",
+".....ENEQQ...CHJKMCBBCCEEC....HHHOMF.........",
+".....JECJ....HEPHKBBBCEGEEC...HKMMKC.........",
+".....IECBN..BFJRICC.BCEGJGGE..FKHMMK.........",
+"......EEI...CFNRJAF...BEEGJJE..HFMKFH........",
+"...........BFFPRIAB....BCEGNGB.HFKBLO........",
+".........CCEBFQRIB......BEGGIC.HHHBJRP.......",
+".......EGNJIBIRRF......BCGCEPE.HHAAEPRN......",
+"......EJLJJGOKOQF......BGGGEIB..HAA.IQQ......",
+".....JPPOEJGFKF.......IIEGEBB...HAC..JRP.....",
+".JINPQPQPBGGEA.......CPJBEC.B...LAI...PR.....",
+"IRRQOPOF.BEBG.......CNNCBC.......FL...QRP....",
+"JRPRQK...BB.B......CJNEB..............NRQ....",
+".PQME.............CINE................JRRP...",
+".IQPE.............EEJN................IRQQP..",
+".NQNE.............EJJNPE..............JPPQLP.",
+".QPPOH.............BECNPNN............P.PNNJ.",
+".EOOOO.................IIJ.............EII..."
+],
+"pal": {
+"A": [
+19,
+17,
+16
+],
+"B": [
+35,
+30,
+30
+],
+"C": [
+43,
+38,
+39
+],
+"D": [
+84,
+30,
+28
+],
+"E": [
+48,
+45,
+49
+],
+"F": [
+54,
+47,
+42
+],
+"G": [
+55,
+51,
+61
+],
+"H": [
+65,
+57,
+49
+],
+"I": [
+56,
+58,
+57
+],
+"J": [
+63,
+67,
+69
+],
+"K": [
+77,
+68,
+57
+],
+"L": [
+72,
+69,
+64
+],
+"M": [
+85,
+76,
+65
+],
+"N": [
+75,
+81,
+80
+],
+"O": [
+94,
+87,
+76
+],
+"P": [
+92,
+99,
+95
+],
+"Q": [
+111,
+115,
+110
+],
+"R": [
+138,
+148,
+142
+]
+},
+"size": [
+45,
+39
+]
+}

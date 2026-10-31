@@ -41,14 +41,15 @@
         dash_speed: 0,
     ),
     art: "zombie_warlock",
-    // Its legs: bandaged shins and wrapped boots from under its hem, 12
-    // cells up; a slow, short shamble.
-    legs: (view: Side, rig: true, in_step: true, reach: 12.6, upper: 0.5, step: 0.3, lift: 2.4, stride: 7.2,
-           color: (118, 116, 96), joint: (96, 94, 78), shin: (84, 62, 50), outline: (14, 10, 18), width: [3.12, 2.88, 2.64], toes: 3.6,
+    // Its legs: bandaged shins and wrapped boots from under its hem, a
+    // long slow stride (at the canon, for a box 26 high: hips 15 up, under
+    // the reference's robe).
+    legs: (view: Side, rig: true, in_step: true, reach: 16, upper: 0.5, step: 0.3, lift: 2.4, stride: 8,
+           color: (103, 104, 88), joint: (86, 86, 72), shin: (88, 72, 60), outline: (10, 8, 14), width: [3.1, 2.9, 2.6], toes: 4,
            body: "zombie_warlock",
            each: [
-               (hip: (2.4, -1.2), gait: 0, knee: Forward),
-               (hip: (-2.4, -1.2), gait: 1, knee: Forward, far: true),
+               (hip: (4, 2), lean: 2, gait: 0, knee: Forward),
+               (hip: (-3.5, 2), lean: -5, gait: 1, knee: Forward, far: true),
            ]),
     // Close in, it shoves you off; it calls up its dead; it casts.
     moves: ["warlock_shove", "warlock_rouse", "warlock_bolt"],
