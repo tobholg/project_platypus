@@ -18686,7 +18686,8 @@ fn outfits_script(
         let mut all: Vec<(usize, f32)> = them.iter().filter_map(|(_, _, _, h, at)| at.map(|a| (a.0, h.ward.armor))).collect();
         all.sort_by_key(|a| a.0);
         for (i, armor) in all {
-            info!("outfits: {} ({}): armour {armor:.0}", looks[i], outfit_ids(&looks[i]).join(", "));
+            let worn = if looks[i].starts_with("kind:") { String::new() } else { outfit_ids(&looks[i]).join(", ") };
+            info!("outfits: {} ({worn}): armour {armor:.0}", looks[i]);
         }
         info!("outfits: the player in the middle: {}", looks[mid]);
     }
