@@ -16,7 +16,7 @@
     loot: "orc_shaman",
     // (Its headdress is its head: no cap or helm on it.)
     bare_head: true,
-    size: (13, 27),
+    size: (12, 23),
     health: 75,
     team: Enemy,
     faction: "orcs",
@@ -36,14 +36,14 @@
         dash_speed: 0,
     ),
     art: "orc_shaman",
-    // Its legs (box 27 high: hips 14 up, under its robe): wrapped shins and
+    // Its legs (box 23 high: hips 12 up, under its robe): wrapped shins and
     // brown boots from under its hem, set wide, the far foot well back.
-    legs: (view: Side, rig: true, in_step: true, reach: 16, upper: 0.5, step: 0.3, lift: 2, stride: 7,
-           color: (70, 56, 38), joint: (56, 44, 30), shin: (110, 88, 60), outline: (14, 13, 8), width: [3.4, 3.0, 2.7], toes: 4,
+    legs: (view: Side, rig: true, in_step: true, reach: 15, upper: 0.5, step: 0.3, lift: 1.8, stride: 6,
+           color: (70, 56, 38), joint: (56, 44, 30), shin: (110, 88, 60), outline: (14, 13, 8), width: [3.1, 2.7, 2.4], toes: 4,
            body: "orc_shaman",
            each: [
-               (hip: (4, 0.5), lean: 4, gait: 0, knee: Forward),
-               (hip: (-5, 0.5), lean: -5, gait: 1, knee: Forward, far: true),
+               (hip: (3.5, 0.5), lean: 3.5, gait: 0, knee: Forward),
+               (hip: (-4.5, 0.5), lean: -4.5, gait: 1, knee: Forward, far: true),
            ]),
     // Close in, it shoves you off; further, it throws fire.
     moves: ["shaman_shove", "shaman_fire"],
