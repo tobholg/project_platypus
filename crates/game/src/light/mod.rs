@@ -625,8 +625,10 @@ pub(crate) fn update_daylight(
 }
 
 /// God rays: the sun's light in open air, where it stands out from what's round it, shown as haze at this share (at
-/// most: `compute_light`).
-const SHAFTS: f32 = 1.0;
+/// most: `compute_light`). Off (user, 2026-11-02: dropped for frame rate;
+/// their seed copy and two blurs a frame skipped); `PLATYPUS_SHAFTS=1`
+/// still shows them.
+const SHAFTS: f32 = 0.0;
 
 /// How far round (texels) a shaft must stand out from to show; how far
 /// round it's softened; how bright the sun must be for any (not at night).

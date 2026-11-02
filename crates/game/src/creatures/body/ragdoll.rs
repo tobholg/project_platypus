@@ -20,6 +20,7 @@ use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use platypus_physics::Grid;
+use platypus_sim::CellPos;
 
 use crate::creatures::{Kinematics, WorldGrid};
 use crate::world::{SimWorld, TICK_HZ};
@@ -628,6 +629,10 @@ impl Limp {
             return;
         }
         let h = DT / SUBSTEPS as f32;
+        let mut touching = Vec::with_capacity(self.pieces.len());
+        // (Edge points tested, and those with no way out of the cells
+        // they're in: buried, in rock or deep sand.)
+        let (mut tested, mut trapped) = (0usize, 0usize);
         for _ in 0..SUBSTEPS {
             for p in &mut self.pieces {
                 let v = ((p.pos - p.prev) * AIR).clamp_length_max(FASTEST * h);
@@ -637,14 +642,18 @@ impl Limp {
                 p.pos += v + Vec2::new(0.0, -gravity * h * h);
                 p.angle += w;
             }
-            let mut touching = vec![false; self.pieces.len()];
+            touching.clear();
+            touching.resize(self.pieces.len(), false);
             // (Loose pieces, no joints to hold: fewer passes do.)
             let passes = if self.joints.is_empty() { LOOSE_ITERATIONS } else { ITERATIONS };
             for _ in 0..passes {
                 self.joints_together();
                 self.bends_held();
                 for (i, p) in self.pieces.iter_mut().enumerate() {
-                    touching[i] |= out_of_cells(p, grid);
+                    let (touched, stuck) = out_of_cells(p, grid);
+                    touching[i] |= touched;
+                    tested += p.samples.len();
+                    trapped += stuck;
                 }
             }
             // Where it touches, it drags (and doesn't bounce).
@@ -656,7 +665,10 @@ impl Limp {
             }
         }
         let moved = self.pieces.iter().map(|p| p.pos.distance(p.tick_pos) + (p.angle - p.tick_angle).abs() * 4.0).fold(0.0f32, f32::max);
-        self.still = if moved < STILL { self.still + 1 } else { 0 };
+        // (Most of it buried with no way out: it can't settle, so it's
+        // taken to be still, and sleeps where it is.)
+        let buried = trapped * 2 > tested;
+        self.still = if moved < STILL || buried { self.still + 1 } else { 0 };
         if self.still >= STILL_TICKS {
             self.asleep = true;
             for p in &mut self.pieces {
@@ -736,6 +748,14 @@ impl Limp {
         self.still = 0;
     }
 
+    /// Held where it is this tick (its ground not loaded): drawn still.
+    pub fn hold(&mut self) {
+        for p in &mut self.pieces {
+            p.tick_pos = p.pos;
+            p.tick_angle = p.angle;
+        }
+    }
+
     pub fn root_pos(&self) -> (Vec2, Vec2) {
         let p = &self.pieces[self.root];
         (p.tick_pos, p.pos)
@@ -743,11 +763,16 @@ impl Limp {
 }
 
 /// A piece's edge points out of the cells they've gone into: each pushed
-/// back the shortest way out (up first); true if any touched.
-fn out_of_cells(p: &mut Piece, grid: &impl Grid) -> bool {
-    let mut touched = false;
+/// back the shortest way out (up first); whether any touched, and how many
+/// found no way out.
+fn out_of_cells(p: &mut Piece, grid: &impl Grid) -> (bool, usize) {
+    let (mut touched, mut stuck) = (false, 0);
+    // (Its turn's sine and cosine, worked out again only when a push has
+    // turned it: the same as per point, without a sin_cos each.)
+    let (mut s, mut c) = p.angle.sin_cos();
     for i in 0..p.samples.len() {
-        let r = rot(p.samples[i], p.angle);
+        let v = p.samples[i];
+        let r = Vec2::new(v.x * c - v.y * s, v.x * s + v.y * c);
         let w = p.pos + r;
         let (x, y) = (w.x.floor() as i32, w.y.floor() as i32);
         if !grid.solid(x, y) {
@@ -771,11 +796,15 @@ fn out_of_cells(p: &mut Piece, grid: &impl Grid) -> bool {
                 }
             }
         }
-        if let Some(by) = best {
-            push(p, r, by, 0.8);
+        match best {
+            Some(by) => {
+                push(p, r, by, 0.8);
+                (s, c) = p.angle.sin_cos();
+            }
+            None => stuck += 1,
         }
     }
-    touched
+    (touched, stuck)
 }
 
 /// Every ragdoll a tick on; its body where its torso is (and thrown with
@@ -783,6 +812,13 @@ fn out_of_cells(p: &mut Piece, grid: &impl Grid) -> bool {
 pub fn step_all(sim: Res<SimWorld>, mut q: Query<(&mut Limp, &mut Kinematics)>) {
     let grid = WorldGrid(&sim.world);
     for (mut limp, mut k) in &mut q {
+        // (Its ground not loaded, it waits, as creatures do: unloaded
+        // cells count as rock, and it would be stuck in them for ever.)
+        if !sim.world.is_loaded(CellPos::from_world(k.body.pos.x, k.body.pos.y).chunk()) {
+            limp.hold();
+            k.prev_pos = k.body.pos;
+            continue;
+        }
         if k.body.vel != Vec2::ZERO {
             // (A share of what threw its body, and no more than so much: a
             // bomb's blast tumbles bodies about, not across the map.)

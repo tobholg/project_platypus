@@ -85,6 +85,7 @@ fn setup(mut commands: Commands, sim: Res<SimWorld>, mut images: ResMut<Assets<I
         .spawn((
             Name::new("Bestiary stage camera"),
             Camera2d,
+            bevy::render::view::Msaa::Off,
             Camera { order: -1, is_active: false, clear_color: ClearColorConfig::Custom(Color::srgb(0.34, 0.38, 0.46)), ..default() },
             bevy::camera::RenderTarget::Image(image.clone().into()),
             Projection::Orthographic(OrthographicProjection { scale: 0.5, ..OrthographicProjection::default_2d() }),

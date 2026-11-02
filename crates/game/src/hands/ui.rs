@@ -827,30 +827,38 @@ fn show(
             node.width = size;
             node.height = size;
         }
-        bg.0 = if big { CHOSEN_BG } else { EMPTY };
+        bg.set_if_neq(BackgroundColor(if big { CHOSEN_BG } else { EMPTY }));
         // (Gear finer than common is edged in its rarity's colour.)
         let rare = slot_of(which, i).filter(|s| s.roll.rarity > 0).and_then(|s| rules.rarity(&items, &s)).map(|r| Color::srgb_u8(r.color.0, r.color.1, r.color.2));
         // Holding gear: where it can go lights up.
         let fits = which == Holder::Equip && held.stack.is_some_and(|h| Equipment::fits(&items, i, &h));
-        *border = BorderColor::all(if fits {
+        // (Written only when it differs: a component written is changed,
+        // and the UI lays out again.)
+        border.set_if_neq(BorderColor::all(if fits {
             FITS
         } else if chosen {
             CHOSEN
         } else {
             rare.unwrap_or(EDGE)
-        });
+        }));
     }
     for (&SlotIcon(which, i), mut image, mut bg) in &mut slot_icons {
         let (handle, color) = look(slot_of(which, i).as_ref());
         if image.image != handle {
             image.image = handle.clone();
         }
-        image.color = if handle == Handle::default() { Color::NONE } else { Color::WHITE };
-        bg.0 = color;
+        let tint = if handle == Handle::default() { Color::NONE } else { Color::WHITE };
+        if image.color != tint {
+            image.color = tint;
+        }
+        bg.set_if_neq(BackgroundColor(color));
     }
     for (&SlotCount(which, i), mut text) in &mut counts {
         let n = slot_of(which, i).map_or(0, |s| whole(&items, &s));
-        text.0 = if n > 1 { n.to_string() } else { String::new() };
+        let shown = if n > 1 { n.to_string() } else { String::new() };
+        if text.0 != shown {
+            text.0 = shown;
+        }
     }
     let name = inv.slots[hand.active()].map_or(String::new(), |s| {
         let unit = items.unit(s.item);
@@ -878,7 +886,9 @@ fn show(
             let n = whole(&items, &s);
             grip_count.0 = if n > 1 { n.to_string() } else { String::new() };
         }
-        _ => **vis = Visibility::Hidden,
+        _ => {
+            vis.set_if_neq(Visibility::Hidden);
+        }
     }
 }
 

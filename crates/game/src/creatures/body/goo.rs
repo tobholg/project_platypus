@@ -388,7 +388,7 @@ pub fn hold(
         goo.placed = spiked.into_iter().chain(places).collect();
     }
     // (PLATYPUS_GOOTIME: how long holding every slime's goo takes.)
-    if slimes > 0 && std::env::var("PLATYPUS_GOOTIME").is_ok() && sim.world.tick().is_multiple_of(60) {
+    if slimes > 0 && sim.world.tick().is_multiple_of(60) && std::env::var("PLATYPUS_GOOTIME").is_ok() {
         info!("goo: {slimes} slimes held in {:.2} ms", started.elapsed().as_secs_f64() * 1000.0);
     }
 }

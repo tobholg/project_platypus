@@ -70,18 +70,24 @@ impl Plugin for CameraPlugin {
 pub struct Offscreen(pub Handle<Image>);
 
 /// Drawing into an image (`Offscreen`).
+/// (Read once: it's asked every frame.)
 pub fn offscreen() -> bool {
-    std::env::var("PLATYPUS_OFFSCREEN").is_ok_and(|v| !v.is_empty())
+    static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("PLATYPUS_OFFSCREEN").is_ok_and(|v| !v.is_empty()));
+    *ON
 }
 
 /// Offscreen with no window at all (not `PLATYPUS_SHOW`).
 pub fn headless() -> bool {
-    offscreen() && std::env::var("PLATYPUS_SHOW").is_err()
+    static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("PLATYPUS_SHOW").is_err());
+    offscreen() && *ON
 }
 
 fn spawn_camera(mut commands: Commands, start: Res<StartAt>, mut images: ResMut<Assets<Image>>) {
     let mut cam = commands.spawn((
         Camera2d,
+        // (Pixel art: no multisampling. Bevy's default is 4×, a resolve
+        // pass and four times the colour memory for edges nothing needs.)
+        bevy::render::view::Msaa::Off,
         MainCamera,
         Transform::from_translation(start.0.extend(100.0)),
         ChunkLoader { half_extent: Vec2::new(400.0, 240.0) },
@@ -95,7 +101,7 @@ fn spawn_camera(mut commands: Commands, start: Res<StartAt>, mut images: ResMut<
         // layer of its own.
         if !headless() {
             let mirror = bevy::camera::visibility::RenderLayers::layer(MIRROR_LAYER);
-            commands.spawn((Name::new("Window mirror camera"), Camera2d, Camera { order: 1, ..default() }, mirror.clone()));
+            commands.spawn((Name::new("Window mirror camera"), Camera2d, bevy::render::view::Msaa::Off, Camera { order: 1, ..default() }, mirror.clone()));
             commands.spawn((Name::new("Window mirror"), OffscreenMirror, Sprite { image: image.clone(), ..default() }, mirror));
         }
         commands.insert_resource(Offscreen(image));

@@ -131,6 +131,9 @@ struct SparkMeshes {
     meshes: Vec<Handle<Mesh>>,
     behind: Vec<Handle<Mesh>>,
     material: Option<Handle<ColorMaterial>>,
+    /// Quads each mesh held when last filled (empty twice: not touched, so
+    /// nothing's uploaded for it).
+    held: [Vec<usize>; 2],
 }
 
 impl Plugin for VfxPlugin {
@@ -217,18 +220,24 @@ fn draw_sparks(mut commands: Commands, mut sparks: ResMut<Sparks>, mut set: ResM
     }
     let set = &mut *set;
     let material = set.material.get_or_insert_with(|| materials.add(ColorMaterial { alpha_mode: AlphaMode2d::Blend, ..default() })).clone();
-    for (list, quads, z) in [(&mut set.meshes, &quads, Z_SPARKS), (&mut set.behind, &behind, Z_SPARKS_BEHIND)] {
+    let [held_front, held_behind] = &mut set.held;
+    for (list, quads, z, held) in [(&mut set.meshes, &quads, Z_SPARKS, held_front), (&mut set.behind, &behind, Z_SPARKS_BEHIND, held_behind)] {
         let batches = quads.len().div_ceil(PER_MESH).max(1);
         while list.len() < batches {
             let handle = meshes.add(empty_mesh());
             commands.spawn((Name::new("Sparks"), Mesh2d(handle.clone()), MeshMaterial2d(material.clone()), Transform::from_xyz(0.0, 0.0, z), NoFrustumCulling));
             list.push(handle);
         }
+        held.resize(list.len(), usize::MAX);
         for (b, handle) in list.iter().enumerate() {
-            let Some(mut mesh) = meshes.get_mut(handle) else { continue };
             let lo = (b * PER_MESH).min(quads.len());
             let hi = ((b + 1) * PER_MESH).min(quads.len());
+            if hi == lo && held[b] == 0 {
+                continue;
+            }
+            let Some(mut mesh) = meshes.get_mut(handle) else { continue };
             fill(&mut mesh, &quads[lo..hi]);
+            held[b] = hi - lo;
         }
     }
 }

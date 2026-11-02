@@ -786,7 +786,9 @@ fn hunt(
                     }
                 }
                 // (PLATYPUS_STEERLOG: how it steers, every 15 ticks.)
-                if std::env::var("PLATYPUS_STEERLOG").is_ok_and(|v| v.parse::<u64>().is_ok_and(|from| tick >= from) || v == "1") && tick.is_multiple_of(15) {
+                // (Read once: this runs for every crawler every tick.)
+                static STEERLOG: std::sync::LazyLock<Option<u64>> = std::sync::LazyLock::new(|| std::env::var("PLATYPUS_STEERLOG").ok().and_then(|v| if v == "1" { Some(0) } else { v.parse().ok() }));
+                if STEERLOG.is_some_and(|from| tick >= from) && tick.is_multiple_of(15) {
                     info!("steer: t {tick} at {:?} to {:?} clear {} steer {:?} clinging {:?} grounded {grounded} → x {mx} y {move_y}", pos.round(), t.round(), crate::creatures::moves::clear(&sim, pos, t), steer, clinging);
                 }
                 mx

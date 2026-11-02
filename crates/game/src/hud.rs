@@ -374,7 +374,9 @@ fn update_statuses(
         }
     }
     for (label, mut text) in &mut labels {
-        if let Some((name, ..)) = shown.get(label.0) {
+        if let Some((name, ..)) = shown.get(label.0)
+            && text.0 != *name
+        {
             text.0.clone_from(name);
         }
     }

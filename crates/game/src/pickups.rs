@@ -376,12 +376,16 @@ fn place(
         Some((p, size))
     });
     let Some((p, size)) = at else {
-        **vis = Visibility::Hidden;
+        vis.set_if_neq(Visibility::Hidden);
         return;
     };
-    **vis = Visibility::Inherited;
-    node.left = px(p.x - WIDTH / 2.0);
-    node.bottom = px(size.y - p.y);
+    vis.set_if_neq(Visibility::Inherited);
+    // (Set only when it moved: a node touched is laid out again.)
+    let (left, bottom) = (px(p.x - WIDTH / 2.0), px(size.y - p.y));
+    if node.left != left || node.bottom != bottom {
+        node.left = left;
+        node.bottom = bottom;
+    }
 }
 
 #[cfg(test)]

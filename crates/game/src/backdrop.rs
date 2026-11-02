@@ -850,6 +850,7 @@ fn picture_setup(mut commands: Commands, mut images: ResMut<Assets<Image>>, mut 
             Name::new("Backdrop camera"),
             BackdropCamera,
             Camera2d,
+            bevy::render::view::Msaa::Off,
             Camera { order: -1, clear_color: ClearColorConfig::Custom(Color::NONE), ..default() },
             bevy::camera::RenderTarget::Image(image.clone().into()),
             backdrop_layer(),
@@ -873,7 +874,7 @@ fn picture(
     time: Res<Time>,
     water: Res<crate::light::WaterMask>,
     main: Single<(&Transform, &Projection, &Camera), (With<MainCamera>, Without<BackdropCamera>)>,
-    mut cams: Query<(&mut Transform, &mut Projection), (With<BackdropCamera>, Without<MainCamera>)>,
+    mut cams: Query<(&mut Transform, &mut Projection, &mut Camera), (With<BackdropCamera>, Without<MainCamera>)>,
     mut places: Query<(&mut Transform, &mut Visibility), (Without<MainCamera>, Without<BackdropCamera>)>,
     mut sprites: Query<&mut Sprite>,
     mut images: ResMut<Assets<Image>>,
@@ -894,9 +895,18 @@ fn picture(
         pic.image = image;
         pic.size = px;
     }
-    if let Ok((mut tf, mut proj)) = cams.get_mut(pic.camera) {
+    // (Deep underground the void covers it whole (`void`: 1 − shown):
+    // not drawn at all, a render pass and its blit saved.)
+    let drawn = bd.shown > 0.0;
+    if let Ok((mut tf, mut proj, mut cam)) = cams.get_mut(pic.camera) {
         *tf = *mtf;
         *proj = mproj.clone();
+        if cam.is_active != drawn {
+            cam.is_active = drawn;
+        }
+    }
+    if let Ok((_, mut vis)) = places.get_mut(pic.sprite) {
+        vis.set_if_neq(if drawn { Visibility::Inherited } else { Visibility::Hidden });
     }
     let scale = match mproj {
         Projection::Orthographic(o) => o.scale,
