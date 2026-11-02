@@ -126,6 +126,9 @@ const Z_REFLECT: f32 = 0.05;
 /// picture: the view shows it; open water mirrors it).
 const BACKDROP_LAYER: usize = 29;
 
+/// Backdrop tiles made at once at most (on the shared compute pool).
+const MAKING_MOST: usize = 2;
+
 fn backdrop_layer() -> bevy::camera::visibility::RenderLayers {
     bevy::camera::visibility::RenderLayers::layer(BACKDROP_LAYER)
 }
@@ -571,6 +574,11 @@ fn tiles(
         if bd.tiles.contains_key(&key) || bd.making.contains_key(&key) {
             continue;
         }
+        // (A few at a time: all at once, coming up into it, they filled the
+        // shared compute pool and the light's solve waited behind them.)
+        if bd.making.len() >= MAKING_MOST {
+            break;
+        }
         let (w, h) = Backdrops::size(key.part);
         let looks = bd.looks.clone();
         let task = match key.part {
@@ -581,8 +589,9 @@ fn tiles(
         };
         bd.making.insert(key, task);
     }
-    // Out of view (and a margin), or its look gone: gone.
-    let stale: Vec<Key> = bd.tiles.keys().filter(|key| !want.iter().any(|w| w.part == key.part && w.v == key.v && w.k == key.k && (w.tx - key.tx).abs() <= 2 && (w.ty - key.ty).abs() <= 2)).copied().collect();
+    // Out of view (and a margin), or its look gone: gone. (Not while it's
+    // hidden underground: kept for coming back up, not made all again.)
+    let stale: Vec<Key> = if bd.shown <= 0.0 { Vec::new() } else { bd.tiles.keys().filter(|key| !want.iter().any(|w| w.part == key.part && w.v == key.v && w.k == key.k && (w.tx - key.tx).abs() <= 2 && (w.ty - key.ty).abs() <= 2)).copied().collect() };
     for key in stale {
         if let Some(tile) = bd.tiles.remove(&key) {
             commands.entity(tile.entity).despawn();

@@ -184,7 +184,7 @@ fn target(sim: &SimWorld) -> Option<Vec2> {
 
 fn place(time: Res<Time<Real>>, sim: Res<SimWorld>, mut cheats: ResMut<crate::devmenu::Cheats>, mut player: Query<&mut Kinematics, With<LocalPlayer>>, mut st: Local<(f32, Option<Option<Vec2>>, f32)>) {
     st.0 += time.delta_secs();
-    if std::env::var("PLATYPUS_SURVEY_AT").is_err() || st.0 < 0.5 {
+    if (std::env::var("PLATYPUS_SURVEY_AT").is_err() && std::env::var("PLATYPUS_SURVEY_MOVE").is_err()) || st.0 < 0.5 {
         return;
     }
     cheats.god = true;
@@ -196,7 +196,24 @@ fn place(time: Res<Time<Real>>, sim: Res<SimWorld>, mut cheats: ResMut<crate::de
         k.body.pos = at;
         k.prev_pos = at;
         k.body.vel = Vec2::ZERO;
-        st.2 = at.y;
+    }
+    if st.0 < 2.5 {
+        st.2 = k.body.pos.y;
+    }
+    // (`dive`: straight down through the ground at a steady pace, 1500
+    // cells and back up, every slow frame logged with how deep it is.)
+    if std::env::var("PLATYPUS_SURVEY_MOVE").as_deref() == Ok("dive") && st.0 >= 2.5 {
+        let t = st.0 - 2.5;
+        const PACE: f32 = 150.0;
+        let down = (t * PACE).min(1500.0) - ((t - 1500.0 / PACE - 1.0).max(0.0) * PACE).min(1500.0);
+        k.body.pos.y = st.2 - down;
+        k.prev_pos = k.body.pos;
+        k.body.vel = Vec2::ZERO;
+        let ms = time.delta_secs() * 1e3;
+        if ms > 12.0 {
+            let ground = sim.generator.surface_hint(k.body.pos.x as i32).unwrap_or(0) as f32;
+            info!("survey: slow frame {ms:.1} ms at {:.0} under the ground", ground - k.body.pos.y);
+        }
     }
     if std::env::var("PLATYPUS_SURVEY_MOVE").as_deref() == Ok("fly") && st.0 >= 2.5 {
         k.body.pos.y = st.2;
