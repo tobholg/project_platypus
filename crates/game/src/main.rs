@@ -216,7 +216,7 @@ fn main() {
         .add_plugins((respawn::RespawnPlugin, devmenu::DevMenuPlugin, pause::PausePlugin, map::MapPlugin, title::TitlePlugin { show: show_title, behind: launch, fresh }))
         .add_plugins((progress::ProgressPlugin, craft::CraftPlugin, save::SavePlugin { name: save, kind, seed, mode }))
         .add_plugins(load::LoadPlugin)
-        .add_plugins(survey::SurveyPlugin)
+        .add_plugins((survey::SurveyPlugin, survey::ImageLogPlugin))
         .add_plugins(spikes_plugin)
         .add_systems(Last, pace_frames)
         .run();

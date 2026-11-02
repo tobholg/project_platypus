@@ -213,3 +213,69 @@ fn drive(time: Res<Time<Real>>, mut keys: ResMut<ButtonInput<KeyCode>>, mut t: L
     keys.press(KeyCode::KeyD);
     if (*t % 1.4) < 0.35 { keys.press(KeyCode::Space) } else { keys.release(KeyCode::Space) }
 }
+
+/// `PLATYPUS_IMAGELOG=1`: every 5 s, the images changed and added (by
+/// size, the commonest), and the sprites drawn and how many images they
+/// use between them.
+pub struct ImageLogPlugin;
+
+impl Plugin for ImageLogPlugin {
+    fn build(&self, app: &mut App) {
+        if std::env::var("PLATYPUS_IMAGELOG").is_ok() {
+            app.add_systems(Last, image_log);
+        }
+    }
+}
+
+#[allow(clippy::type_complexity)]
+fn image_log(
+    time: Res<Time<Real>>,
+    mut events: MessageReader<AssetEvent<Image>>,
+    images: Res<Assets<Image>>,
+    sprites: Query<(&Sprite, &ViewVisibility, Option<&Name>, Option<&ChildOf>)>,
+    names: Query<&Name>,
+    mut st: Local<(f32, std::collections::HashMap<(u32, u32, bool), u32>, u32)>,
+    mut who: Local<std::collections::HashMap<String, u32>>,
+) {
+    let name_of = |name: Option<&Name>, parent: Option<&ChildOf>| name.map(|n| n.as_str().to_string()).or_else(|| parent.and_then(|p| names.get(p.parent()).ok()).map(|n| format!("child of {}", n.as_str()))).unwrap_or_else(|| "?".into());
+    let by_image: std::collections::HashMap<AssetId<Image>, String> = sprites.iter().map(|(s, _, n, p)| (s.image.id(), name_of(n, p))).collect();
+    for e in events.read() {
+        if let AssetEvent::Modified { id } = e {
+            let s = images.get(*id).map_or((0, 0), |i| (i.width(), i.height()));
+            *who.entry(format!("{}x{} {}", s.0, s.1, by_image.get(id).cloned().unwrap_or_else(|| "(no sprite)".into()))).or_default() += 1;
+        }
+        let (id, added) = match e {
+            AssetEvent::Modified { id } => (*id, false),
+            AssetEvent::Added { id } => (*id, true),
+            _ => continue,
+        };
+        let s = images.get(id).map_or((0, 0), |i| (i.width(), i.height()));
+        *st.1.entry((s.0, s.1, added)).or_default() += 1;
+    }
+    st.2 += 1;
+    st.0 += time.delta_secs();
+    if st.0 < 5.0 {
+        return;
+    }
+    let secs = st.0;
+    let mut by: Vec<_> = st.1.drain().collect();
+    by.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
+    let list: Vec<String> = by.iter().take(12).map(|((w, h, a), n)| format!("{w}x{h}{} {:.0}/s", if *a { " added" } else { "" }, *n as f32 / secs)).collect();
+    let shown: Vec<_> = sprites.iter().filter(|(_, v, ..)| v.get()).collect();
+    let unique: std::collections::HashSet<_> = shown.iter().map(|(s, ..)| s.image.id()).collect();
+    let mut kinds: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+    for (_, _, name, parent) in &shown {
+        let n = name.map(|n| n.as_str().to_string()).or_else(|| parent.and_then(|p| names.get(p.parent()).ok()).map(|n| format!("child of {}", n.as_str()))).unwrap_or_else(|| "?".into());
+        *kinds.entry(n).or_default() += 1;
+    }
+    let mut kinds: Vec<_> = kinds.into_iter().collect();
+    kinds.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
+    let kinds: Vec<String> = kinds.iter().take(10).map(|(k, n)| format!("{k} {n}")).collect();
+    let mut w: Vec<_> = who.drain().collect();
+    w.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
+    let w: Vec<String> = w.iter().take(10).map(|(k, n)| format!("{k} {:.0}/s", *n as f32 / secs)).collect();
+    info!("images changed by sprite: {}", w.join(", "));
+    info!("images: {} | sprites shown {} using {} images; by name: {}", list.join(", "), shown.len(), unique.len(), kinds.join(", "));
+    st.0 = 0.0;
+    st.2 = 0;
+}

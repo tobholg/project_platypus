@@ -2646,6 +2646,10 @@ struct Layer {
     image: Handle<Image>,
     origin: IVec2,
     size: UVec2,
+    /// What it last painted (its cells, where it was put): the same again
+    /// (between ticks, mostly, the pose a whole cell's width the same) and
+    /// nothing's painted or uploaded.
+    painted: Option<u64>,
 }
 
 #[derive(Component)]
@@ -2697,6 +2701,17 @@ impl Layer {
             }
             None => {}
         }
+        let key = {
+            use std::hash::{Hash, Hasher};
+            let mut hs = std::hash::DefaultHasher::new();
+            (self.image.id(), self.origin, self.size).hash(&mut hs);
+            cells.hash(&mut hs);
+            hs.finish()
+        };
+        if self.painted == Some(key) {
+            return;
+        }
+        self.painted = Some(key);
         let Some(mut img) = images.get_mut(&self.image) else { return };
         let (w, h) = (self.size.x as i32, self.size.y as i32);
         let Some(data) = img.data.as_mut() else { return };
