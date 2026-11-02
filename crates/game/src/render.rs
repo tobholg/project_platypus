@@ -21,6 +21,7 @@ use platypus_sim::{CHUNK, Cell, CellPos, ChunkPos, Climate, Kind, MaterialId, Ma
 use crate::creatures::Kinematics;
 use crate::camera::MainCamera;
 use crate::world::{ChunkLoader, SimWorld};
+use rayon::prelude::*;
 
 pub struct ChunkRenderPlugin;
 
@@ -54,6 +55,11 @@ struct Layer {
     plants: Vec<PlantPx>,
     /// Cells that shed motes (`MaterialDef::motes`).
     glints: Vec<Glint>,
+    /// This frame's picture, composed off the main thread, then copied
+    /// into the image (`sync_chunks`).
+    out: Vec<u8>,
+    /// Composed this frame: to be copied in.
+    composed: bool,
 }
 
 /// A cell that sheds glowing motes (spores).
@@ -94,6 +100,8 @@ struct ChunkGfx {
     /// The drifters' cells in it, left out (`drift::Drifting`: they're drawn
     /// themselves, gliding): redrawn when they change.
     hidden: Option<[u64; N]>,
+    /// Drawn at least once (off screen after that, it waits).
+    drawn: bool,
 }
 
 /// The box round a chunk's aerolite (cells in it), if it has enough to
@@ -326,12 +334,18 @@ fn occlusion(front: &[Cell], mats: &MaterialTable) -> Vec<f32> {
         for y in (0..N).rev() {
             let i = y * N + x;
             since = if solid(i) { 0 } else { since.saturating_add(1) };
-            let near = (d[i] as f32 / 10.0 / SHADE_REACH).min(1.0);
             let under = (since as f32 / SHADOW_REACH).min(1.0);
-            out[i] = (0.38 + 0.62 * near.powf(0.7)) * (0.6 + 0.4 * under);
+            out[i] = (0.38 + 0.62 * near_shade()[d[i] as usize]) * (0.6 + 0.4 * under);
         }
     }
     out
+}
+
+/// The shade by distance to the nearest solid (in tenths, as `occlusion`
+/// keeps it): `near^0.7`, made once (a `powf` a cell was most of it).
+fn near_shade() -> &'static [f32; 256] {
+    static T: std::sync::LazyLock<[f32; 256]> = std::sync::LazyLock::new(|| std::array::from_fn(|d| (d as f32 / 10.0 / SHADE_REACH).min(1.0).powf(0.7)));
+    &T
 }
 
 /// How far a solid in front shades the wall behind it, and how far down its
@@ -506,7 +520,7 @@ fn new_layer(commands: &mut Commands, images: &mut Assets<Image>, pos: ChunkPos,
     let entity = commands
         .spawn((Sprite { image: image.clone(), custom_size: Some(Vec2::splat(CHUNK as f32)), ..default() }, layer_transform(pos, z), ChunkSprite))
         .id();
-    Layer { entity, image, base: vec![0; N * N * 4], plants: Vec::new(), glints: Vec::new() }
+    Layer { entity, image, base: vec![0; N * N * 4], plants: Vec::new(), glints: Vec::new(), out: Vec::new(), composed: false }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -545,13 +559,14 @@ fn sync_chunks(
     let climate = sim.world.climate();
     let aerolite = mats.id("aerolite_ore");
 
+    // (Made and placed first, one by one: that needs the commands.)
     for chunk in sim.world.chunks() {
         let at = sim.world.near_chunk(chunk.pos);
         let fresh = !gfx.0.contains_key(&chunk.pos);
         if fresh {
             let front = new_layer(&mut commands, &mut images, at, Z_WORLD);
             let back = new_layer(&mut commands, &mut images, at, Z_BACKGROUND);
-            gfx.0.insert(chunk.pos, ChunkGfx { front, back, at, aero: None, solid: Vec::new(), hidden: None });
+            gfx.0.insert(chunk.pos, ChunkGfx { front, back, at, aero: None, solid: Vec::new(), hidden: None, drawn: false });
         }
         let g = gfx.0.get_mut(&chunk.pos).expect("inserted above");
         if g.at != at {
@@ -560,13 +575,29 @@ fn sync_chunks(
                 commands.entity(layer.entity).insert(layer_transform(at, z));
             }
         }
+    }
+    // Then drawn, in parallel: each chunk its own layers.
+    let generator = &sim.generator;
+    let mut jobs: Vec<(&platypus_sim::Chunk, &mut ChunkGfx)> = gfx.0.iter_mut().filter_map(|(pos, g)| sim.world.chunk(*pos).map(|c| (c, g))).collect();
+    jobs.par_iter_mut().for_each(|(chunk, g)| {
+        let seen = g.at.origin();
+        let visible = view.is_none_or(|(lo, hi)| {
+            let (x, y) = (seen.x as f32, seen.y as f32);
+            x + CHUNK as f32 >= lo.x && x <= hi.x && y + CHUNK as f32 >= lo.y && y <= hi.y
+        });
+        // (Off screen, and drawn once: what changed waits, its flags kept,
+        // till it comes within a chunk of the view. Falling sand and blood
+        // out of sight were redrawn every tick.)
+        if !visible && g.drawn {
+            return;
+        }
+        let fresh = !std::mem::replace(&mut g.drawn, true);
         // (Each layer redrawn only when its own cells changed.)
         let hidden = drifting.0.get(&chunk.pos).copied();
         let dirty = chunk.take_render_dirty() || fresh || hidden != g.hidden;
         g.hidden = hidden;
         let bg_dirty = chunk.take_bg_render_dirty() || fresh;
-        // (Its cells as stored, drawn where it's seen.)
-        let (o, seen) = (chunk.pos.origin(), at.origin());
+        let o = chunk.pos.origin();
         // (The background's shaded by the front: redrawn when what's solid
         // in front changes.)
         let mut reshade = false;
@@ -578,21 +609,30 @@ fn sync_chunks(
             g.solid = solid;
         }
         if bg_dirty || reshade {
-            let ground: Option<Vec<i32>> = (0..N as i32).map(|lx| sim.generator.surface_hint(o.x + lx)).collect();
+            let ground: Option<Vec<i32>> = (0..N as i32).map(|lx| generator.surface_hint(o.x + lx)).collect();
             rebuild(&mut g.back, chunk.background(), mats, o, &climate, true, ground.as_deref(), Some(chunk.cells()), None);
         }
-        let visible = view.is_none_or(|(lo, hi)| {
-            let (x, y) = (seen.x as f32, seen.y as f32);
-            x + CHUNK as f32 >= lo.x && x <= hi.x && y + CHUNK as f32 >= lo.y && y <= hi.y
-        });
-        for (layer, dirty) in [(&g.front, dirty), (&g.back, bg_dirty)] {
+        for (layer, dirty) in [(&mut g.front, dirty), (&mut g.back, bg_dirty)] {
             let animate = sway_now && visible && !layer.plants.is_empty();
-            if !(dirty || animate) {
+            layer.composed = dirty || animate;
+            if layer.composed {
+                let mut out = std::mem::take(&mut layer.out);
+                out.resize(N * N * 4, 0);
+                compose(layer, &mut out, (seen.x, seen.y), &sway, &springs);
+                layer.out = out;
+            }
+        }
+    });
+    drop(jobs);
+    // (Into the images, on the main thread.)
+    for g in gfx.0.values_mut() {
+        for layer in [&mut g.front, &mut g.back] {
+            if !std::mem::take(&mut layer.composed) {
                 continue;
             }
             let Some(mut image) = images.get_mut(&layer.image) else { continue };
             let Some(data) = image.data.as_mut() else { continue };
-            compose(layer, data, (seen.x, seen.y), &sway, &springs);
+            data.copy_from_slice(&layer.out);
         }
     }
     // The aerolite in view (a margin round it), merged where it touches:
