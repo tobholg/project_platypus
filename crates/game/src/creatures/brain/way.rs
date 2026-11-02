@@ -57,7 +57,7 @@ pub struct Ways {
     off: bool,
     pub nav: Nav,
     /// (By kind and gravity, in eighths: `zerog::eighths`.)
-    profiles: HashMap<(String, u8), Arc<Profile>>,
+    profiles: HashMap<String, HashMap<u8, Arc<Profile>>>,
     /// The tempo they were made at (`tempo.rs`: creatures move at its pace;
     /// a jump's arc and hold with it).
     pace: f32,
@@ -69,11 +69,17 @@ pub struct Ways {
     pub micros: u64,
     /// This tick's planning so far (the tick, µs).
     spent: (u64, u64),
+    /// Planning a tick may spend (µs): `TICK_BUDGET`, less under load
+    /// (`load::Load::plan_micros`, set each tick by `hunt`).
+    pub tick_budget: u64,
+    /// The load's level (`load`): far off, what it's going for may move
+    /// further before the way's planned again.
+    pub load: u8,
 }
 
 impl Default for Ways {
     fn default() -> Self {
-        Ways { off: std::env::var("PLATYPUS_NONAV").is_ok_and(|v| !v.is_empty()), nav: Nav::default(), profiles: HashMap::new(), pace: 1.0, remade: HashMap::new(), searches: 0, looked: 0, micros: 0, spent: (0, 0) }
+        Ways { off: std::env::var("PLATYPUS_NONAV").is_ok_and(|v| !v.is_empty()), nav: Nav::default(), profiles: HashMap::new(), pace: 1.0, remade: HashMap::new(), searches: 0, looked: 0, micros: 0, spent: (0, 0), tick_budget: TICK_BUDGET, load: 0 }
     }
 }
 
@@ -134,8 +140,14 @@ impl Ways {
     /// at the game's tempo, under so many eighths of the ground's gravity
     /// (high in the sky: it jumps higher and further).
     pub fn profile(&mut self, kind: &str, def: &CreatureDef, tempo: &crate::tempo::Tempo, eighths: u8) -> Arc<Profile> {
+        // (Looked up by the name as it is: no String made each time.)
+        if let Some(p) = self.profiles.get(kind).and_then(|m| m.get(&eighths)) {
+            return p.clone();
+        }
         self.profiles
-            .entry((kind.to_string(), eighths))
+            .entry(kind.to_string())
+            .or_default()
+            .entry(eighths)
             .or_insert_with(|| {
                 // (No fall damage: it'll drop a long way.)
                 let drop = def.fall_damage.map_or(150.0, |f| f.safe_height);
@@ -202,15 +214,22 @@ impl Ways {
             let next = way.path.get(way.i).map_or(prev, |s| s.0);
             (at - prev).abs().max_element() > 1 && (at - next).abs().max_element() > 1
         };
-        let moved = way.goal.is_none_or(|g| (g - to).abs().max_element() > MOVED);
+        // (Far off and under load, what it's going for may move further
+        // before it plans again: a way a little stale out there doesn't
+        // show.)
+        let slack = MOVED + match self.load {
+            0 => 0,
+            l => (to - at).abs().max_element() / [0, 24, 16, 10][l.min(3) as usize],
+        };
+        let moved = way.goal.is_none_or(|g| (g - to).abs().max_element() > slack);
         let stale = !way.whole && tick.saturating_sub(way.made) > REPLAN;
         let airborne = tick < way.hold_until || !grounded;
         if self.spent.0 != tick {
             self.spent = (tick, 0);
         }
-        let room = self.spent.1 < TICK_BUDGET;
+        let room = self.spent.1 < self.tick_budget;
         // (One under way that's after somewhere it no longer is: dropped.)
-        if way.search.as_ref().is_some_and(|s| (s.to - to).abs().max_element() > MOVED) {
+        if way.search.as_ref().is_some_and(|s| (s.to - to).abs().max_element() > slack) {
             way.search = None;
         }
         let want = moved || stale || off || stuck;
@@ -219,7 +238,7 @@ impl Ways {
             let grid = WorldGrid(world);
             let mut v = self.nav.view(&grid, p.size);
             // (No more than what's left of the tick's planning.)
-            let deadline = started + std::time::Duration::from_micros(TICK_BUDGET.saturating_sub(self.spent.1).max(200));
+            let deadline = started + std::time::Duration::from_micros(self.tick_budget.saturating_sub(self.spent.1).max(200));
             let mut search = way.search.take().unwrap_or_else(|| Box::new(Search::new(&mut v, &p, at, to, 1, BUDGET)));
             let before = search.looked();
             let done = search.run(&mut v, &p, Some(deadline));

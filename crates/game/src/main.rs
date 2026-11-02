@@ -49,6 +49,7 @@ mod hearts;
 mod hud;
 mod kick;
 mod light;
+mod load;
 mod magic;
 mod mode;
 mod particles;
@@ -214,6 +215,7 @@ fn main() {
         .add_plugins(difficulty::DifficultyPlugin)
         .add_plugins((respawn::RespawnPlugin, devmenu::DevMenuPlugin, pause::PausePlugin, map::MapPlugin, title::TitlePlugin { show: show_title, behind: launch, fresh }))
         .add_plugins((progress::ProgressPlugin, craft::CraftPlugin, save::SavePlugin { name: save, kind, seed, mode }))
+        .add_plugins(load::LoadPlugin)
         .add_plugins(survey::SurveyPlugin)
         .add_plugins(spikes_plugin)
         .add_systems(Last, pace_frames)

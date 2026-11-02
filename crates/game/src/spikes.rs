@@ -105,7 +105,7 @@ fn report(time: Res<Time<Real>>, mut profile: Local<Profile>) {
             let frames = profile.frames.max(1) as f32;
             let mut top: Vec<_> = profile.times.drain().filter(|(n, _)| !CONTAINERS.contains(&n.as_str())).collect();
             top.sort_by_key(|(_, (d, _))| std::cmp::Reverse(*d));
-            let list: Vec<String> = top.iter().take(14).map(|(n, (d, _))| format!("{:.2} {}", d.as_secs_f32() * 1000.0 / frames, n.trim_start_matches("platypus::"))).collect();
+            let list: Vec<String> = top.iter().take(std::env::var("PLATYPUS_PROFILE_TOP").ok().and_then(|s| s.parse().ok()).unwrap_or(14)).map(|(n, (d, _))| format!("{:.2} {}", d.as_secs_f32() * 1000.0 / frames, n.trim_start_matches("platypus::"))).collect();
             info!("profile over {} frames (ms a frame): {}", profile.frames, list.join(" | "));
             profile.since = 0.0;
             profile.frames = 0;

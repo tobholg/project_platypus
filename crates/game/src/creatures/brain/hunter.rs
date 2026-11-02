@@ -186,6 +186,9 @@ pub struct HunterMind {
     /// Skirmishing: coming in now (since), waiting out till, and whether
     /// it was busy with a move last tick (a move done: back out).
     charging: bool,
+    /// Which crowd it charges with (its pack, or its kind after the same
+    /// quarry), kept for the ticks it doesn't think.
+    crowd: Option<u64>,
     charge_since: u64,
     wait_until: u64,
     was_busy: bool,
@@ -254,7 +257,7 @@ fn hunt(
     mut swings: MessageWriter<crate::combat::MeleeRequest>,
     mut draws: MessageWriter<crate::archery::DrawBow>,
     ids: Query<&crate::creatures::Stable>,
-    (mut ways, creatures, tempo): (ResMut<super::way::Ways>, Res<crate::creatures::def::Creatures>, Res<crate::tempo::Tempo>),
+    (mut ways, creatures, tempo, mut load): (ResMut<super::way::Ways>, Res<crate::creatures::def::Creatures>, Res<crate::tempo::Tempo>, ResMut<crate::load::Load>),
     packs: Query<(&super::tactics::Pack, &Kinematics)>,
     mut sounds: MessageWriter<crate::sound::PlaySound>,
     // Skirmishers coming in, per pack (or per kind and quarry: `shared`):
@@ -262,6 +265,12 @@ fn hunt(
     mut charging: Local<(std::collections::HashMap<u64, u32>, std::collections::HashMap<u64, u32>)>,
 ) {
     let tick = sim.world.tick();
+    // (Under load, `load`: the planner gets less time, far hunters think
+    // every few ticks, each on its own tick. The quarry, for how far.)
+    ways.tick_budget = load.plan_micros();
+    ways.load = load.level;
+    let quarry: Vec<Vec2> = hunted.iter().filter(|(_, t)| t.hunted()).map(|(pk, _)| pk.body.pos).collect();
+    load.hunters = q.iter().count() as u32;
     let (charging_then, charging_now) = &mut *charging;
     std::mem::swap(charging_then, charging_now);
     charging_now.clear();
@@ -281,6 +290,18 @@ fn hunt(
         };
         let id = crate::creatures::stable(&ids, e);
         let pos = k.body.pos;
+        // (Not its tick to think: it goes on as it was, its controls held.
+        // A skirmisher coming in still counts as coming in.)
+        let far = quarry.iter().map(|q| q.distance(pos)).fold(f32::MAX, f32::min);
+        let every = load.think_every(far);
+        if every > 1 && (tick.wrapping_add(id)) % every != 0 {
+            if m.charging
+                && let Some(c) = m.crowd
+            {
+                *charging_now.entry(c).or_default() += 1;
+            }
+            continue;
+        }
         // (On a leash: only what's near its place.)
         let home = keeps.filter(|_| h.leash > 0.0).map(|kp| Vec2::new(kp.0.0 as f32, kp.0.1 as f32));
         // What it goes for: what its senses tell it (`senses.rs`): its
@@ -394,6 +415,7 @@ fn hunt(
                     m.charging = true;
                     m.charge_since = tick;
                 }
+                m.crowd = crowd;
                 if m.charging
                     && let Some(c) = crowd
                 {

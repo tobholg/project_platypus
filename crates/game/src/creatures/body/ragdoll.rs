@@ -104,6 +104,9 @@ pub struct Limp {
     pub root: usize,
     still: u32,
     pub asleep: bool,
+    /// Substeps a tick it's stepped at now (its pieces' motion is kept a
+    /// substep's worth: rescaled when this changes, `step_at`).
+    subs: u8,
 }
 
 /// A piece's picture (a child of the body).
@@ -321,7 +324,7 @@ pub fn assemble(cuts: &[Cut], frame: (u32, u32), centre: Vec2, facing: f32, vel:
             joints.push(Joint { a: root, b: i, la: jw - pieces[root].pos, lb: jw - pieces[i].pos, rest: 0.0, limit: bend(&c.name) });
         }
     }
-    Limp { pieces, joints, root, still: 0, asleep: false }
+    Limp { pieces, joints, root, still: 0, asleep: false, subs: SUBSTEPS as u8 }
 }
 
 /// How a piece looks: drawn for it (mirrored or not), or the body's own
@@ -404,7 +407,7 @@ pub fn rubble(cuts: &[Cut], frame: (u32, u32), centre: Vec2, facing: f32, vel: V
         }
     }
     let root = pieces.iter().enumerate().max_by(|a, b| a.1.inv_mass.total_cmp(&b.1.inv_mass).reverse()).map_or(0, |(i, _)| i);
-    (Limp { pieces, joints: Vec::new(), root, still: 0, asleep: false }, looks)
+    (Limp { pieces, joints: Vec::new(), root, still: 0, asleep: false, subs: SUBSTEPS as u8 }, looks)
 }
 
 /// Limbs drawn apart from its art (a rig's legs: `legs::rig`) added to
@@ -499,7 +502,7 @@ pub fn limbed(sprite: Sprite, offset: Vec2, frame: (u32, u32), body: Vec2, limbs
         pixels: Vec::new(),
     };
     let body_mass = (half.x * half.y * 4.0).max(4.0);
-    let mut limp = Limp { pieces: vec![new(centre, 0.0, body_mass, body_mass * half.length_squared() / 3.0, edge(half), "body", vel, omega)], joints: Vec::new(), root: 0, still: 0, asleep: false };
+    let mut limp = Limp { pieces: vec![new(centre, 0.0, body_mass, body_mass * half.length_squared() / 3.0, edge(half), "body", vel, omega)], joints: Vec::new(), root: 0, still: 0, asleep: false, subs: SUBSTEPS as u8 };
     let mut looks = vec![Look::Sprite(sprite)];
     attach(&mut limp, &mut looks, limbs, draw, vel, omega);
     (limp, looks)
@@ -620,7 +623,24 @@ fn push(p: &mut Piece, r: Vec2, by: Vec2, share: f32) {
 impl Limp {
     /// A tick: moving on, falling, then put right (joints, bends, the
     /// world), `SUBSTEPS` times.
+    #[cfg(test)]
     pub fn step(&mut self, grid: &impl Grid, gravity: f32) {
+        self.step_at(grid, gravity, SUBSTEPS);
+    }
+
+    /// A tick in `subs` substeps (fewer under load, far away: `load`).
+    pub fn step_at(&mut self, grid: &impl Grid, gravity: f32, subs: usize) {
+        let subs = subs.clamp(1, SUBSTEPS);
+        if subs as u8 != self.subs {
+            // (Motion is kept as a substep's move: the same speed in
+            // longer or shorter substeps.)
+            let k = self.subs as f32 / subs as f32;
+            for p in &mut self.pieces {
+                p.prev = p.pos - (p.pos - p.prev) * k;
+                p.prev_angle = p.angle - (p.angle - p.prev_angle) * k;
+            }
+            self.subs = subs as u8;
+        }
         for p in &mut self.pieces {
             p.tick_pos = p.pos;
             p.tick_angle = p.angle;
@@ -628,15 +648,19 @@ impl Limp {
         if self.asleep {
             return;
         }
-        let h = DT / SUBSTEPS as f32;
+        let h = DT / subs as f32;
+        // (Drag and spin kept by the tick, not the substep: the same in
+        // fewer, longer ones.)
+        let k = SUBSTEPS as f32 / subs as f32;
+        let (air, spin_kept) = if subs == SUBSTEPS { (AIR, SPIN_KEPT) } else { (AIR.powf(k), SPIN_KEPT.powf(k)) };
         let mut touching = Vec::with_capacity(self.pieces.len());
         // (Edge points tested, and those with no way out of the cells
         // they're in: buried, in rock or deep sand.)
         let (mut tested, mut trapped) = (0usize, 0usize);
-        for _ in 0..SUBSTEPS {
+        for _ in 0..subs {
             for p in &mut self.pieces {
-                let v = ((p.pos - p.prev) * AIR).clamp_length_max(FASTEST * h);
-                let w = (p.angle - p.prev_angle) * SPIN_KEPT;
+                let v = ((p.pos - p.prev) * air).clamp_length_max(FASTEST * h);
+                let w = (p.angle - p.prev_angle) * spin_kept;
                 p.prev = p.pos;
                 p.prev_angle = p.angle;
                 p.pos += v + Vec2::new(0.0, -gravity * h * h);
@@ -720,7 +744,7 @@ impl Limp {
     /// Thrown (a blast): every piece moves `vel` more (cells a second), and
     /// it wakes.
     pub fn throw(&mut self, vel: Vec2) {
-        let v = vel * DT / SUBSTEPS as f32;
+        let v = vel * DT / self.subs as f32;
         for p in &mut self.pieces {
             p.prev -= v;
         }
@@ -809,8 +833,9 @@ fn out_of_cells(p: &mut Piece, grid: &impl Grid) -> (bool, usize) {
 
 /// Every ragdoll a tick on; its body where its torso is (and thrown with
 /// it: what threw the body throws its pieces).
-pub fn step_all(sim: Res<SimWorld>, mut q: Query<(&mut Limp, &mut Kinematics)>) {
+pub fn step_all(sim: Res<SimWorld>, load: Res<crate::load::Load>, players: Query<&Kinematics, (With<crate::creatures::player::LocalPlayer>, Without<Limp>)>, mut q: Query<(&mut Limp, &mut Kinematics)>) {
     let grid = WorldGrid(&sim.world);
+    let near: Vec<Vec2> = players.iter().map(|k| k.body.pos).collect();
     for (mut limp, mut k) in &mut q {
         // (Its ground not loaded, it waits, as creatures do: unloaded
         // cells count as rock, and it would be stuck in them for ever.)
@@ -826,7 +851,9 @@ pub fn step_all(sim: Res<SimWorld>, mut q: Query<(&mut Limp, &mut Kinematics)>) 
             limp.throw(v);
             k.body.vel = Vec2::ZERO;
         }
-        limp.step(&grid, crate::props::GRAVITY * sim.world.gravity(k.body.pos.y));
+        // (Fewer substeps far off, and more so under load: `load`.)
+        let far = near.iter().map(|p| p.distance(k.body.pos)).fold(f32::MAX, f32::min);
+        limp.step_at(&grid, crate::props::GRAVITY * sim.world.gravity(k.body.pos.y), load.ragdoll_substeps(far));
         let (from, to) = limp.root_pos();
         k.prev_pos = from;
         k.body.pos = to;
@@ -870,7 +897,7 @@ mod tests {
 
     #[test]
     fn a_piece_falls_and_rests_on_the_floor_and_sleeps() {
-        let mut limp = Limp { pieces: vec![square(Vec2::new(0.0, 20.0))], joints: Vec::new(), root: 0, still: 0, asleep: false };
+        let mut limp = Limp { pieces: vec![square(Vec2::new(0.0, 20.0))], joints: Vec::new(), root: 0, still: 0, asleep: false, subs: SUBSTEPS as u8 };
         for _ in 0..600 {
             limp.step(&Floor, 1350.0);
         }
@@ -879,12 +906,34 @@ mod tests {
         assert!(limp.asleep, "and sleeps");
     }
 
+    /// Stepped in fewer substeps (under load, far off: `load`), a body in
+    /// flight keeps its speed, and still comes to rest on the floor.
+    #[test]
+    fn fewer_substeps_keep_its_speed() {
+        let flying = || {
+            let mut limp = Limp { pieces: vec![square(Vec2::new(0.0, 400.0))], joints: Vec::new(), root: 0, still: 0, asleep: false, subs: SUBSTEPS as u8 };
+            limp.throw(Vec2::new(60.0, 0.0));
+            limp
+        };
+        let (mut full, mut few) = (flying(), flying());
+        for _ in 0..10 {
+            full.step_at(&Floor, 0.0, SUBSTEPS);
+            few.step_at(&Floor, 0.0, 1);
+        }
+        let (a, b) = (full.pieces[0].pos.x, few.pieces[0].pos.x);
+        assert!(a > 9.0 && (a - b).abs() < 0.2, "the same way across: {a} and {b}");
+        for _ in 0..600 {
+            few.step_at(&Floor, 1350.0, 1);
+        }
+        assert!((few.pieces[0].pos.y - 2.0).abs() < 0.8, "rests on the floor: {}", few.pieces[0].pos.y);
+    }
+
     #[test]
     fn joined_pieces_stay_together() {
         let a = square(Vec2::new(0.0, 30.0));
         let b = square(Vec2::new(4.0, 30.0));
         let j = Joint { a: 0, b: 1, la: Vec2::new(2.0, 0.0), lb: Vec2::new(-2.0, 0.0), rest: 0.0, limit: 1.0 };
-        let mut limp = Limp { pieces: vec![a, b], joints: vec![j], root: 0, still: 0, asleep: false };
+        let mut limp = Limp { pieces: vec![a, b], joints: vec![j], root: 0, still: 0, asleep: false, subs: SUBSTEPS as u8 };
         limp.throw(Vec2::new(0.0, 0.0));
         limp.pieces[1].prev -= Vec2::new(0.0, 0.5);
         for _ in 0..300 {
