@@ -16,7 +16,7 @@
     // rolled for it, none put on it getting up again; the upright
     // zombie_classic wore them).
     bare_head: true,
-    size: (11, 24),
+    size: (11, 22),
     health: 100,
     team: Enemy,
     // (Mindless: walks into a painted wall of fire.)
@@ -58,7 +58,7 @@
     // (The hunched design; the upright one, kept: "zombie_classic", on
     // its old legs: hips (2, 4), reach 14.5, no `lean`, no `shin`.)
     art: "zombie",
-    // Its legs (at the canon, for a box 24 high: hips 14 and 13 up, under
+    // Its legs (at the canon, for a box 22 high: hips 13 and 12 up, under
     // the reference's seat): two bent legs, wide, in purple-black trousers
     // torn off at the knee (bare grey shins and feet); a lurching step, the
     // feet barely lifting, the far leg the bad one, trailing well behind
@@ -67,7 +67,7 @@
     // foot is.
     // Running at you it lopes (`run`): long strides, the feet lifted
     // higher, the bad leg swung through, not dragged.
-    legs: (view: Side, rig: true, in_step: true, reach: 17, upper: 0.5, step: 0.26, lift: 2, stride: 7.5, run: (17, 4.5, 0.2),
+    legs: (view: Side, rig: true, in_step: true, reach: 16, upper: 0.5, step: 0.26, lift: 2, stride: 7.5, run: (17, 4.5, 0.2),
            color: (65, 60, 72), joint: (82, 76, 90), shin: (104, 112, 110), outline: (16, 13, 14), width: [3.6, 3.1, 2.4], toes: 4,
            body: "zombie",
            each: [

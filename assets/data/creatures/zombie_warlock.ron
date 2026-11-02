@@ -16,7 +16,7 @@
 (
     name: "Zombie warlock",
     loot: "zombie_warlock",
-    size: (11, 26),
+    size: (11, 24),
     health: 120,
     team: Enemy,
     faction: "undead",
@@ -45,7 +45,7 @@
     ),
     art: "zombie_warlock",
     // Its legs: bandaged shins and wrapped boots from under its hem, a
-    // long slow stride (at the canon, for a box 26 high: hips 15 up, under
+    // long slow stride (at the canon, for a box 24 high: hips 14 up, under
     // the reference's robe).
     legs: (view: Side, rig: true, in_step: true, reach: 16, upper: 0.5, step: 0.3, lift: 2.4, stride: 8,
            color: (103, 104, 88), joint: (86, 86, 72), shin: (88, 72, 60), outline: (10, 8, 14), width: [3.1, 2.9, 2.6], toes: 4,
