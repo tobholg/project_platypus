@@ -386,9 +386,58 @@ impl LightGrid {
         {
             starts.extend((f..h).map(|y| (start(edge, y), 1.0)));
         }
-        for ((x, y), share) in starts {
-            self.trace(Ray { x, y, dx: sx, dy: sy, v: color.map(|c| c * share), full: color, dark: 0, s: 0, steps: i32::MAX, n: 1.0, chan: None, bounces: 0, edge: 1.0, bent: false }, Lit::Sun, &lut);
+        // (None get in, deep underground: nothing more to do.)
+        if starts.is_empty() {
+            return;
         }
+        // What each texel lets through a step of the sun's (every sun
+        // ray steps as far, bent or not): worked out once, not per step.
+        let step = (sx * sx + sy * sy).sqrt();
+        let tint_k = step * t / platypus_sim::Optics::TINT_DEPTH;
+        let pre = sun_pool().install(|| SunPass {
+            keep: (0..w * h)
+                .into_par_iter()
+                .map(|i| {
+                    let keep = lut[(self.sky_opacity[i].clamp(0.0, 1.0) * 255.0) as usize];
+                    if self.water[i] > 0.0 { keep.powf(1.0 - WATER_CLEAR * self.water[i].clamp(0.0, 1.0)) } else { keep }
+                })
+                .collect(),
+            tint: if self.optical { (0..w * h).into_par_iter().map(|i| if self.ior[i] > 1.0 { self.tint[i].map(|c| c.powf(tint_k)) } else { [1.0; 3] }).collect() } else { Vec::new() },
+        });
+        // The rays in parallel, a lot to a thread, each lot lighting its
+        // own buffers; then the brightest of them kept (as one after
+        // another would).
+        let ray = |(x, y): (f32, f32), share: f32| Ray { x, y, dx: sx, dy: sy, v: color.map(|c| c * share), full: color, dark: 0, s: 0, steps: i32::MAX, n: 1.0, chan: None, bounces: 0, edge: 1.0, bent: false };
+        // (On the light's own few threads: on the shared pool the frame's
+        // own parallel work, the chunks' drawing, queued behind them.)
+        let lots = SUN_THREADS;
+        let per = starts.len().div_ceil(lots).max(1);
+        let this = &*self;
+        let lit: Vec<(Vec<Rgb>, Vec<Rgb>)> = sun_pool().install(|| starts
+            .par_chunks(per)
+            .map(|lot| {
+                let (mut seed, mut caustic) = (vec![[0.0f32; 3]; w * h], vec![[0.0f32; 3]; w * h]);
+                let mut direct = Vec::new();
+                let mut out = Traced { seed: &mut seed, direct: &mut direct, caustic: &mut caustic };
+                for &(at, share) in lot {
+                    this.trace_into(ray(at, share), Lit::Sun, &lut, Some(&pre), &mut out);
+                }
+                (seed, caustic)
+            })
+            .collect());
+        let rows = |dst: &mut Vec<Rgb>, pick: &(dyn Fn(&(Vec<Rgb>, Vec<Rgb>)) -> &Vec<Rgb> + Sync)| {
+            dst.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
+                for l in &lit {
+                    for (d, s) in row.iter_mut().zip(&pick(l)[y * w..(y + 1) * w]) {
+                        max_into(d, *s);
+                    }
+                }
+            });
+        };
+        sun_pool().install(|| {
+            rows(&mut self.seed, &|l| &l.0);
+            rows(&mut self.caustic, &|l| &l.1);
+        });
     }
 
     /// A point light at `at` (cells).
@@ -494,6 +543,15 @@ impl LightGrid {
     /// angle; at least what the material's `reflect` says), or all of it if
     /// it can't get out (total internal reflection).
     fn trace(&mut self, first: Ray, lit: Lit, pass: &[f32]) {
+        let (mut seed, mut direct, mut caustic) = (std::mem::take(&mut self.seed), std::mem::take(&mut self.direct), std::mem::take(&mut self.caustic));
+        self.trace_into(first, lit, pass, None, &mut Traced { seed: &mut seed, direct: &mut direct, caustic: &mut caustic });
+        (self.seed, self.direct, self.caustic) = (seed, direct, caustic);
+    }
+
+    /// A ray (and what it splits into) traced, what it lights put in `out`
+    /// (the grid itself only read: rays can go in parallel, each lot into
+    /// its own). `pre`: the sun's per-texel passing, worked out once.
+    fn trace_into(&self, first: Ray, lit: Lit, pass: &[f32], pre: Option<&SunPass>, out: &mut Traced) {
         let (w, h, t) = (self.w, self.h, self.texel as f32);
         let mut stack = vec![first];
         let mut budget = RAY_STEPS_MOST;
@@ -562,15 +620,15 @@ impl LightGrid {
                     }
                 }
                 match lit {
-                    Lit::Sun => max_into(&mut self.seed[i], r.v),
+                    Lit::Sun => max_into(&mut out.seed[i], r.v),
                     Lit::Beam => {
                         let d = r.s as f32 / r.steps as f32;
                         let fall = (1.0 - d) * (1.0 - d);
                         let v = r.v.map(|c| c * fall * r.edge);
-                        max_into(&mut self.direct[i], v);
+                        max_into(&mut out.direct[i], v);
                         // It scatters off what it lands on, not off the air.
                         if self.opacity[i] > 0.05 {
-                            max_into(&mut self.seed[i], v.map(|c| c * BEAM_SCATTER * self.opacity[i].min(1.0)));
+                            max_into(&mut out.seed[i], v.map(|c| c * BEAM_SCATTER * self.opacity[i].min(1.0)));
                         }
                     }
                 }
@@ -578,10 +636,15 @@ impl LightGrid {
                 // (Bent light landing on a face (not clear itself): a caustic.)
                 if r.bent && op > CAUSTIC_ON && self.ior[i] <= 1.0 {
                     let k = if lit == Lit::Sun { CAUSTIC_SUN } else { CAUSTIC_BEAM * r.edge };
-                    max_into(&mut self.caustic[i], r.v.map(|c| c * k));
+                    max_into(&mut out.caustic[i], r.v.map(|c| c * k));
                 }
-                let keep = pass[(op.clamp(0.0, 1.0) * 255.0) as usize];
-                let keep = if self.water[i] > 0.0 { keep.powf(1.0 - WATER_CLEAR * self.water[i].clamp(0.0, 1.0)) } else { keep };
+                let keep = match pre {
+                    Some(p) => p.keep[i],
+                    None => {
+                        let keep = pass[(op.clamp(0.0, 1.0) * 255.0) as usize];
+                        if self.water[i] > 0.0 { keep.powf(1.0 - WATER_CLEAR * self.water[i].clamp(0.0, 1.0)) } else { keep }
+                    }
+                };
                 r.v = r.v.map(|c| c * keep);
                 if lit == Lit::Sun && op < 0.05 {
                     for c in 0..3 {
@@ -589,9 +652,12 @@ impl LightGrid {
                     }
                 }
                 if self.optical && self.ior[i] > 1.0 {
-                    let tint = self.tint[i];
+                    let tint = match pre {
+                        Some(p) => p.tint[i],
+                        None => self.tint[i].map(|c| c.powf(tint_k)),
+                    };
                     for (c, v) in r.v.iter_mut().enumerate() {
-                        *v *= tint[c].powf(tint_k);
+                        *v *= tint[c];
                     }
                 }
                 // (The sun's light put out goes on a while through what put it
@@ -924,6 +990,28 @@ struct Ray {
     /// Bent, mirrored or split by something clear on its way (its light
     /// where it lands is a caustic).
     bent: bool,
+}
+
+/// The sun's rays are traced on this many threads of their own.
+const SUN_THREADS: usize = 4;
+
+pub(super) fn sun_pool() -> &'static rayon::ThreadPool {
+    static POOL: std::sync::LazyLock<rayon::ThreadPool> = std::sync::LazyLock::new(|| rayon::ThreadPoolBuilder::new().num_threads(SUN_THREADS).thread_name(|i| format!("sun {i}")).build().expect("the sun's threads"));
+    &POOL
+}
+
+/// Where a ray's light goes (`LightGrid::trace_into`).
+struct Traced<'a> {
+    seed: &'a mut [Rgb],
+    direct: &'a mut [Rgb],
+    caustic: &'a mut [Rgb],
+}
+
+/// A sun's step through each texel: what's kept (opacity, clear water),
+/// and the tint (what bends light: glass, water) to that depth.
+struct SunPass {
+    keep: Vec<f32>,
+    tint: Vec<Rgb>,
 }
 
 /// Whose ray: the sky's (seeds the spread light) or a beam's (lights

@@ -683,6 +683,40 @@ fn blur(v: &[Rgb], w: usize, h: usize, r: usize) -> Vec<Rgb> {
     out
 }
 
+/// `PLATYPUS_LIGHTLOG=1`: where the light's time goes, every 300 frames
+/// (ms a frame, by phase; the task's phases off the main thread).
+fn lightlog() -> bool {
+    static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("PLATYPUS_LIGHTLOG").is_ok());
+    *ON
+}
+static PHASES: std::sync::Mutex<Vec<(&'static str, f64)>> = std::sync::Mutex::new(Vec::new());
+fn phase(name: &'static str, since: Instant) {
+    if !lightlog() {
+        return;
+    }
+    let ms = since.elapsed().as_secs_f64() * 1e3;
+    let mut p = PHASES.lock().unwrap();
+    match p.iter_mut().find(|(n, _)| *n == name) {
+        Some(e) => e.1 += ms,
+        None => p.push((name, ms)),
+    }
+}
+fn phase_report() {
+    static FRAMES: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    if !lightlog() {
+        return;
+    }
+    let frames = FRAMES.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    if frames < 300 {
+        return;
+    }
+    FRAMES.store(0, std::sync::atomic::Ordering::Relaxed);
+    let mut p = PHASES.lock().unwrap();
+    let list: Vec<String> = p.iter().map(|(n, ms)| format!("{n} {:.3}", ms / frames as f64)).collect();
+    info!("light phases (ms a frame): {}", list.join(" | "));
+    p.clear();
+}
+
 /// `SHAFTS`, or `PLATYPUS_SHAFTS` (to look at them).
 fn shafts_scale() -> f32 {
     static K: std::sync::OnceLock<f32> = std::sync::OnceLock::new();
@@ -813,6 +847,7 @@ fn compute_light(
         return;
     }
     // Show what the last frame's solve made.
+    let t0 = Instant::now();
     if let Some(task) = pending.0.take() {
         let solved = block_on(async {
             let mut task = task;
@@ -823,11 +858,18 @@ fn compute_light(
         });
         // (Not quite done: finish it; rare, the frame had ~a frame's time.)
         let mut done = match solved {
-            Err(task) => block_on(task),
+            Err(task) => {
+                let w = Instant::now();
+                let d = block_on(task);
+                phase("main: waited", w);
+                d
+            }
             Ok(done) => done,
         };
+        let t1 = Instant::now();
         glints.0.append(&mut done.glints);
         pending.1 = Some(show(done, &mut overlay, &mut metrics, &mut assets, &mut sprites, &mut water_mask));
+        phase("main: show", t1);
         if lit.want
             && let Some(p) = &pending.1
         {
@@ -865,7 +907,10 @@ fn compute_light(
         let s = 0.5 + 0.5 * (now * speed + phase).sin();
         s * s
     };
+    let t2 = Instant::now();
     g.fill_from(world, &flicker, &breath, &glimmer);
+    phase("main: fill", t2);
+    let t3 = Instant::now();
 
     // Sky: down every column that is open to the sky above the grid; under
     // something over it, as much as has come back of the sun's light past
@@ -904,7 +949,21 @@ fn compute_light(
         }
         shade.map_or(1.0, back)
     };
-    let open_top: Vec<f32> = (0..w).map(open).collect();
+    // (A column up to 900 cells each: across the cores when that took a
+    // while last frame (out under the sky); underground each stops at
+    // once, and waking the threads cost more than it saved.)
+    static SLOW: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+    let scanned = Instant::now();
+    let open_top: Vec<f32> = if SLOW.load(std::sync::atomic::Ordering::Relaxed) {
+        use rayon::prelude::*;
+        (0..w).into_par_iter().map(open).collect()
+    } else {
+        (0..w).map(open).collect()
+    };
+    let took = scanned.elapsed().as_secs_f32() * 1e3;
+    SLOW.store(if SLOW.load(std::sync::atomic::Ordering::Relaxed) { took > 0.03 } else { took > 0.1 }, std::sync::atomic::Ordering::Relaxed);
+    phase("main: open_top", t3);
+    let t4 = Instant::now();
     let sky = sky_lights(day.time, day.sky);
     // God rays: the sun's light in the open air, a faint haze along it
     // (shafts where something shades it: under a crown, past a cliff, in a
@@ -1003,6 +1062,8 @@ fn compute_light(
         g.seed_point([f.at.x, f.at.y], f.color.map(|c| c * k));
     }
 
+    phase("main: seeds", t4);
+    phase("main: all (to here)", t0);
     let params = Params { air_falloff: settings.air_falloff, iterations: settings.iterations.clamp(1, 4), rim: settings.rim };
     let amb = settings.ambient.max(0.0);
     let haze = settings.glow_haze.max(0.0);
@@ -1020,6 +1081,7 @@ fn compute_light(
         // (The sun's share of the seeds kept apart: the shafts.)
         let mut sun = None;
         let sky_now = sky.clone();
+        let tp = Instant::now();
         for (i, (dir, color)) in sky.into_iter().enumerate() {
             // (Not at night, nor with no sky in view: nothing to shine.)
             if i == 0 && shafts > 0.0 && color.iter().any(|&c| c > SHAFTS_FROM) && open_top.iter().any(|&o| o > 0.5) {
@@ -1038,12 +1100,18 @@ fn compute_light(
                 g.seed_directional(dir, color, &open_top);
             }
         }
+        phase("task: sun", tp);
+        let tp = Instant::now();
         // Daylight through windows (glass in the walls behind), coloured.
         let daylight = sky_now.iter().fold([0.0f32; 3], |a, (_, c)| [a[0] + c[0], a[1] + c[1], a[2] + c[2]]);
         g.seed_windows(daylight);
         g.charge_phosphor(previous.as_ref(), dt);
         g.shine(previous.as_ref());
+        phase("task: windows+shine", tp);
+        let tp = Instant::now();
         g.solve(params);
+        phase("task: solve", tp);
+        let tp = Instant::now();
         // (`PLATYPUS_EASE_BEAMS=1`: beams eased with the rest, as before:
         // a moving one trails; for comparing.)
         let legacy = ease_beams();
@@ -1055,23 +1123,32 @@ fn compute_light(
         }
         let spread = if legacy { (g.light.clone(), g.glow.clone()) } else { g.add_direct() };
         let glints = g.glints(dt, glint_seed);
+        phase("task: ease+direct+glints", tp);
+        let tp = Instant::now();
         // Upload format: sqrt for precision in the dark, row 0 at the top.
         let encode = |v: f32| (v.clamp(0.0, 1.0).sqrt() * 255.0 + 0.5) as u8;
         let mut light = vec![255u8; w * h * 4];
         let mut glow = vec![255u8; w * h * 4];
-        for y in 0..h {
-            for x in 0..w {
-                let (l, gl, c) = (g.light[y * w + x], g.glow[y * w + x], g.caustic[y * w + x]);
-                let ray = sun.as_ref().map_or([0.0; 3], |s| s[y * w + x]);
-                let i = ((h - 1 - y) * w + x) * 4;
-                // (Caustics added whole, not hazed: bent light shows over
-                // daylight; the sun's shafts faintly.)
-                for ch in 0..3 {
-                    light[i + ch] = encode(l[ch].max(amb));
-                    glow[i + ch] = encode(gl[ch] * haze + c[ch] + ray[ch] * shafts);
+        // (Row by row on the light's own threads: `grid::sun_pool`.)
+        grid::sun_pool().install(|| {
+            use rayon::prelude::*;
+            light.par_chunks_mut(w * 4).zip(glow.par_chunks_mut(w * 4)).enumerate().for_each(|(row, (lrow, grow))| {
+                let y = h - 1 - row;
+                for x in 0..w {
+                    let (l, gl, c) = (g.light[y * w + x], g.glow[y * w + x], g.caustic[y * w + x]);
+                    let ray = sun.as_ref().map_or([0.0; 3], |s| s[y * w + x]);
+                    let i = x * 4;
+                    // (Caustics added whole, not hazed: bent light shows over
+                    // daylight; the sun's shafts faintly.)
+                    for ch in 0..3 {
+                        lrow[i + ch] = encode(l[ch].max(amb));
+                        grow[i + ch] = encode(gl[ch] * haze + c[ch] + ray[ch] * shafts);
+                    }
                 }
-            }
-        }
+            });
+        });
+        phase("task: encode", tp);
+        let tp = Instant::now();
         // Open water: down each column from the top, water under nothing
         // but air (and water), how far below its surface.
         let mut water = vec![0u8; w * h * 4];
@@ -1093,9 +1170,12 @@ fn compute_light(
                 }
             }
         }
+        phase("task: water", tp);
+        phase("task: all", started);
         let took = started.elapsed();
         Solved { previous: g.into_previous(spread), glints, light, glow, water, size: UVec2::new(w as u32, h as u32), center, extent: Vec2::new(gw, gh), took }
     }));
+    phase_report();
 }
 
 #[derive(bevy::ecs::system::SystemParam)]

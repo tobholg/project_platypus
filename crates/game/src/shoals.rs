@@ -218,13 +218,16 @@ fn swim(time: Res<Time>, sim: Res<SimWorld>, mut shoals: ResMut<Shoals>, bodies:
         // spreads as wide as its fish need, not packing tighter), and swims
         // with and keeps with only its nearest few.)
         let cell = |p: Vec2| (p / GRID).floor().as_ivec2();
-        let mut grid: std::collections::HashMap<IVec2, Vec<usize>> = std::collections::HashMap::new();
+        let mut grid: bevy::platform::collections::HashMap<IVec2, Vec<usize>> = bevy::platform::collections::HashMap::default();
         for (j, &(p, _)) in snapshot.iter().enumerate() {
             grid.entry(cell(p)).or_default().push(j);
         }
         let reach = (NEAR / GRID).ceil() as i32;
         let breath = 1.0 + BREATHE.0 * (t * BREATHE.1 * std::f32::consts::TAU + s.heading * 3.0).sin();
-        for (i, f) in s.fish.iter_mut().enumerate() {
+        // (Each fish from the snapshot, on its own: across the cores.)
+        let (speed, sim, near) = (s.speed, &*sim, &near);
+        use rayon::prelude::*;
+        s.fish.par_iter_mut().enumerate().for_each(|(i, f)| {
             let (mut apart, mut along, mut mid, mut n, mut w) = (Vec2::ZERO, Vec2::ZERO, Vec2::ZERO, 0.0, 0.0);
             // (Its room here and now.)
             let (q, k) = (f.pos / RIPPLE.1, t * RIPPLE.2);
@@ -285,7 +288,7 @@ fn swim(time: Res<Time>, sim: Res<SimWorld>, mut shoals: ResMut<Shoals>, bodies:
             want += Vec2::from_angle(f.phase + t * 1.3) * 6.0 * dt;
             // Away from what comes near (you, anything alive).
             let mut fleeing = false;
-            for &b in &near {
+            for &b in near {
                 let d = f.pos - b;
                 if d.length() < FLEE {
                     want += d.normalize_or_zero() * FLEE_SPEED * 3.0 * dt;
@@ -294,21 +297,21 @@ fn swim(time: Res<Time>, sim: Res<SimWorld>, mut shoals: ResMut<Shoals>, bodies:
             }
             // Keep to the water: what's ahead not water, turn off it.
             let dir = want.normalize_or(Vec2::X);
-            if !water(&sim, id, f.pos + dir * AHEAD) {
+            if !water(sim, id, f.pos + dir * AHEAD) {
                 let side = Vec2::new(-dir.y, dir.x);
-                let turn = if water(&sim, id, f.pos + side * AHEAD) { side } else if water(&sim, id, f.pos - side * AHEAD) { -side } else { -dir };
+                let turn = if water(sim, id, f.pos + side * AHEAD) { side } else if water(sim, id, f.pos - side * AHEAD) { -side } else { -dir };
                 want = turn * want.length();
             }
-            let top = if fleeing { FLEE_SPEED } else { s.speed * 1.4 };
+            let top = if fleeing { FLEE_SPEED } else { speed * 1.4 };
             let l = want.length().clamp(SPEED.0 * 0.5, top);
             f.vel = want.normalize_or(Vec2::X) * l;
             let next = f.pos + f.vel * dt;
-            if water(&sim, id, next) {
+            if water(sim, id, next) {
                 f.pos = next;
             } else {
                 f.vel = -f.vel * 0.5;
             }
-        }
+        });
     }
 }
 
