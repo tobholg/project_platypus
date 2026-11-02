@@ -78,6 +78,7 @@ mod tempo;
 mod title;
 mod settings;
 mod sound;
+mod survey;
 mod tools;
 mod traps;
 mod vfx;
@@ -213,6 +214,7 @@ fn main() {
         .add_plugins(difficulty::DifficultyPlugin)
         .add_plugins((respawn::RespawnPlugin, devmenu::DevMenuPlugin, pause::PausePlugin, map::MapPlugin, title::TitlePlugin { show: show_title, behind: launch, fresh }))
         .add_plugins((progress::ProgressPlugin, craft::CraftPlugin, save::SavePlugin { name: save, kind, seed, mode }))
+        .add_plugins(survey::SurveyPlugin)
         .add_plugins(spikes_plugin)
         .add_systems(Last, pace_frames)
         .run();
