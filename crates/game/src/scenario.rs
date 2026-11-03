@@ -212,6 +212,10 @@
 //!   in a three-cell water puddle (a little wet, not put out: logs it at
 //!   4.4 s; `PLATYPUS_SCENARIO_SECS=5.3` for a screenshot of it), then into
 //!   deep water (the acid washed off, the fire out)
+//! - `spaceboots` (`PLATYPUS_SURVEY_AT=space`: by an asteroid) rocket boots in space:
+//!   from 3 s held up, right, down, left (a second each), let go (adrift), then
+//!   down hard into the rock and let go (it bounces off); logs the pose, the
+//!   turn, the speed, what it touches
 //! - `rocket`     (`PLATYPUS_WORLD=arena`, try `PLATYPUS_HOUR=22`) the player
 //!   in rocket boots over an orc on a wooden floor (brain off), holding
 //!   jump from 1 s: logs how high it gets, the fuel, what the exhaust does
@@ -439,6 +443,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, pack_script.after(bevy::ui::UiSystems::Focus).before(crate::pause::key))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
             .add_systems(FixedUpdate, stormglass_script)
+            .add_systems(Update, spaceboots_script)
             .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script, wands_script, melee_script, fight_script, archery_script).after(InputSystems).before(crate::camera::track_cursor));
     }
 }
@@ -6232,6 +6237,75 @@ fn soak_script(
     }
 }
 
+/// `spaceboots`: see the list at the top.
+fn spaceboots_script(
+    s: Res<Scenario>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    player: Query<(&Kinematics, Option<&crate::creatures::body::animation::Animator>, Option<&crate::gear::boots::Lean>), With<LocalPlayer>>,
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut said: Local<f32>,
+) {
+    if s.name != "spaceboots" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    // (What's held when: the way, and jump.)
+    // (`PLATYPUS_SPACEBOOTS=ground`: off the ground: a jump, then jump held
+    // again steering right, then left: leaning, kicking up the floor.)
+    let ground = std::env::var("PLATYPUS_SPACEBOOTS").is_ok_and(|v| v == "ground");
+    let (way, jump): (Option<KeyCode>, bool) = if ground {
+        match t {
+            t if t < 3.0 => (None, false),
+            t if t < 3.1 => (None, true),
+            t if t < 3.25 => (None, false),
+            t if t < 3.6 => (None, true),
+            t if t < 4.4 => (Some(KeyCode::KeyD), true),
+            t if t < 5.2 => (Some(KeyCode::KeyA), true),
+            _ => (None, false),
+        }
+    } else {
+        match t {
+        t if t < 3.0 => (None, false),
+        t if t < 4.0 => (Some(KeyCode::KeyW), true),
+        t if t < 5.0 => (Some(KeyCode::KeyD), true),
+        t if t < 6.0 => (Some(KeyCode::KeyS), true),
+        t if t < 7.0 => (Some(KeyCode::KeyA), true),
+        t if t < 9.0 => (None, false),
+        t if t < 10.6 => (Some(KeyCode::KeyS), true),
+        _ => (None, false),
+        }
+    };
+    for key in [KeyCode::KeyW, KeyCode::KeyA, KeyCode::KeyS, KeyCode::KeyD] {
+        if Some(key) == way {
+            if !keys.pressed(key) {
+                keys.press(key);
+            }
+        } else if keys.pressed(key) {
+            keys.release(key);
+        }
+    }
+    match (jump, keys.pressed(KeyCode::Space)) {
+        (true, false) => keys.press(KeyCode::Space),
+        (false, true) => keys.release(KeyCode::Space),
+        _ => {}
+    }
+    let Ok((k, anim, lean)) = player.single() else { return };
+    if t >= 2.5 && t >= *said {
+        *said = t + 0.1;
+        let c = k.loco.contacts;
+        let touching: String = [(c.ground, 'g'), (c.ceiling, 'c'), (c.wall_left, 'l'), (c.wall_right, 'r')].iter().filter(|x| x.0).map(|x| x.1).collect();
+        info!(
+            "spaceboots: t {t:.1} at ({:.0}, {:.0}) vel ({:.0}, {:.0}) {} clip {} turned {:.0}° touching [{touching}] fuel {:.2} floating {}",
+            k.body.pos.x, k.body.pos.y, k.body.vel.x, k.body.vel.y,
+            if k.loco.rocketing() { "FIRING" } else { "off" },
+            anim.map_or("-", |a| a.clip_name()),
+            lean.map_or(0.0, |l| l.angle.to_degrees()),
+            k.loco.rocket_left, k.loco.floating()
+        );
+    }
+}
+
 fn rocketswim_script(
     s: Res<Scenario>,
     mut sim: ResMut<SimWorld>,
@@ -6247,11 +6321,13 @@ fn rocketswim_script(
     let t = s.elapsed;
     let floor = platypus_worldgen::arena::FLOOR;
     let x = 810;
+    // (Steering a way: a pool four times as wide.)
+    let half = if std::env::var("PLATYPUS_ROCKETSWIM_WAY").is_ok() { 120 } else { 30 };
     state.3 += fired.read().count() as u32;
     match state.0 {
         // A pit 60 wide and 260 deep under the floor, then water in it.
         0 if t > 0.3 => {
-            for dx in (-30..=30).step_by(7) {
+            for dx in (-half..=half).step_by(7) {
                 for dy in (-258..=6).step_by(7) {
                     sim.queue(WorldEdit::Dig { center: CellPos::new(x + dx, floor + dy), radius: 6, max_hardness: 250 });
                 }
@@ -6260,7 +6336,7 @@ fn rocketswim_script(
         }
         1 if t > 0.6 => {
             if let Some(water) = sim.materials().id("water") {
-                for dx in (-30..=30).step_by(4) {
+                for dx in (-half..=half).step_by(4) {
                     for dy in (-258..=-18).step_by(4) {
                         sim.queue(WorldEdit::Paint { center: CellPos::new(x + dx, floor + dy), radius: 3, material: water, overwrite: false });
                     }
@@ -6294,6 +6370,23 @@ fn rocketswim_script(
         (true, false) => keys.press(KeyCode::Space),
         (false, true) => keys.release(KeyCode::Space),
         _ => {}
+    }
+    // (`PLATYPUS_ROCKETSWIM_WAY=right` / `down`: steering that way as it
+    // holds jump: they push that way; then it glides to a stop; logs it.)
+    let way = std::env::var("PLATYPUS_ROCKETSWIM_WAY").ok().and_then(|w| match w.as_str() {
+        "right" => Some(KeyCode::KeyD),
+        "down" => Some(KeyCode::KeyS),
+        _ => None,
+    });
+    if let Some(key) = way {
+        match (hold, keys.pressed(key)) {
+            (true, false) => keys.press(key),
+            (false, true) => keys.release(key),
+            _ => {}
+        }
+        if state.0 >= 3 && t <= 7.0 && (t * 10.0).fract() < 0.2 {
+            info!("rocketswim: t {t:.1} at ({:.0}, {:.0}) vel ({:.0}, {:.0}) {} {:?} submerged {:.2}", k.body.pos.x, k.body.pos.y, k.body.vel.x, k.body.vel.y, if k.loco.rocketing() { "FIRING" } else { "off" }, k.loco.state, k.loco.contacts.submerged);
+        }
     }
 }
 

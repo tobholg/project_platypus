@@ -603,6 +603,8 @@ pub struct Rocketed {
     /// Its feet, and how it's moving.
     pub at: Vec2,
     pub vel: Vec2,
+    /// The fuel left (a share). (The way they push: `Locomotion::thrust`.)
+    pub fuel: f32,
 }
 
 /// A body jumped off thin air (a double jump) with its feet at `at`: a puff
@@ -727,7 +729,9 @@ pub(crate) fn move_creatures(
         let g = crate::zerog::gravity_at(&sim, k.body.pos.y);
         let weightless = g < crate::zerog::WEIGHTLESS;
         let stats = if g < 1.0 {
-            light = platypus_physics::MovementStats { weightless, ..crate::zerog::lighter(stats, g) };
+            // (The player bounces off what it hits, never taking hold: its
+            // grappling hook holds it.)
+            light = platypus_physics::MovementStats { weightless, bounces: weightless && player, ..crate::zerog::lighter(stats, g) };
             &light
         } else {
             stats
@@ -763,7 +767,7 @@ pub(crate) fn move_creatures(
             dashed.write(crate::combat::Dashed(entity));
         }
         if ev.rocketed {
-            rockets.write(Rocketed { entity, at: k.body.pos - Vec2::new(0.0, k.body.half.y), vel: k.body.vel });
+            rockets.write(Rocketed { entity, at: k.body.pos - Vec2::new(0.0, k.body.half.y), vel: k.body.vel, fuel: k.loco.fuel(stats) });
         }
         if ev.air_jumped {
             air.write(AirJumped { at: k.body.pos - Vec2::new(0.0, k.body.half.y), who: entity });

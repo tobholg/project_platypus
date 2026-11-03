@@ -277,6 +277,7 @@ impl Plugin for GearPlugin {
             .add_systems(Update, (outfit, apply, look::dress).chain().after(crate::creatures::def::hot_reload_creatures))
             .init_resource::<hook::RopeCanvas>()
             .add_systems(Update, (shield::raise, shield::ward, shield::draw).chain())
+            .add_systems(PostUpdate, boots::lean.after(crate::zerog::turn).before(bevy::transform::TransformSystems::Propagate))
             .add_systems(FixedUpdate, (boots::exhaust.in_set(crate::world::TickSet::Bodies), hook::rope.in_set(crate::world::TickSet::Bodies).before(crate::creatures::move_creatures)))
             .add_systems(Update, hook::let_go.after(crate::death::DeathSet))
             .add_systems(PostUpdate, hook::draw.after(crate::creatures::interpolate).before(bevy::transform::TransformSystems::Propagate));

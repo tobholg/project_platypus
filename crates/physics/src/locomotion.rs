@@ -51,7 +51,13 @@ const WRAP_TIME: f32 = 0.3;
 const CRAWL: f32 = 0.6;
 const PUSH_OFF: f32 = 1.3;
 const PUSHED_OFF: f32 = 0.2;
-const ROCKET_FLOAT: (f32, f32) = (0.12, 0.8);
+const ROCKET_FLOAT: (f32, f32) = (0.12, 1.0);
+/// Weightless and bouncing (`MovementStats::bounces`): what's left of its
+/// speed into what it hits (thrown back off it), and along it; slower into
+/// it than this (cells/s), it comes to rest against it.
+const REBOUND: f32 = 0.45;
+const SKID: f32 = 0.85;
+const REST: f32 = 30.0;
 
 /// On a rope, steering pushes at this share of gravity (a pendulum's own
 /// scale, whatever the air control), while it's going slower than this
@@ -219,6 +225,10 @@ pub struct MovementStats {
     /// creature's file): it floats (`Locomotion::float`).
     #[serde(skip)]
     pub weightless: bool,
+    /// Weightless, it bounces off what it hits and never takes hold (the
+    /// player: its grappling hook holds it); set each tick, not from a file.
+    #[serde(skip)]
+    pub bounces: bool,
 }
 
 impl MovementStats {
@@ -282,6 +292,7 @@ impl Default for MovementStats {
             rocket_run: 0.0,
             scale: 1.0,
             weightless: false,
+            bounces: false,
         }
     }
 }
@@ -380,6 +391,13 @@ pub struct Locomotion {
     /// it lands or turns).
     rocketing: bool,
     rocket_carry: bool,
+    /// Weightless and floating last tick (`float`), and the way its boots
+    /// last pushed.
+    floating: bool,
+    thrust: Vec2,
+    /// Its speed as it went into last tick's move (what it hit, it hit at
+    /// this: `float_free`'s bounce).
+    pre_vel: Vec2,
     /// On a rope (set before each `steer`): in the air it keeps its swing
     /// (air control pumps it, never brakes it).
     pub swinging: bool,
@@ -429,6 +447,9 @@ impl Default for Locomotion {
             rocket_hold: false,
             rocketing: false,
             rocket_carry: false,
+            floating: false,
+            thrust: Vec2::Y,
+            pre_vel: Vec2::ZERO,
             swinging: false,
             backed: false,
             reach: [false; 4],
@@ -451,8 +472,10 @@ pub struct MoveEvents {
     pub air_jumped: bool,
     pub wall_jumped: bool,
     pub dashed: bool,
-    /// Rocket boots fired this tick.
+    /// Rocket boots fired this tick, and the way they pushed (a unit
+    /// vector: up off the ground; where it steers weightless or swimming).
     pub rocketed: bool,
+    pub rocket_dir: Vec2,
     /// Landing speed, if landed this tick.
     pub landed: Option<f32>,
 }
@@ -460,6 +483,26 @@ pub struct MoveEvents {
 impl Locomotion {
     pub fn grounded(&self) -> bool {
         self.contacts.ground
+    }
+
+    /// Its rocket boots fired last tick.
+    pub fn rocketing(&self) -> bool {
+        self.rocketing
+    }
+
+    /// The way its boots last pushed (a unit vector).
+    pub fn thrust(&self) -> Vec2 {
+        self.thrust
+    }
+
+    /// Weightless, floating (not flying, not swimming) last tick.
+    pub fn floating(&self) -> bool {
+        self.floating
+    }
+
+    /// Its rocket boots' fuel left, a share of all of it (1 without any).
+    pub fn fuel(&self, s: &MovementStats) -> f32 {
+        if s.rocket_time > 0.0 { (self.rocket_left / s.rocket_time).clamp(0.0, 1.0) } else { 1.0 }
     }
 
     /// Knockback: set velocity and take control away for `secs`.
@@ -592,8 +635,12 @@ impl Locomotion {
         }
 
         // Weightless (out of the water; a flyer flies on): floating.
-        if s.weightless && s.fly_speed <= 0.0 && self.contacts.submerged < 0.3 {
+        self.floating = s.weightless && s.fly_speed <= 0.0 && self.contacts.submerged < 0.3;
+        if self.floating {
             self.float(s, intent, body, dt, jump_pressed, &mut ev);
+            if ev.rocketed {
+                self.thrust = ev.rocket_dir;
+            }
             return ev;
         }
 
@@ -865,19 +912,33 @@ impl Locomotion {
         // speed.
         self.rocket_left = self.rocket_left.min(s.rocket_time);
         let (thrust, top) = if swimming { (s.rocket_thrust * ROCKET_WATER.0, s.rocket_speed * ROCKET_WATER.1) } else { (s.rocket_thrust, s.rocket_speed) };
+        // (Under water they push the way it steers, as weightless: up if
+        // nowhere, off the bottom too (not into it); the water's drag slows
+        // it when they stop.)
+        let steer = Vec2::new(intent.move_x.clamp(-1.0, 1.0), intent.move_y.clamp(-1.0, 1.0));
+        let dir = if swimming && steer != Vec2::ZERO { steer.normalize() } else { Vec2::Y };
         if s.rocket_time > 0.0
             && self.rocket_left > 0.0
             && intent.jump
             && !jump_pressed
-            && !grounded
+            && (!grounded || (swimming && dir.y > -0.5))
             && (swimming || (self.state == MoveState::Air && self.air_jumps_left == 0 && self.rocket_hold))
-            && body.vel.y < top
+            && (swimming || body.vel.y < top)
         {
             self.rocket_left -= dt;
             self.rocket_rest = 0.0;
             self.rocketing = true;
-            self.rocket_carry = s.rocket_run > s.run_speed;
-            body.vel.y = (body.vel.y + thrust * dt).min(top);
+            self.rocket_carry = s.rocket_run > s.run_speed && !swimming;
+            if swimming {
+                // (Against the water's own pull down too: it sinks less.)
+                if body.vel.dot(dir) < top {
+                    body.vel += dir * thrust * dt;
+                }
+            } else {
+                body.vel.y = (body.vel.y + thrust * dt).min(top);
+            }
+            ev.rocket_dir = dir;
+            self.thrust = dir;
             // (The rocket, not the jump, now: letting go doesn't cut it.)
             self.rising_from_jump = false;
             ev.rocketed = true;
@@ -934,6 +995,10 @@ impl Locomotion {
         self.wrap = None;
         self.leap = (self.leap - dt).max(0.0);
         let steer = Vec2::new(intent.move_x.clamp(-1.0, 1.0), intent.move_y.clamp(-1.0, 1.0)).clamp_length_max(1.0);
+        if s.bounces {
+            self.float_free(s, intent, body, dt, jump_pressed, steer, ev);
+            return;
+        }
         // What it touches, the way its feet would point onto each; of
         // those, the one it can go along the way it steers.
         let r = self.reach;
@@ -964,13 +1029,27 @@ impl Locomotion {
             self.rocket_hold = true;
         }
         self.rocket_left = self.rocket_left.min(s.rocket_time);
+        self.float_rocket(s, intent, body, dt, steer, ev);
+        // (What little gravity there's left.)
+        body.vel.y -= s.gravity * dt;
+    }
+
+    /// Weightless rocket boots: held jump (pressed off the ground) thrusts
+    /// the way it steers (up if nowhere), to `ROCKET_FLOAT`'s share of
+    /// their top speed that way (still firing past it: fuel burnt, no
+    /// faster).
+    fn float_rocket(&mut self, s: &MovementStats, intent: &Intent, body: &mut Body, dt: f32, steer: Vec2, ev: &mut MoveEvents) {
+        self.rocket_left = self.rocket_left.min(s.rocket_time);
         let dir = if steer == Vec2::ZERO { Vec2::Y } else { steer.normalize() };
-        if s.rocket_time > 0.0 && self.rocket_left > 0.0 && intent.jump && self.rocket_hold && body.vel.dot(dir) < s.rocket_speed * ROCKET_FLOAT.1 {
+        if s.rocket_time > 0.0 && self.rocket_left > 0.0 && intent.jump && self.rocket_hold {
             self.rocket_left -= dt;
             self.rocket_rest = 0.0;
             self.rocketing = true;
-            body.vel += dir * s.rocket_thrust * ROCKET_FLOAT.0 * dt;
+            if body.vel.dot(dir) < s.rocket_speed * ROCKET_FLOAT.1 {
+                body.vel += dir * s.rocket_thrust * ROCKET_FLOAT.0 * dt;
+            }
             ev.rocketed = true;
+            ev.rocket_dir = dir;
         } else if s.rocket_time > 0.0 {
             self.rocketing = false;
             self.rocket_rest += dt;
@@ -978,8 +1057,58 @@ impl Locomotion {
                 self.rocket_left = (self.rocket_left + dt).min(s.rocket_time);
             }
         }
-        // (What little gravity there's left.)
+    }
+
+    /// Weightless, bouncing (`MovementStats::bounces`): it never takes
+    /// hold. What it hit last tick throws it back off (`REBOUND` of its
+    /// speed into it, `SKID` of it along); slow into it, it comes to rest
+    /// against it, and a jump there pushes off it (away, and toward where
+    /// it steers), the boots ready to fire if it's held on. Off everything
+    /// it drifts on; rocket boots as `float_rocket`.
+    #[allow(clippy::too_many_arguments)]
+    fn float_free(&mut self, s: &MovementStats, intent: &Intent, body: &mut Body, dt: f32, jump_pressed: bool, steer: Vec2, ev: &mut MoveEvents) {
+        let c = self.contacts;
+        let was = self.pre_vel;
+        // (Each side it hit, if it was going into it.)
+        let mut touching = Vec2::ZERO;
+        let mut bounce = |into: f32, normal: Vec2, vel: &mut Vec2| {
+            touching += normal;
+            if into > 0.0 {
+                let back = into * REBOUND;
+                let along = *vel - normal * vel.dot(normal);
+                *vel = along * SKID + normal * if back < REST { 0.0 } else { back };
+            }
+        };
+        let mut v = body.vel;
+        if c.ground {
+            bounce(-was.y, Vec2::Y, &mut v);
+        }
+        if c.ceiling {
+            bounce(was.y, -Vec2::Y, &mut v);
+        }
+        if c.wall_left {
+            bounce(-was.x, Vec2::X, &mut v);
+        }
+        if c.wall_right {
+            bounce(was.x, -Vec2::X, &mut v);
+        }
+        body.vel = v;
+        if !intent.jump {
+            self.rocket_hold = false;
+        } else if jump_pressed {
+            self.rocket_hold = true;
+        }
+        let away = touching.normalize_or_zero();
+        if away != Vec2::ZERO && jump_pressed && body.vel.length() < s.run_speed * PUSH_OFF * 0.5 {
+            let push = (away + steer * 0.7).normalize_or(away);
+            body.vel = push * s.run_speed * PUSH_OFF;
+            self.buffer = 0.0;
+            ev.jumped = true;
+        } else {
+            self.float_rocket(s, intent, body, dt, steer, ev);
+        }
         body.vel.y -= s.gravity * dt;
+        self.pre_vel = body.vel;
     }
 
     /// Record contacts from `move_and_collide`; returns landing speed if landed.
@@ -1784,6 +1913,52 @@ mod tests {
         // Let go of it, steering nowhere: straight down, away from it.
         tick(&g, &s, &mut l, &mut b, Intent { jump: true, ..Default::default() });
         assert!(b.vel.x.abs() < 0.01 && b.vel.y < -100.0, "pushed straight off ({:?})", b.vel);
+    }
+
+    /// The player, weightless (`bounces`): it never takes hold. Fast into
+    /// the floor, it's thrown back off it; slow, it comes to rest on it.
+    #[test]
+    fn weightless_a_bouncer_bounces_off_fast_and_rests_slow() {
+        let (g, mut s, mut l, mut b) = weightless();
+        s.bounces = true;
+        b.vel = Vec2::new(60.0, -200.0);
+        let mut back = None;
+        for _ in 0..90 {
+            tick(&g, &s, &mut l, &mut b, Intent::default());
+            assert!(l.clinging().is_none(), "never takes hold");
+            if back.is_none() && b.vel.y > 0.0 {
+                back = Some(b.vel);
+            }
+        }
+        let back = back.expect("it bounced");
+        assert!((back.y - 90.0).abs() < 5.0 && (back.x - 51.0).abs() < 2.0, "thrown back up at about half, skidding on ({back:?})");
+        // Slow onto the floor: at rest on it.
+        let (g, mut s, mut l, mut b) = weightless();
+        s.bounces = true;
+        b.vel = Vec2::new(0.0, -20.0);
+        for _ in 0..120 {
+            tick(&g, &s, &mut l, &mut b, Intent::default());
+        }
+        assert!(l.contacts.ground && b.vel.length() < 0.01, "at rest on it ({:?})", b.vel);
+    }
+
+    /// At rest against the floor, a jump pushes off it; jump held on,
+    /// the boots fire straight after (they used to wait for another press).
+    #[test]
+    fn weightless_a_bouncer_pushes_off_and_its_boots_fire_held_on() {
+        let (g, mut s, mut l, mut b) = weightless();
+        s.bounces = true;
+        s.rocket_time = 2.0;
+        l.rocket_left = 2.0;
+        b.vel = Vec2::new(0.0, -20.0);
+        for _ in 0..120 {
+            tick(&g, &s, &mut l, &mut b, Intent::default());
+        }
+        let hold = Intent { jump: true, move_x: 1.0, ..Default::default() };
+        let ev = tick(&g, &s, &mut l, &mut b, hold);
+        assert!(ev.jumped && b.vel.x > 50.0 && b.vel.y > 50.0, "pushed off up and right ({:?})", b.vel);
+        let ev = tick(&g, &s, &mut l, &mut b, hold);
+        assert!(ev.rocketed && ev.rocket_dir == Vec2::X, "firing the way it steers ({:?})", ev.rocket_dir);
     }
 
     #[test]

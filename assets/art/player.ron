@@ -538,6 +538,26 @@
             "CCCCCC........",
             "ooooo.........",
         ]),
+        // Rocket boots firing: the legs together and straight, the toes
+        // pointed (the jets out of the soles: `foot_near`, `foot_far`).
+        "legs_straight": (points: { "foot_near": (3, 15), "foot_far": (6, 13) }, rows: [
+            ".pPPPPqqQ.",
+            ".pPPPPqqQ.",
+            ".pPPPoqqQ.",
+            ".pPPPqqqQ.",
+            ".pPPPqqqQ.",
+            ".pPPPqqQ..",
+            ".pPPPqqQ..",
+            ".pPPPqqQ..",
+            ".pPPPqqQ..",
+            ".UUUUCCC..",
+            ".BUUBCCC..",
+            ".BUUBCCo..",
+            "..BUBCo...",
+            "..BBBo....",
+            "..oBo.....",
+            "...o......",
+        ]),
         "legs_rise": (points: { "foot_near": (7, 12), "foot_far": (1, 12) }, rows: [
             "...PPPooo....",
             "...PPPPPP....",
@@ -864,6 +884,51 @@
             (part: "hero_head", at: (17, 8)),
             (part: "arm_near", at: (17, 21), turn: 35, outline: true, tag: "front_arm"),
         ],
+        // Rocket boots firing: straight, the legs together, the arms swept
+        // back along the body (the game turns it the way they push:
+        // gear/boots.rs). Braking (pushing against the way it's going):
+        // the knees up, the arms out ahead. Weightless, touching nothing:
+        // adrift, the arms floating up and down, the body bobbing.
+        "fly": [
+            (part: "pack", at: (17, 19), tag: "pack"),
+            (part: "arm_far", at: (26, 22), turn: -25, shade: 0.72, tag: "back_arm"),
+            (part: "legs_straight", at: (16, 34)),
+            (part: "hero_torso", at: (17, 19)),
+            (part: "hero_head", at: (17, 8)),
+            (part: "arm_near", at: (17, 21), turn: -30, outline: true, tag: "front_arm"),
+        ],
+        "brake": [
+            (part: "pack", at: (17, 19), tag: "pack"),
+            (part: "arm_far", at: (26, 22), turn: 80, shade: 0.72, tag: "back_arm"),
+            (part: "legs_plunge_pose", at: (14, 31)),
+            (part: "hero_torso", at: (17, 19)),
+            (part: "hero_head", at: (17, 8)),
+            (part: "arm_near", at: (18, 22), turn: 65, outline: true, tag: "front_arm"),
+        ],
+        "float_a": [
+            (part: "pack", at: (17, 19), tag: "pack"),
+            (part: "arm_far", at: (26, 22), turn: 125, shade: 0.72, tag: "back_arm"),
+            (part: "legs_rise", at: (16, 33)),
+            (part: "hero_torso", at: (17, 19)),
+            (part: "hero_head", at: (17, 8)),
+            (part: "arm_near", at: (18, 22), turn: 20, outline: true, tag: "front_arm"),
+        ],
+        "float_b": [
+            (part: "pack", at: (17, 19), tag: "pack"),
+            (part: "arm_far", at: (26, 22), turn: 140, shade: 0.72, tag: "back_arm"),
+            (part: "legs_rise", at: (16, 33)),
+            (part: "hero_torso", at: (17, 19)),
+            (part: "hero_head", at: (17, 8)),
+            (part: "arm_near", at: (18, 22), turn: 35, outline: true, tag: "front_arm"),
+        ],
+        "float_c": [
+            (part: "pack", at: (17, 19), tag: "pack"),
+            (part: "arm_far", at: (26, 22), turn: 155, shade: 0.72, tag: "back_arm"),
+            (part: "legs_rise", at: (16, 33)),
+            (part: "hero_torso", at: (17, 19)),
+            (part: "hero_head", at: (17, 8)),
+            (part: "arm_near", at: (18, 22), turn: 50, outline: true, tag: "front_arm"),
+        ],
         // Striking down: tucked, the head down over the blade. Plunging:
         // knees up high, the back arm up for balance.
         "strike_down": [
@@ -971,6 +1036,9 @@
     derived: {
         // Hit: knocked back a pixel.
         "hurt": (from: "drop", shift: (-1, 0)),
+        // Adrift: a pixel up and down.
+        "float_b_up": (from: "float_b", shift: (0, -1)),
+        "float_c_up": (from: "float_c", shift: (0, -1)),
     },
     clips: {
         "idle": (frames: ["stand", "stand", "breathe", "breathe", "stand", "stand", "breathe", "breathe", "stand", "blink", "stand", "breathe", "breathe"], fps: 5),
@@ -978,6 +1046,11 @@
         "sprint": (frames: ["sprint_1", "sprint_2", "sprint_3", "sprint_4", "sprint_5", "sprint_6"], fps: 17),
         "jump": (frames: ["rise"], fps: 5),
         "fall": (frames: ["drop"], fps: 5),
+        // Rocket boots: firing (`rocket`), pushing against the way it goes
+        // (`brake`); weightless, touching nothing (`float`).
+        "rocket": (frames: ["fly"], fps: 5),
+        "brake": (frames: ["brake"], fps: 5),
+        "float": (frames: ["float_a", "float_b", "float_b_up", "float_c_up", "float_c", "float_b"], fps: 3),
         "dash": (frames: ["dash"], fps: 5),
         "wall": (frames: ["wall"], fps: 5),
         "hurt": (frames: ["hurt"], fps: 5),

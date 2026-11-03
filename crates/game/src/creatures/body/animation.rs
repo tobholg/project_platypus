@@ -132,6 +132,8 @@ const AIR_GRACE: f32 = 0.12;
 /// Starts running above this speed, stops below the lower one (cells/s).
 const RUN_ON: f32 = 12.0;
 const RUN_OFF: f32 = 4.5;
+/// Firing against the way it's going faster than this (cells/s): braking.
+const BRAKE_FROM: f32 = 60.0;
 
 /// Clip wanted for a movement state, with fallbacks so a creature only needs
 /// `idle`. Stepping up a bump (a tick off the ground) doesn't count as air;
@@ -141,6 +143,17 @@ fn wanted(k: &Kinematics, anim: &mut Animator, dt: f32) -> &'static [&'static st
     anim.air = if k.loco.state == MoveState::Air { anim.air + dt } else { 0.0 };
     let airborne = anim.air > AIR_GRACE || v.y > 90.0;
     anim.running = if anim.running { v.x.abs() > RUN_OFF } else { v.x.abs() > RUN_ON };
+    // Rocket boots firing: flying (or braking, pushing against the way
+    // it's going); weightless, touching nothing: adrift.
+    let busy = matches!(k.loco.state, MoveState::Dash | MoveState::Stunned);
+    if !busy && k.loco.rocketing() {
+        let speed = v.length();
+        return if speed > BRAKE_FROM && v.dot(k.loco.thrust()) < -0.5 * speed { &["brake", "rocket", "jump", "idle"] } else { &["rocket", "jump", "idle"] };
+    }
+    let c = k.loco.contacts;
+    if !busy && k.loco.floating() && !(c.ground || c.ceiling || c.wall_left || c.wall_right) {
+        return &["float", "fall", "idle"];
+    }
     match k.loco.state {
         MoveState::Dash => &["dash", "run", "idle"],
         MoveState::WallSlide => &["wall", "fall", "idle"],

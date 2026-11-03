@@ -107,7 +107,7 @@ fn kick(mut commands: Commands, sim: Res<SimWorld>, mut recoils: MessageReader<R
 
 /// Turning as it drifts, drawn turned (the whole of it); holding on to
 /// something, or out of the void's weightlessness, righted again.
-fn turn(mut commands: Commands, time: Res<Time>, sim: Res<SimWorld>, mut q: Query<(Entity, &Kinematics, &mut Turning, &mut Transform)>) {
+pub fn turn(mut commands: Commands, time: Res<Time>, sim: Res<SimWorld>, mut q: Query<(Entity, &Kinematics, &mut Turning, &mut Transform)>) {
     let dt = time.delta_secs();
     for (e, k, mut t, mut tf) in &mut q {
         let c = k.loco.contacts;
