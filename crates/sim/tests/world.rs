@@ -1304,6 +1304,50 @@ fn an_axe_fells_a_tree_whose_branches_touch_its_neighbours() {
     assert_eq!(w.get_bg(CellPos::new(115, 51)).map(|c| c.material), Some(wood), "with its share of the branch");
 }
 
+/// Felled by an axe, a tree tips, cracks up from the cut into logs, its
+/// crown bursting; every log comes to rest as loot (`take_logged`): all
+/// the wood above the cut, none left as cells to chop again. The stump
+/// stays.
+#[test]
+fn an_axe_felled_tree_cracks_into_logs_that_come_to_rest_as_loot() {
+    let mut w = boxed_world(3, 2, 58);
+    fill(&mut w, "stone", 1, 191, 1, 10);
+    let (wood, leaves) = (w.materials().expect_id("wood"), w.materials().expect_id("leaves"));
+    fill_bg(&mut w, "wood", 94, 99, 1, 70);
+    fill_bg(&mut w, "wood", 80, 113, 50, 52);
+    fill_bg(&mut w, "leaves", 76, 117, 60, 78);
+    let before = count_bg(&w, wood);
+    use platypus_sim::BLOCK;
+    let row = 12 / BLOCK + 1;
+    let mut cut = 0;
+    for bx in 94 / BLOCK..=99 / BLOCK {
+        let r = w.apply_edit(&WorldEdit::MineBlock { block: CellPos::new(bx, row), power: 50, max_hardness: 100, back: true });
+        cut += r.removed.iter().filter(|(m, _)| *m == wood).map(|&(_, n)| n).sum::<u32>() as usize;
+    }
+    assert_eq!(w.bodies().len(), 1, "it came away whole, to begin with");
+    assert!(w.bodies()[0].logging(), "cracking into logs");
+    let mut most_logs = 0;
+    let mut loot = 0usize;
+    for _ in 0..900 {
+        w.step();
+        most_logs = most_logs.max(w.bodies().iter().filter(|b| b.log).count());
+        for l in w.take_logged() {
+            loot += l.loot.iter().filter(|(m, _)| *m == wood).map(|&(_, n)| n).sum::<u32>() as usize;
+        }
+        if w.bodies().is_empty() {
+            break;
+        }
+    }
+    assert!(w.bodies().is_empty(), "every log came to rest");
+    assert!((4..=24).contains(&most_logs), "it cracked into a handful of logs ({most_logs})");
+    let stump = count_bg(&w, wood);
+    assert_eq!(loot + stump + cut, before, "all the wood: {loot} as loot, {stump} the stump, {cut} cut ({before})");
+    assert!(loot > before / 2, "most of it as loot ({loot} of {before})");
+    assert_eq!(count(&w, wood), 0, "no log left lying as cells");
+    assert_eq!(count_bg(&w, leaves), 0, "the crown burst");
+    assert!(w.get_bg(CellPos::new(96, 5)).unwrap().material == wood, "the stump stays");
+}
+
 #[test]
 fn an_axe_fells_a_trunk_buried_on_its_high_side() {
     let mut w = boxed_world(3, 2, 57);

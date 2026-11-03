@@ -30,4 +30,4 @@ pub use material::{Kind, Loot, MaterialId, MaterialTable, Nuggets, Optics};
 pub use particles::{Landing, Particle};
 pub use step::{PHASES, StepStats, Strike, Zap};
 pub use weather::Weather;
-pub use world::{LEAF_REACH, World};
+pub use world::{LEAF_REACH, Logged, World};

@@ -871,7 +871,12 @@ const PELT_SAFE_LIQUID: f32 = 375.0;
 /// times faster × this, and are mostly stopped by it, shoving it.
 const PELT: f32 = 0.8;
 
-type Pelted<'a> = (&'a mut Kinematics, &'a mut Health, Option<&'a brain::way::DigFace>, Option<&'a body::hurt::Bleeds>);
+type Pelted<'a> = (&'a mut Kinematics, &'a mut Health, Option<&'a brain::way::DigFace>, Option<&'a body::hurt::Bleeds>, Has<player::LocalPlayer>);
+
+/// The player takes this share of what flies or falls into it (rubble,
+/// a falling trunk, a dropped boulder), on any difficulty; creatures all
+/// of it (bury a skeleton under the rubble of a bomb).
+pub const PLAYER_DEBRIS: f32 = 0.5;
 
 /// Heavy things flying fast hurt what they hit: a ball of rock dropped
 /// from a well, blast debris, a flung stream of sand (not a digger at its
@@ -880,7 +885,7 @@ type Pelted<'a> = (&'a mut Kinematics, &'a mut Health, Option<&'a brain::way::Di
 /// would wear it down; nor its own blood, spurting from a wound.)
 fn pelted(mut sim: ResMut<SimWorld>, mut q: Query<Pelted, (Without<body::rise::Pile>, Without<body::rise::Skull>)>) {
     let boxes: Vec<(Vec2, Vec2)> = q.iter().map(|(k, ..)| (k.body.pos - k.body.half, k.body.pos + k.body.half)).collect();
-    let bloods: Vec<Option<platypus_sim::MaterialId>> = q.iter().map(|(.., b)| b.map(|b| b.0)).collect();
+    let bloods: Vec<Option<platypus_sim::MaterialId>> = q.iter().map(|(.., b, _)| b.map(|b| b.0)).collect();
     if boxes.is_empty() {
         return;
     }
@@ -908,10 +913,10 @@ fn pelted(mut sim: ResMut<SimWorld>, mut q: Query<Pelted, (Without<body::rise::P
         shove[i] += v * weight * 0.02;
         p.vel = [p.vel[0] * 0.3, p.vel[1] * 0.3];
     }
-    for (i, (mut k, mut h, dig, _)) in q.iter_mut().enumerate() {
+    for (i, (mut k, mut h, dig, _, player)) in q.iter_mut().enumerate() {
         // (A digger shrugs off the dirt it's digging.)
         if hurt[i] > 0.0 && dig.is_none_or(|d| d.face.is_empty()) {
-            h.harm_by(hurt[i], Harm::Blunt, || crate::death::Cause::new("Flying rubble", "pelted"));
+            h.harm_by(hurt[i] * if player { PLAYER_DEBRIS } else { 1.0 }, Harm::Blunt, || crate::death::Cause::new("Flying rubble", "pelted"));
             k.body.vel += shove[i];
         }
     }

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::bodies::{BODY_MIN_CELLS, Body, OBJECT_MAX, OBJECT_MIN_CELLS, Surface};
+use crate::bodies::{BODY_MIN_CELLS, Body, Crack, OBJECT_MAX, OBJECT_MIN_CELLS, Surface};
 use crate::cell::{Cell, flags};
 use crate::chunk::Chunk;
 use crate::climate::Climate;
@@ -81,6 +81,8 @@ pub struct World {
     /// Pieces that broke off whole and fly as rigid bodies.
     bodies: Vec<Body>,
     next_body: u32,
+    /// Logs come to rest since the game last took them (`take_logged`).
+    logged: Vec<Logged>,
     /// While an axe's cut is checked: the cut tree's share of the wood (x
     /// from..to, halfway to the trunks either side), so a tree whose
     /// branches touch its neighbours' still falls, and, cut through as far
@@ -166,6 +168,7 @@ impl World {
             particles: Vec::new(),
             bodies: Vec::new(),
             next_body: 0,
+            logged: Vec::new(),
             felling: None,
             weather: None,
             strikes: Vec::new(),
@@ -1895,7 +1898,19 @@ impl World {
             let base_x = base.iter().sum::<i32>() as f32 / base.len().max(1) as f32 + 0.5;
             let lean = body.pos[0] - base_x;
             let side = if lean.abs() > 0.5 { lean.signum() } else if rng.coin() { 1.0 } else { -1.0 };
-            body.omega = -side * 0.004;
+            // A tree an axe felled: it tips, then cracks up from the cut
+            // into logs (`crack`), its crown bursting; anything else
+            // (a wall that came away) topples whole, as ever.
+            // (Felled by an axe (`felling`), not burnt through, blown or dug
+            // out from under; and not burning.)
+            let woody = self.felling.is_some()
+                && cells.iter().filter(|(_, c)| mats.def(c.material).loot == Loot::Wood).count() * 2 > solid
+                && !cells.iter().any(|(_, c)| c.flags & flags::BURNING != 0);
+            if woody {
+                let band = ((body.rows() + LOG_BANDS - 1) / LOG_BANDS).max(LOG_BAND_LEAST);
+                body.crack = Some(Crack { next: 0, band, tile: (band * 3 / 2).max(LOG_TILE_LEAST) });
+            }
+            body.omega = -side * if woody { TIP_SPIN } else { 0.004 };
             // It pivots on its stump but passes through other trees.
             let half = (base.iter().max().unwrap_or(&0) - base.iter().min().unwrap_or(&0)) / 2 + 6;
             body.hinge = Some((CellPos::new(base_x.floor() as i32, low), half));
@@ -2387,6 +2402,71 @@ impl World {
         None
     }
 
+    /// A felled tree, tipping, cracks up from its cut: a band of it at a
+    /// time breaks off as logs (a puff of chips), the last its crown
+    /// bursting into leaves.
+    fn crack(&mut self, body: &mut Body, mats: &MaterialTable) {
+        let Some(mut crack) = body.crack else { return };
+        if body.age < TIP_TICKS || (body.age - TIP_TICKS) % CRACK_TICKS != 0 {
+            return;
+        }
+        let mut rng = self.rng_for(0xC4AC, CellPos::new(body.id as i32, body.age as i32));
+        let rows = crack.next..crack.next + crack.band;
+        crack.next = rows.end;
+        let mut next = self.next_body;
+        let logs = body.carve(rows, crack.tile, mats, &mut next);
+        self.next_body = next;
+        // (Its foot's gone: it pivots on nothing now.)
+        body.hinge = None;
+        for mut log in logs {
+            // Popped off: a little sideways, a little up, turning.
+            let side = (rng.next_u8() as f32 / 255.0 - 0.5) * 2.0;
+            log.vel = [log.vel[0] + side * LOG_KICK, log.vel[1] + LOG_KICK * 0.6 * (rng.next_u8() as f32 / 255.0)];
+            log.omega += side * 0.03;
+            // Chips.
+            for (p, c) in log.world_cells().filter(|_| rng.chance(CHIP_CHANCE)).collect::<Vec<_>>() {
+                let mut chip = c;
+                chip.flags = 0;
+                let v = [log.vel[0] + (rng.next_u8() as f32 / 255.0 - 0.5) * 1.4, log.vel[1] + rng.next_u8() as f32 / 255.0 * 0.9];
+                let mut d = Particle::new(center_of(p), v, chip, 14 + rng.next_u8() as u16 / 12, Landing::Vanish);
+                d.gravity = 0.6;
+                self.particles.push(d);
+            }
+            self.bodies.push(log);
+        }
+        if crack.next >= body.rows() || body.is_empty() {
+            // All of it cracked: the crown bursts.
+            body.crack = None;
+            for (at, leaf, vel) in body.shed(mats) {
+                if rng.chance(140) {
+                    let out = [at[0] - body.pos[0], at[1] - body.pos[1]];
+                    let l = (out[0] * out[0] + out[1] * out[1]).sqrt().max(1.0);
+                    let burst = 0.5 + rng.next_u8() as f32 / 255.0 * 0.7;
+                    let v = [vel[0] * 0.5 + out[0] / l * burst, vel[1] * 0.3 + out[1] / l * burst * 0.6 + 0.25];
+                    let mut p = Particle::new(at, v, leaf, 70 + rng.next_u8() as u16 / 2, Landing::Vanish);
+                    p.gravity = 0.12;
+                    self.particles.push(p);
+                }
+            }
+        } else {
+            body.crack = Some(crack);
+        }
+    }
+
+    /// Logs come to rest since the last call: where, and what they're
+    /// made of (the game makes them loot).
+    pub fn take_logged(&mut self) -> Vec<Logged> {
+        std::mem::take(&mut self.logged)
+    }
+
+    /// A log taken up (the player walked into it): out of the world, what
+    /// it was made of. None if it's not a log (or gone).
+    pub fn collect_log(&mut self, id: u32) -> Option<Logged> {
+        let i = self.bodies.iter().position(|b| b.id == id && b.log)?;
+        let body = self.bodies.swap_remove(i);
+        Some(Logged { at: body.pos, loot: body.loot(&self.materials) })
+    }
+
     fn step_bodies(&mut self) {
         if self.bodies.is_empty() {
             return;
@@ -2414,7 +2494,14 @@ impl World {
                     }
                 }
             }
+            if body.crack.is_some() {
+                self.crack(&mut body, &mats);
+            }
             if body.is_empty() {
+                continue;
+            }
+            if body.log && ev.settled {
+                self.logged.push(Logged { at: body.pos, loot: body.loot(&mats) });
                 continue;
             }
             if self.fractures(&body, ev.impact) {
@@ -2871,6 +2958,30 @@ const BLAST_VAPOUR_HEAT: i16 = 140;
 const FLING_RIM: i32 = 11;
 /// Extra heat on blast debris, so it glows in flight.
 const BLAST_DEBRIS_HEAT: i16 = 450;
+/// A felled tree tips this many ticks before it starts cracking, then a
+/// band of it breaks off as logs every `CRACK_TICKS`: about this many bands
+/// (never shorter than `LOG_BAND_LEAST` rows; a log never narrower than
+/// `LOG_TILE_LEAST`).
+const TIP_TICKS: u32 = 14;
+const CRACK_TICKS: u32 = 2;
+const LOG_BANDS: i32 = 7;
+const LOG_BAND_LEAST: i32 = 8;
+const LOG_TILE_LEAST: i32 = 12;
+/// How hard it starts tipping (radians a tick).
+const TIP_SPIN: f32 = 0.012;
+/// How hard a log pops off (cells a tick), and its chips (chance /256 a
+/// cell).
+const LOG_KICK: f32 = 0.35;
+const CHIP_CHANCE: u8 = 10;
+
+/// A log come to rest (or taken up): where it was, what it was made of
+/// (material, cells).
+#[derive(Clone, Debug)]
+pub struct Logged {
+    pub at: [f32; 2],
+    pub loot: Vec<(MaterialId, u32)>,
+}
+
 /// Chance /256 that a mined cell puffs out as dust.
 const DUST_CHANCE: u8 = 90;
 

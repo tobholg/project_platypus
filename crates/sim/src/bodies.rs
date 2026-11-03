@@ -86,7 +86,28 @@ pub struct Body {
     pub(crate) rests_on_front: bool,
     /// Where it broke off (centre, half-size): the only background it collides with.
     pub(crate) hinge: Option<(CellPos, i32)>,
+    /// A felled tree's log: when it comes to rest (or is touched) it's
+    /// loot (`World::take_logged`), not cells again.
+    pub log: bool,
+    /// A felled tree cracking into logs, up from its cut (`World::crack`).
+    pub(crate) crack: Option<Crack>,
 }
+
+/// A felled tree cracking into logs: the next row of its grid to break
+/// off (from its bottom, the cut), how many rows a band, how wide a log.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Crack {
+    pub next: i32,
+    pub band: i32,
+    pub tile: i32,
+}
+
+/// A log rests this many ticks before it's loot (it tumbles, stops, lies
+/// there a moment).
+const LOG_REST_TICKS: u32 = 40;
+/// A log's band of cells this small (or smaller) goes in with its
+/// neighbour.
+const LOG_MIN_CELLS: usize = 12;
 
 /// What happened to a body this tick.
 #[derive(Default)]
@@ -170,6 +191,8 @@ impl Body {
             airborne: 0,
             rests_on_front: false,
             hinge: None,
+            log: false,
+            crack: None,
         };
         body.recompute(mats);
         // Unrotated: the local grid's origin sits at (x0, y0).
@@ -301,6 +324,83 @@ impl Body {
         self.hull.is_empty()
     }
 
+    /// A felled tree's, coming apart into logs or one of them: it doesn't
+    /// batter the player.
+    pub fn logging(&self) -> bool {
+        self.log || self.crack.is_some()
+    }
+
+    /// Rows of its grid.
+    pub(crate) fn rows(&self) -> i32 {
+        self.h
+    }
+
+    /// What it's made of (what's solid in it, not its leaves): material,
+    /// cells.
+    pub fn loot(&self, mats: &MaterialTable) -> Vec<(crate::material::MaterialId, u32)> {
+        let mut out: Vec<(crate::material::MaterialId, u32)> = Vec::new();
+        for &c in &self.cells {
+            if !Self::collides(mats, c) {
+                continue;
+            }
+            match out.iter_mut().find(|(m, _)| *m == c.material) {
+                Some((_, n)) => *n += 1,
+                None => out.push((c.material, 1)),
+            }
+        }
+        out
+    }
+
+    /// Break the solid cells of rows `rows` off it, `tile` columns to a
+    /// piece (a piece too small goes in with the nearest one), as bodies
+    /// of their own (ids from `next_id`), where they were and moving as
+    /// that part of it was. What's left of it stays (its leaves too).
+    pub(crate) fn carve(&mut self, rows: std::ops::Range<i32>, tile: i32, mats: &MaterialTable, next_id: &mut u32) -> Vec<Body> {
+        let tiles = (self.w + tile - 1) / tile.max(1);
+        let mut groups: Vec<Vec<(CellPos, Cell)>> = vec![Vec::new(); tiles.max(1) as usize];
+        for ly in rows.start.max(0)..rows.end.min(self.h) {
+            for lx in 0..self.w {
+                let i = (ly * self.w + lx) as usize;
+                let c = self.cells[i];
+                if Self::collides(mats, c) {
+                    groups[(lx / tile) as usize].push((CellPos::new(lx, ly), c));
+                    self.cells[i] = Cell::AIR;
+                }
+            }
+        }
+        // (Too small: into the nearest big enough (or the biggest).)
+        let big: Vec<usize> = (0..groups.len()).filter(|&g| groups[g].len() > LOG_MIN_CELLS).collect();
+        let keep = |g: usize| big.iter().copied().min_by_key(|&b| (b as i32 - g as i32).abs());
+        let biggest = (0..groups.len()).max_by_key(|&g| groups[g].len());
+        for g in 0..groups.len() {
+            if groups[g].is_empty() || groups[g].len() > LOG_MIN_CELLS {
+                continue;
+            }
+            if let Some(to) = keep(g).or(biggest).filter(|&t| t != g) {
+                let moved = std::mem::take(&mut groups[g]);
+                groups[to].extend(moved);
+            }
+        }
+        let mut out = Vec::new();
+        for cells in groups.into_iter().filter(|g| !g.is_empty()) {
+            let mut piece = Body::new(*next_id, &cells, mats);
+            *next_id = next_id.wrapping_add(1);
+            // (`Body::new` put it in grid coordinates: where that is now.)
+            let r = [piece.pos[0] - self.com[0], piece.pos[1] - self.com[1]];
+            piece.pos = self.world_of(r);
+            piece.rot = self.rot;
+            piece.vel = self.velocity_at(piece.pos);
+            piece.omega = self.omega;
+            piece.log = true;
+            piece.rests_on_front = true;
+            out.push(piece);
+        }
+        if !out.is_empty() {
+            self.recompute(mats);
+        }
+        out
+    }
+
     /// Break along a line through its centre of mass at `angle` (given as
     /// (cos, sin)): its cells on each side, as world cells.
     pub(crate) fn split(&self, dir: [f32; 2]) -> [Vec<(CellPos, Cell)>; 2] {
@@ -415,7 +515,7 @@ impl Body {
 
         self.airborne = if touched { 0 } else { self.airborne + 1 };
         self.still = if self.airborne < 3 && self.top_speed() < REST_SPEED { self.still + 1 } else { 0 };
-        ev.settled = self.still >= REST_TICKS || self.age >= MAX_AGE;
+        ev.settled = self.still >= if self.log { LOG_REST_TICKS } else { REST_TICKS } || self.age >= MAX_AGE;
         ev
     }
 

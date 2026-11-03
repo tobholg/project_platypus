@@ -10,6 +10,11 @@
 //! - `tree`       builds a wooden tree beside the player and sets it on fire
 //! - `blast`      three bombs dropped down one shaft beside the player, from t = 2 s
 //! - `fell`       cuts through the trunk of the nearest tree to the right at t = 2 s
+//!   (`PLATYPUS_FELL=axe`: as an axe does, block by block: it cracks into logs; logs
+//!   the bodies and the wood carried)
+//! - `stormglass` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`) fulgurite on the floor (a
+//!   speck of three cells, a seam), lightning nearby (1 s: it's charged), the player
+//!   soaked and walked over the speck, then the seam; logs its health
 //! - `burn`       sets the base of that tree alight at t = 2 s instead
 //! - `strike`     lightning onto that tree at t = 2 s instead
 //! - `acid`       pours acid into a glass basin beside the player, boils it at 2 s, lights the fumes at 3.6 s
@@ -433,6 +438,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, craft_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, pack_script.after(bevy::ui::UiSystems::Focus).before(crate::pause::key))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
+            .add_systems(FixedUpdate, stormglass_script)
             .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script, wands_script, melee_script, fight_script, archery_script).after(InputSystems).before(crate::camera::track_cursor));
     }
 }
@@ -698,11 +704,29 @@ fn blast_script(
     *dropped += 1;
 }
 
-fn fell_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kinematics, With<LocalPlayer>>, mut done: Local<bool>) {
-    if !matches!(s.name.as_str(), "fell" | "burn" | "strike") || *done || s.elapsed < 2.0 {
+fn fell_script(
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    player: Query<(&Kinematics, &crate::hands::items::Inventory), With<LocalPlayer>>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut done: Local<bool>,
+    mut said: Local<f32>,
+) {
+    if !matches!(s.name.as_str(), "fell" | "burn" | "strike") || s.elapsed < 2.0 {
         return;
     }
-    let Ok(p) = player.single() else { return };
+    let Ok((p, inv)) = player.single() else { return };
+    let axe = std::env::var("PLATYPUS_FELL").is_ok_and(|v| v == "axe");
+    if *done {
+        if axe && s.elapsed >= *said {
+            *said = s.elapsed + 0.25;
+            let wood = items.as_ref().and_then(|i| i.id("block:wood")).map_or(0, |i| inv.count(i));
+            let bodies = sim.world.bodies();
+            info!("fell: t {:.2}: {} bodies ({} logs, {} cracking), carrying {wood} wood", s.elapsed, bodies.len(), bodies.iter().filter(|b| b.log).count(), bodies.iter().filter(|b| b.logging() && !b.log).count());
+        }
+        return;
+    }
+    let p = p;
     let (px, py) = (p.body.pos.x as i32, p.body.pos.y as i32);
     // The first background wood 30 cells above the ground (clear of tall
     // grass, below the branches): a trunk.
@@ -724,6 +748,17 @@ fn fell_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kinem
             sim.queue(WorldEdit::Ignite { center: CellPos::new(center.x, ground + 4), radius: width / 2 + 3 });
         } else if s.name == "strike" {
             sim.queue(WorldEdit::Lightning { x: center.x, from_y: py + 450 });
+        } else if axe {
+            // An axe's blows: each block across the trunk, a block's height
+            // (two block rows: over the ground's grass), until it's through.
+            use platypus_sim::BLOCK;
+            for by in [at.y.div_euclid(BLOCK), at.y.div_euclid(BLOCK) + 1] {
+                for bx in (left - 2).div_euclid(BLOCK)..=(left + width + 2).div_euclid(BLOCK) {
+                    for _ in 0..4 {
+                        sim.queue(WorldEdit::MineBlock { block: CellPos::new(bx, by), power: 255, max_hardness: 200, back: true });
+                    }
+                }
+            }
         } else {
             // Twice: a dig clears the playfield first where anything stands in front.
             for _ in 0..2 {
@@ -733,6 +768,62 @@ fn fell_script(s: Res<Scenario>, mut sim: ResMut<SimWorld>, player: Query<&Kinem
         info!("{}: trunk {width} wide at {center:?}, player at {px}", s.name);
         *done = true;
         return;
+    }
+}
+
+/// `stormglass`: see the list at the top. The speck at x 980, the seam 1060 …
+/// 1100, on the arena's floor; lightning at 1180.
+fn stormglass_script(
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut player: Query<(Entity, &mut Kinematics, &crate::creatures::Health, Option<&mut crate::creatures::body::elements::Coated>), With<LocalPlayer>>,
+    mut commands: Commands,
+    mut st: Local<(u8, f32)>,
+) {
+    if s.name != "stormglass" {
+        return;
+    }
+    let Ok((me, mut k, h, coated)) = player.single_mut() else { return };
+    let t = s.elapsed;
+    let fl = platypus_worldgen::arena::FLOOR;
+    let Some(glass) = sim.materials().id("fulgurite") else { return };
+    match st.0 {
+        0 if t > 0.3 => {
+            commands.entity(me).remove::<crate::combat::Invulnerable>();
+            for (x, y) in [(980, fl - 1), (981, fl - 1), (980, fl - 2)] {
+                sim.world.set(CellPos::new(x, y), platypus_sim::Cell::new(glass, 0));
+            }
+            for x in 1060..1100 {
+                for y in fl - 4..fl {
+                    sim.world.set(CellPos::new(x, y), platypus_sim::Cell::new(glass, (x * 7 + y) as u8));
+                }
+            }
+            k.body.pos = Vec2::new(940.0, fl as f32 + k.body.half.y + 1.0);
+            k.prev_pos = k.body.pos;
+            st.0 = 1;
+        }
+        1 if t > 1.0 => {
+            sim.queue(WorldEdit::Lightning { x: 1180, from_y: fl + 300 });
+            st.0 = 2;
+        }
+        _ => {}
+    }
+    // Soaked.
+    match coated {
+        Some(mut c) => c.coats = vec![("wet".into(), 1.0)],
+        None => {
+            commands.entity(me).insert(crate::creatures::body::elements::Coated { coats: vec![("wet".into(), 1.0)] });
+        }
+    }
+    // Walked: onto the speck (2 … 4 s), then over the seam and on (5 s on).
+    if st.0 >= 2 {
+        let x = if t < 2.0 { 940.0 } else if t < 4.0 { 980.5 } else if t < 5.0 { 1030.0 } else { (1040.0 + (t - 5.0) * 25.0).min(1120.0) };
+        k.body.pos.x = x;
+        k.prev_pos.x = x;
+    }
+    if t >= st.1 {
+        st.1 = t + 0.25;
+        info!("stormglass: t {t:.2} at x {:.0}: hp {:.1}/{:.0}", k.body.pos.x, h.hp, h.max);
     }
 }
 
@@ -9455,6 +9546,11 @@ fn chop_script(
                     if st.1 == 0.0 {
                         st.1 = t;
                         info!("chop: t {t:.1}: cut through; standing {}", near(foot, true));
+                    } else if t - st.1 > 2.0 && !w.bodies().iter().any(|b| b.logging()) && near(foot, false) <= 200 {
+                        // (Cracked into logs, and they're all loot now.)
+                        info!("chop: t {t:.1}: it's down, in logs: carrying {carried:.1} blocks of wood; standing {}", near(foot, true));
+                        st.0 = 3;
+                        st.1 = t;
                     } else if t - st.1 > 12.0 {
                         info!("chop: t {t:.1}: it never came down");
                         st.0 = 3;
