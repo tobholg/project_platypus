@@ -240,7 +240,7 @@ mod tests {
 
     /// Every piece's look goes on every humanoid, and changes something
     /// (what's worn on the legs and feet, where it has legs drawn: a lanky
-    /// skeleton's are its `legs`').
+    /// skeleton's are its `legs`'; on the back, where it has a pack).
     #[test]
     fn every_look_dresses_every_humanoid() {
         let gear: GearFile = crate::data::parse_ron(include_str!("../../../../assets/data/gear.ron")).unwrap();
@@ -252,6 +252,10 @@ mod tests {
                     continue;
                 };
                 if !file.parts.keys().any(|k| k.starts_with("legs")) && item.gear.as_ref().is_some_and(|g| matches!(g.slot, Slot::Legs | Slot::Feet)) {
+                    continue;
+                }
+                // (A back piece is drawn as the pack: none on a rig without one.)
+                if !file.parts.contains_key("pack") && item.gear.as_ref().is_some_and(|g| g.slot == Slot::Back) {
                     continue;
                 }
                 let art = platypus_art::compile(&platypus_art::dress::dress(&file, &[look]).unwrap_or_else(|e| panic!("{}: {e}", item.id))).unwrap_or_else(|e| panic!("{}: {e}", item.id));
