@@ -9735,6 +9735,14 @@ fn chop_script(
             st.0 = 1;
             k.body.pos = Vec2::new(foot.x as f32 - 14.0, foot.y as f32 + k.body.half.y);
             k.prev_pos = k.body.pos;
+            // (The dev kit fills the pack: room made for the wood, all but
+            // the axe out of it.)
+            let axe = items.id("copper_axe");
+            for slot in inv.slots.iter_mut() {
+                if slot.is_some_and(|s| Some(s.item) != axe) {
+                    *slot = None;
+                }
+            }
             take_up(&mut hand, &inv, Some(&items), "copper_axe");
             info!("chop: a tree at ({}, {}): standing {} cells", foot.x, foot.y, near(foot, true));
             // (PLATYPUS_CHOP=fire: the blaze staff's ray on its trunk instead.)
