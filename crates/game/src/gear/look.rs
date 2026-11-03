@@ -25,7 +25,7 @@ use crate::hands::items::Items;
 pub struct Wardrobe(HashMap<String, Arc<CreatureDef>>);
 
 /// The order skins go on: what's under first.
-const LAYERS: [Slot; 6] = [Slot::Feet, Slot::Legs, Slot::Body, Slot::Hands, Slot::Head, Slot::Trinket];
+const LAYERS: [Slot; 7] = [Slot::Back, Slot::Feet, Slot::Legs, Slot::Body, Slot::Hands, Slot::Head, Slot::Trinket];
 
 /// The tag of the layers that are the pack on the player's back: off it
 /// while something else is worn there (a cape, a thruster pack).
@@ -40,7 +40,7 @@ pub fn unpacked(file: &mut platypus_art::ArtFile) {
 
 /// Is any of these (what a body wore) worn on the back?
 pub fn backed(items: &Items, stacks: &[crate::hands::items::Stack]) -> bool {
-    stacks.iter().any(|s| items.def(s.item).gear.as_ref().is_some_and(|g| g.slot == Slot::Back))
+    stacks.iter().any(|s| items.def(s.item).gear.as_ref().is_some_and(|g| g.slot == Slot::Back && g.look.is_none()))
 }
 
 /// The skins of what's worn, under to over, and a name for the outfit
@@ -63,7 +63,10 @@ fn outfit<'a>(items: &'a Items, eq: &Equipment, bare_head: bool) -> (Vec<&'a Ski
             }
         }
     }
-    let back = eq.worn.iter().zip(WORN).any(|(s, slot)| slot == Slot::Back && s.is_some());
+    // (Something on the back with no look of its own (a cape: it hangs,
+    // `cloth`): the pack off. One with a look is drawn as the pack, its
+    // colours: a thruster pack.)
+    let back = eq.worn.iter().zip(WORN).any(|(s, slot)| slot == Slot::Back && s.is_some_and(|s| items.def(s.item).gear.as_ref().is_none_or(|g| g.look.is_none())));
     if back {
         name.push_str("+back");
     }
