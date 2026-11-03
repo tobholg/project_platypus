@@ -65,6 +65,11 @@ pub struct MapScreen {
     /// The seed's world, tile by tile (dev view), and those being made.
     seeds: HashMap<IVec2, Vec<u16>>,
     making: HashMap<IVec2, Task<Vec<u16>>>,
+    /// The seed's world far out (dev view): tiles at coarser levels (a
+    /// level L tile covers 2^L tiles each way, a pixel every 2^L), made
+    /// and pictured in the background, and those being made.
+    overview: HashMap<(u8, IVec2), Overview>,
+    overview_making: HashMap<(u8, IVec2), Task<Vec<u8>>>,
     /// Its labels, made when it opens (and when pins or the like change).
     labels_made: Option<(usize, Option<Vec2>, Option<Vec2>, bool)>,
     clock: f32,
@@ -72,7 +77,7 @@ pub struct MapScreen {
 
 impl Default for MapScreen {
     fn default() -> Self {
-        MapScreen { open: false, scale: OPEN_SCALE, center: Vec2::ZERO, drag: None, fog_off: false, shown: HashMap::new(), seeds: HashMap::new(), making: HashMap::new(), labels_made: None, clock: 0.0 }
+        MapScreen { open: false, scale: OPEN_SCALE, center: Vec2::ZERO, drag: None, fog_off: false, shown: HashMap::new(), seeds: HashMap::new(), making: HashMap::new(), overview: HashMap::new(), overview_making: HashMap::new(), labels_made: None, clock: 0.0 }
     }
 }
 
@@ -100,8 +105,18 @@ struct Shown {
     ever: bool,
 }
 
+/// A coarse tile of the seed's world on the screen (dev view, far out).
+struct Overview {
+    node: Entity,
+    image: Handle<Image>,
+    /// Last wanted (the screen's clock): the oldest go past `OVERVIEW_KEPT`.
+    used: f32,
+}
+
 #[derive(Component)]
 struct MapRoot;
+#[derive(Component)]
+struct MapOverview;
 #[derive(Component)]
 struct MapFog;
 #[derive(Component)]
@@ -128,14 +143,14 @@ struct MapLabel {
 }
 
 /// Each material's colour on the map, its kind, whether it glows.
-#[derive(Resource)]
+#[derive(Resource, Clone)]
 struct Palette(Vec<([f32; 3], Kind, bool)>);
 
 pub(super) fn build(app: &mut App) {
     app.init_resource::<MapScreen>()
         .add_systems(Startup, spawn)
         .add_systems(PreUpdate, keys.after(bevy::input::InputSystems).before(crate::pause::key))
-        .add_systems(Update, (palette, mouse, seeds, (place, labels, draw).chain()).chain());
+        .add_systems(Update, (palette, mouse, seeds, overview, (place, labels, draw).chain()).chain());
 }
 
 fn screen_size(window: &Query<&Window, With<PrimaryWindow>>) -> Vec2 {
@@ -162,6 +177,7 @@ fn spawn(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         ))
         .with_children(|p| {
             p.spawn((MapFog, ImageNode::new(fog).with_mode(bevy::ui::widget::NodeImageMode::Tiled { tile_x: true, tile_y: true, stretch_value: 1.0 }), Node { position_type: PositionType::Absolute, width: px(SCREEN.x + 512.0), height: px(SCREEN.y + 512.0), ..default() }));
+            p.spawn((MapOverview, Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), ..default() }));
             p.spawn((MapTiles, Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), ..default() }));
             p.spawn((MapLabels, Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), ..default() }));
             // The frame, the title, the help.
@@ -346,6 +362,12 @@ fn mouse(
 
 // --- The seed's world (dev view).
 
+/// `PLATYPUS_MAPLOG=1`: how the seed's tiles are coming on.
+fn maplog() -> bool {
+    static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("PLATYPUS_MAPLOG").is_ok());
+    *ON
+}
+
 /// With the fog off, the seed's world made for the tiles in view, in the
 /// background, a few at a time.
 fn seeds(mut screen: ResMut<MapScreen>, sim: Res<SimWorld>, window: Query<&Window, With<PrimaryWindow>>) {
@@ -371,10 +393,17 @@ fn seeds(mut screen: ResMut<MapScreen>, sim: Res<SimWorld>, window: Query<&Windo
             }
         }
     }
-    if !screen.open || !screen.fog_off {
+    // (Further out than its own tiles are worth making, the overview's.)
+    if !screen.open || !screen.fog_off || level(screen.scale) > 0 {
         return;
     }
     let (lo, hi) = view_tiles(&screen, screen_size(&window));
+    if maplog() {
+        let n = ((hi.x - lo.x + 1) * (hi.y - lo.y + 1)).max(0);
+        let made = (lo.y..=hi.y).flat_map(|y| (lo.x..=hi.x).map(move |x| IVec2::new(x, y))).filter(|k| screen.seeds.contains_key(&key(*k))).count();
+        let drawn = screen.shown.iter().filter(|(k, s)| s.drawn && k.x >= lo.x && k.x <= hi.x && k.y >= lo.y && k.y <= hi.y).count();
+        info!("map: in view {n} tiles, {made} made, {drawn} drawn, {} making", screen.making.len());
+    }
     let (b0, b1) = sim.generator.bounds();
     let (w0, w1) = (IVec2::new(b0.x * 64, b0.y * 64) / (TILE * CELLS), IVec2::new(b1.x * 64 + 63, b1.y * 64 + 63) / (TILE * CELLS));
     let (x0, x1) = (lo.x.max(w0.x), hi.x.min(w1.x));
@@ -392,6 +421,7 @@ fn seeds(mut screen: ResMut<MapScreen>, sim: Res<SimWorld>, window: Query<&Windo
         }
         let generator = sim.generator.clone();
         let task = pool.spawn(async move {
+            let made = std::time::Instant::now();
             let mut px = vec![0u16; TILE_PX];
             for ly in 0..TILE {
                 for lx in 0..TILE {
@@ -399,10 +429,206 @@ fn seeds(mut screen: ResMut<MapScreen>, sim: Res<SimWorld>, window: Query<&Windo
                     px[(ly * TILE + lx) as usize] = generator.material_hint(x, y).map_or(0, |m| m.0);
                 }
             }
+            if maplog() {
+                info!("map: seed tile {k} made in {:.0} ms", made.elapsed().as_secs_f32() * 1e3);
+            }
             px
         });
         screen.making.insert(k, task);
     }
+}
+
+/// Coarser levels of the seed's world kept at most (a quarter of a
+/// megabyte each), and made at once at most.
+const OVERVIEW_KEPT: usize = 400;
+const OVERVIEW_MAKING: usize = 6;
+/// A level is used from where its pixels are this big on the screen or
+/// smaller (screen px): zoomed out, the coarsest that's still sharp.
+const OVERVIEW_SHARP: f32 = 1.0;
+/// Shown under the level in use: this many coarser (what's there till
+/// it's made).
+const OVERVIEW_UNDER: u8 = 3;
+const OVERVIEW_MOST: u8 = 12;
+
+/// The level for a zoom: 0 (the map's own tiles) close in; out further,
+/// the coarsest whose pixels are still no bigger than `OVERVIEW_SHARP`.
+fn level(scale: f32) -> u8 {
+    if scale >= SMALL_BELOW {
+        return 0;
+    }
+    let mut l = 0u8;
+    while l < OVERVIEW_MOST && scale * ((1u32 << (l + 1)) as f32) <= OVERVIEW_SHARP {
+        l += 1;
+    }
+    l.max(1)
+}
+
+/// The tiles of a level the screen shows (lowest, highest).
+fn view_tiles_at(screen: &MapScreen, size: Vec2, l: u8) -> (IVec2, IVec2) {
+    let half = size / (2.0 * screen.scale);
+    let side = (TILE << l) as f32;
+    (((screen.center - half) / side).floor().as_ivec2(), ((screen.center + half) / side).floor().as_ivec2())
+}
+
+/// The seed's world far out (dev view): the tiles of the level in use
+/// made in the background (nearest the middle first), and placed with
+/// those of a few coarser levels under them (what shows till they're
+/// made); finer ones hidden.
+#[allow(clippy::too_many_arguments)]
+fn overview(
+    mut commands: Commands,
+    mut screen: ResMut<MapScreen>,
+    sim: Res<SimWorld>,
+    palette: Option<Res<Palette>>,
+    mut images: ResMut<Assets<Image>>,
+    window: Query<&Window, With<PrimaryWindow>>,
+    layer: Query<Entity, With<MapOverview>>,
+    mut nodes: Query<(&mut Node, &mut Visibility, &mut ZIndex)>,
+) {
+    let Some(palette) = palette else { return };
+    let Ok(layer) = layer.single() else { return };
+    let size = screen_size(&window);
+    let on = screen.open && screen.fog_off;
+    let l = if on { level(screen.scale) } else { 0 };
+    // Made: pictured, placed.
+    let mut done = Vec::new();
+    for (k, t) in screen.overview_making.iter_mut() {
+        if let Some(px) = block_on(poll_once(t)) {
+            done.push((*k, px));
+        }
+    }
+    let clock = screen.clock;
+    for (k, px) in done {
+        screen.overview_making.remove(&k);
+        let mut im = Image::new(Extent3d { width: TILE as u32, height: TILE as u32, depth_or_array_layers: 1 }, TextureDimension::D2, px, TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD);
+        im.sampler = bevy::image::ImageSampler::linear();
+        let image = images.add(im);
+        let node = commands.spawn((ImageNode::new(image.clone()), Node { position_type: PositionType::Absolute, ..default() }, Visibility::Hidden, ZIndex(-(k.0 as i32)))).id();
+        commands.entity(layer).add_child(node);
+        if maplog() {
+            info!("map: overview tile level {} {} made", k.0, k.1);
+        }
+        screen.overview.insert(k, Overview { node, image, used: clock });
+    }
+    // (The world's tiles at a level: no further than its edges.)
+    let (b0, b1) = sim.generator.bounds();
+    let edge = |lv: u8| {
+        let side = TILE << lv;
+        (IVec2::new(b0.x * 64, b0.y * 64) / CELLS / side, IVec2::new(b1.x * 64 + 63, b1.y * 64 + 63) / CELLS / side)
+    };
+    // Those wanted, made (the level in use).
+    if on && l > 0 {
+        let (lo, hi) = view_tiles_at(&screen, size, l);
+        let (w0, w1) = edge(l);
+        let mid = (screen.center / (TILE << l) as f32).floor().as_ivec2();
+        let mut want: Vec<IVec2> = (lo.y.max(w0.y)..=hi.y.min(w1.y)).flat_map(|y| (lo.x.max(w0.x)..=hi.x.min(w1.x)).map(move |x| IVec2::new(x, y))).filter(|k| !screen.overview.contains_key(&(l, *k)) && !screen.overview_making.contains_key(&(l, *k))).collect();
+        want.sort_by_key(|k| (*k - mid).length_squared());
+        if maplog() {
+            info!("map: overview level {l}: {} to make, {} making, {} kept", want.len(), screen.overview_making.len(), screen.overview.len());
+        }
+        let pool = IoTaskPool::get();
+        for k in want {
+            if screen.overview_making.len() >= OVERVIEW_MAKING {
+                break;
+            }
+            let (generator, palette) = (sim.generator.clone(), (*palette).clone());
+            let task = pool.spawn(async move { overview_picture(l, k, &*generator, &palette) });
+            screen.overview_making.insert((l, k), task);
+        }
+    }
+    // Placed: the level in use and a few coarser under it, in view.
+    let (scale, center) = (screen.scale, screen.center);
+    for (&(lv, k), o) in screen.overview.iter_mut() {
+        let Ok((mut n, mut v, _)) = nodes.get_mut(o.node) else { continue };
+        // (Close in, the map's own tiles over them: they show till those
+        // are made.)
+        let from = l.max(1);
+        let shown = on && lv >= from && lv <= from + OVERVIEW_UNDER && {
+            let (lo, hi) = view_tiles_at_parts(center, scale, size, lv);
+            k.x >= lo.x && k.x <= hi.x && k.y >= lo.y && k.y <= hi.y
+        };
+        let want = if shown { Visibility::Inherited } else { Visibility::Hidden };
+        if *v != want {
+            *v = want;
+        }
+        if !shown {
+            continue;
+        }
+        o.used = clock;
+        let side = (TILE << lv) as f32;
+        let (left, top) = (k.x as f32 * side - center.x, center.y - (k.y + 1) as f32 * side);
+        let (lx, ty, w) = (px((left * scale + size.x / 2.0).floor()), px((top * scale + size.y / 2.0).floor()), px((side * scale).ceil() + 1.0));
+        if n.left != lx || n.top != ty || n.width != w {
+            n.left = lx;
+            n.top = ty;
+            n.width = w;
+            n.height = w;
+        }
+    }
+    // (Too many kept: the longest unseen go.)
+    if screen.overview.len() > OVERVIEW_KEPT {
+        let mut old: Vec<((u8, IVec2), f32)> = screen.overview.iter().map(|(k, o)| (*k, o.used)).collect();
+        old.sort_by(|a, b| a.1.total_cmp(&b.1));
+        for (k, _) in old.into_iter().take(screen.overview.len() - OVERVIEW_KEPT) {
+            if let Some(o) = screen.overview.remove(&k) {
+                commands.entity(o.node).try_despawn();
+                images.remove(&o.image);
+            }
+        }
+    }
+}
+
+fn view_tiles_at_parts(center: Vec2, scale: f32, size: Vec2, l: u8) -> (IVec2, IVec2) {
+    let half = size / (2.0 * scale);
+    let side = (TILE << l) as f32;
+    (((center - half) / side).floor().as_ivec2(), ((center + half) / side).floor().as_ivec2())
+}
+
+/// A coarse tile of the seed's world pictured (a pixel every 2^L map
+/// pixels): what's there, sky or the dark underground in the open, lit
+/// from above, a little dim (never charted), as `picture` does.
+fn overview_picture(l: u8, k: IVec2, generator: &dyn platypus_worldgen::ChunkGenerator, palette: &Palette) -> Vec<u8> {
+    let step = 1i32 << l;
+    let n = TILE as usize;
+    // (A row over its top too, to light its top row from above.)
+    let at = |lx: i32, ly: i32| ((k.x * TILE + lx) * step * CELLS + 2, (k.y * TILE + ly) * step * CELLS + 2);
+    let what: Vec<u16> = (0..=TILE).flat_map(|ly| (0..TILE).map(move |lx| (lx, ly))).map(|(lx, ly)| { let (x, y) = at(lx, ly); generator.material_hint(x, y).map_or(MaterialId::AIR.0, |m| m.0) }).collect();
+    let open = |w: u16| w == MaterialId::AIR.0 || matches!(palette.0.get(w as usize).map(|c| c.1), Some(Kind::Gas | Kind::Fire));
+    let ground: Vec<Option<i32>> = (0..TILE).map(|lx| generator.surface_hint(at(lx, 0).0)).collect();
+    let sky_from = generator.spawn_point().y;
+    let mut out = vec![0u8; n * n * 4];
+    for ly in 0..TILE {
+        for lx in 0..TILE {
+            let w = what[(ly * TILE + lx) as usize];
+            let cy = at(lx, ly).1;
+            let g = ground[lx as usize].unwrap_or(cy);
+            let under_ground = cy < g - 3;
+            let (base, kind, glows) = palette.0.get(w as usize).copied().unwrap_or(([0.0; 3], Kind::Static, false));
+            let c = if open(w) {
+                if under_ground {
+                    [16.0, 13.0, 19.0]
+                } else {
+                    let t = ((cy - sky_from) as f32 / 1600.0).clamp(0.0, 1.0);
+                    [170.0 + (66.0 - 170.0) * t, 200.0 + (100.0 - 200.0) * t, 232.0 + (166.0 - 232.0) * t]
+                }
+            } else {
+                let up = what[((ly + 1) * TILE + lx) as usize];
+                let mut f = if open(up) { if kind == Kind::Liquid { 1.28 } else { 1.24 } } else { 1.0 };
+                if kind != Kind::Liquid && under_ground {
+                    f *= 1.0 - ((g - cy) as f32 / 5000.0).clamp(0.0, 0.35);
+                }
+                if glows {
+                    f = f32::max(f, 1.0) * 1.35;
+                }
+                [base[0] * f, base[1] * f, base[2] * f]
+            };
+            // (Never charted: a little dimmer.)
+            let c = [c[0] * 0.72, c[1] * 0.72, c[2] * 0.75];
+            let o = (((TILE - 1 - ly) * TILE + lx) * 4) as usize;
+            out[o..o + 4].copy_from_slice(&[c[0].clamp(0.0, 255.0) as u8, c[1].clamp(0.0, 255.0) as u8, c[2].clamp(0.0, 255.0) as u8, 255]);
+        }
+    }
+    out
 }
 
 /// The world's width in map pixels.

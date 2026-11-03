@@ -10925,8 +10925,10 @@ fn worldmap_script(
     }
     if at(10.0) {
         screen.fog_off = true;
-        screen.show(k.body.pos, 0.125);
-        info!("worldmap: t 10 the fog off");
+        // (`PLATYPUS_WORLDMAP=out`: all the way out, the whole world.)
+        let out = std::env::var("PLATYPUS_WORLDMAP").is_ok_and(|v| v == "out");
+        screen.show(k.body.pos, if out { 0.0001 } else { 0.125 });
+        info!("worldmap: t 10 the fog off{}", if out { ", all the way out" } else { "" });
     }
     if at(15.0) {
         screen.show(k.body.pos - Vec2::new(0.0, 300.0), 0.5);
