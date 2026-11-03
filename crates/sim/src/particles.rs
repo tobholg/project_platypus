@@ -204,6 +204,9 @@ const EMBER_HOT: u16 = 80;
 /// Embers wink out at random: one in this many each tick.
 const EMBER_FADE: u64 = 60;
 
+/// Under this much gravity (a share) it's weightless (`climate::WEIGHTLESS`).
+const WEIGHTLESS_F: f32 = crate::climate::WEIGHTLESS as f32 / 256.0;
+
 /// Advance one particle a tick, reading the world only.
 fn fly_one(p: &mut Particle, world: &impl ParticleView) -> Flight {
     let dead = |effect: Option<Effect>, douse: Option<CellPos>| Flight { alive: false, effect, douse };
@@ -279,7 +282,12 @@ fn fly_one(p: &mut Particle, world: &impl ParticleView) -> Flight {
         }
     }
 
-    p.life = p.life.saturating_sub(1);
+    // (Weightless, debris drifts on about four times as long before it
+    // stops where it is: dust floating off, not hanging at once.)
+    let drifting = p.landing == Landing::Settle && world.gravity(p.pos[1]) < WEIGHTLESS_F;
+    if !drifting || crate::rng::hash(&[p.pos[0].to_bits() as u64, p.pos[1].to_bits() as u64, p.life as u64, 0xD41F]).is_multiple_of(4) {
+        p.life = p.life.saturating_sub(1);
+    }
     if p.life == 0 {
         let here = p.cell_pos();
         return dead(Some(Effect::Land(*p, here)), douse);

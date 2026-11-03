@@ -17,6 +17,7 @@ pub struct ZeroGPlugin;
 impl Plugin for ZeroGPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(FixedUpdate, kick.after(crate::drift::drift).before(crate::creatures::move_creatures).in_set(TickSet::Bodies))
+            .add_systems(FixedUpdate, kick_debris.after(kick).before(crate::creatures::move_creatures).in_set(TickSet::Bodies))
             .add_systems(PostUpdate, turn.after(crate::creatures::interpolate).before(bevy::transform::TransformSystems::Propagate));
     }
 }
@@ -124,5 +125,77 @@ pub fn turn(mut commands: Commands, time: Res<Time>, sim: Res<SimWorld>, mut q: 
             t.angle = crate::creatures::body::tumble::wrap(t.angle + t.omega * dt);
         }
         tf.rotation = Quat::from_rotation_z(t.angle);
+    }
+}
+
+/// A clump of solid this small (cells), touching nothing bigger, is debris
+/// to a weightless body: no wall (`kick_debris`).
+const DEBRIS_MOST: usize = 12;
+/// What a body knocks loose flies off at its speed, give or take this share
+/// (and as much again sideways).
+const DEBRIS_SCATTER: f32 = 0.25;
+
+/// Weightless, what's floating loose in a body's way (a speck of dust, a
+/// chip, a crumb: a clump of `DEBRIS_MOST` cells or fewer, touching nothing
+/// bigger) isn't a wall: the body knocks it aside, flying off at about
+/// its speed, and loses only as much of its own as the clump's weight is
+/// of its own. (Rock, an asteroid, stops it as ever.)
+pub fn kick_debris(mut sim: ResMut<SimWorld>, mut q: Query<&mut Kinematics>) {
+    use platypus_sim::{CellPos, Kind, Landing, Particle};
+    let tick = sim.world.tick();
+    for mut k in &mut q {
+        if gravity_at(&sim, k.body.pos.y) >= WEIGHTLESS || k.body.vel.length_squared() < 1.0 {
+            continue;
+        }
+        let k = &mut *k;
+        // (Where it's going this tick, and a cell round it.)
+        let step = k.body.vel / crate::world::TICK_HZ as f32;
+        let (lo, hi) = (k.body.pos.min(k.body.pos + step) - k.body.half - 1.0, k.body.pos.max(k.body.pos + step) + k.body.half + 1.0);
+        let world = &mut sim.world;
+        let solid = |w: &platypus_sim::World, p: CellPos| w.get(p).is_some_and(|c| !c.is_air() && c.flags & platypus_sim::cell::flags::HELD == 0 && matches!(w.materials().phys(c.material).kind, Kind::Static | Kind::Powder));
+        let mut seen: Vec<CellPos> = Vec::new();
+        let mut knocked: Vec<CellPos> = Vec::new();
+        for y in lo.y.floor() as i32..=hi.y.floor() as i32 {
+            for x in lo.x.floor() as i32..=hi.x.floor() as i32 {
+                let p = CellPos::new(x, y);
+                if seen.contains(&p) || !solid(world, p) {
+                    continue;
+                }
+                // Its clump (eight ways), as far as `DEBRIS_MOST` and one.
+                let mut clump = vec![p];
+                let mut i = 0;
+                while i < clump.len() && clump.len() <= DEBRIS_MOST {
+                    let c = clump[i];
+                    i += 1;
+                    for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)] {
+                        let n = c.offset(dx, dy);
+                        if !clump.contains(&n) && solid(world, n) {
+                            clump.push(n);
+                        }
+                    }
+                }
+                seen.extend(clump.iter().copied());
+                if clump.len() <= DEBRIS_MOST {
+                    knocked.extend(clump);
+                }
+            }
+        }
+        if knocked.is_empty() {
+            continue;
+        }
+        let mut rng = platypus_sim::rng::Rng::seeded(&[tick, k.body.pos.x.to_bits() as u64, 0xDEB2]);
+        let mut unit = || rng.next_u32() as f32 / u32::MAX as f32 - 0.5;
+        let v = k.body.vel / crate::world::TICK_HZ as f32;
+        let side = v.perp();
+        for &p in &knocked {
+            let Some(mut c) = world.get(p) else { continue };
+            world.set(p, platypus_sim::Cell::AIR);
+            c.flags &= !platypus_sim::cell::flags::LOOSE;
+            let fly = v * (1.0 + unit() * 2.0 * DEBRIS_SCATTER) + side * unit() * 2.0 * DEBRIS_SCATTER;
+            world.emit(Particle::new([p.x as f32 + 0.5, p.y as f32 + 0.5], [fly.x, fly.y], c, 600, Landing::Settle));
+        }
+        // (It gave the clump its speed: as much of its own as it weighs to it.)
+        let mass = (k.body.half.x * k.body.half.y * 4.0).max(1.0);
+        k.body.vel *= (1.0 - knocked.len() as f32 / mass).max(0.5);
     }
 }

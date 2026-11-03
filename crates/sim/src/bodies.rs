@@ -42,6 +42,8 @@ const REST_SPEED: f32 = 0.06;
 const REST_TICKS: u32 = 15;
 /// Gives up and settles wherever it is (wedged, or balanced on a point).
 const MAX_AGE: u32 = 600;
+/// Under this much gravity (a share) it's weightless (`climate::WEIGHTLESS`).
+const WEIGHTLESS_G: f32 = crate::climate::WEIGHTLESS as f32 / 256.0;
 /// Leaves weigh this much relative to wood.
 const LEAF_WEIGHT: f32 = 0.15;
 
@@ -515,7 +517,9 @@ impl Body {
 
         self.airborne = if touched { 0 } else { self.airborne + 1 };
         self.still = if self.airborne < 3 && self.top_speed() < REST_SPEED { self.still + 1 } else { 0 };
-        ev.settled = self.still >= if self.log { LOG_REST_TICKS } else { REST_TICKS } || self.age >= MAX_AGE;
+        // (Weightless, it drifts on till something stops it: no giving up
+        // and settling where it is, in the middle of nothing.)
+        ev.settled = self.still >= if self.log { LOG_REST_TICKS } else { REST_TICKS } || (self.age >= MAX_AGE && g >= WEIGHTLESS_G);
         ev
     }
 

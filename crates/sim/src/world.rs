@@ -83,6 +83,10 @@ pub struct World {
     next_body: u32,
     /// Logs come to rest since the game last took them (`take_logged`).
     logged: Vec<Logged>,
+    /// An edit is cutting into the world (mining, digging, a blast): what
+    /// it frees, weightless, drifts off (`SPACE_CHUNK_MAX`); not what
+    /// freezing or melting leaves.
+    cutting: bool,
     /// While an axe's cut is checked: the cut tree's share of the wood (x
     /// from..to, halfway to the trunks either side), so a tree whose
     /// branches touch its neighbours' still falls, and, cut through as far
@@ -169,6 +173,7 @@ impl World {
             bodies: Vec::new(),
             next_body: 0,
             logged: Vec::new(),
+            cutting: false,
             felling: None,
             weather: None,
             strikes: Vec::new(),
@@ -1518,7 +1523,9 @@ impl World {
 
     fn loosen_if_removed(&mut self, center: CellPos, reach: i32, report: &EditReport) {
         if !report.removed.is_empty() {
+            self.cutting = true;
             self.loosen_fragments(center, reach);
+            self.cutting = false;
             self.loosen_around(center, reach, &mut FxHashSet::default(), Layer::Back);
         }
     }
@@ -1688,6 +1695,39 @@ impl World {
                 }
                 if pass != Pass::Front {
                     removed.extend(self.drop_background(&piece));
+                }
+                // Weightless (out in space), what comes away doesn't hang
+                // there as rubble: a chunk (not too big: bigger, it's an
+                // asteroid in its own right) drifts off as a body, away from
+                // where it broke, turning a little; a crumb or two drift off
+                // as dust.
+                if pass == Pass::Front && self.cutting && piece.len() <= SPACE_CHUNK_MAX && self.climate.gravity(piece[0].y) < crate::climate::WEIGHTLESS {
+                    let n = piece.len() as f32;
+                    let mid = piece.iter().fold([0.0f32; 2], |a, p| [a[0] + p.x as f32 + 0.5, a[1] + p.y as f32 + 0.5]);
+                    let mid = [mid[0] / n, mid[1] / n];
+                    let away = [mid[0] - center.x as f32 - 0.5, mid[1] - center.y as f32 - 0.5];
+                    let l = (away[0] * away[0] + away[1] * away[1]).sqrt().max(1e-3);
+                    let mut rng = self.rng_for(0x5BAC, piece[0]);
+                    let push = SPACE_DRIFT * (0.6 + rng.next_u8() as f32 / 255.0 * 0.8);
+                    let v = [away[0] / l * push, away[1] / l * push];
+                    if piece.len() >= OBJECT_MIN_CELLS {
+                        let cells = std::mem::take(&mut piece);
+                        let id = self.lift_cells(cells);
+                        if let Some(b) = self.body_mut(id) {
+                            b.vel = v;
+                            b.omega = (rng.next_u8() as f32 / 255.0 - 0.5) * 0.02;
+                        }
+                    } else {
+                        for &p in &piece {
+                            let Some(mut c) = self.get(p) else { continue };
+                            self.set(p, Cell::AIR);
+                            c.flags &= !flags::LOOSE;
+                            let jig = |r: &mut Rng| (r.next_u8() as f32 / 255.0 - 0.5) * 0.1;
+                            self.particles.push(Particle::new(center_of(p), [v[0] + jig(&mut rng), v[1] + jig(&mut rng)], c, 600, Landing::Settle));
+                        }
+                    }
+                    loosened += n as usize;
+                    continue;
                 }
                 // A thing (a log, a casting: with anything stuck to it) falls
                 // whole; lying on sand or rock it stays (it rests there:
@@ -2973,6 +3013,12 @@ const TIP_SPIN: f32 = 0.012;
 /// cell).
 const LOG_KICK: f32 = 0.35;
 const CHIP_CHANCE: u8 = 10;
+
+/// Weightless, a piece this big (cells) or smaller that comes away drifts
+/// off (a body, or dust); bigger stays where it is, an asteroid of its own.
+/// How fast it drifts off (cells a tick, about).
+const SPACE_CHUNK_MAX: usize = 400;
+const SPACE_DRIFT: f32 = 0.12;
 
 /// A log come to rest (or taken up): where it was, what it was made of
 /// (material, cells).

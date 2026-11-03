@@ -889,6 +889,9 @@ pub const PLAYER_DEBRIS: f32 = 0.5;
 /// would wear it down; nor its own blood, spurting from a wound.)
 fn pelted(mut sim: ResMut<SimWorld>, mut q: Query<Pelted, (Without<body::rise::Pile>, Without<body::rise::Skull>)>) {
     let boxes: Vec<(Vec2, Vec2)> = q.iter().map(|(k, ..)| (k.body.pos - k.body.half, k.body.pos + k.body.half)).collect();
+    // (How fast it hits is how fast it goes against the body: dust
+    // drifting along with you in space doesn't batter you.)
+    let moving: Vec<Vec2> = q.iter().map(|(k, ..)| k.body.vel).collect();
     let bloods: Vec<Option<platypus_sim::MaterialId>> = q.iter().map(|(.., b, _)| b.map(|b| b.0)).collect();
     if boxes.is_empty() {
         return;
@@ -900,15 +903,18 @@ fn pelted(mut sim: ResMut<SimWorld>, mut q: Query<Pelted, (Without<body::rise::P
         if p.landing != platypus_sim::Landing::Settle {
             continue;
         }
-        let v = Vec2::new(p.vel[0], p.vel[1]) * TICK_HZ as f32;
-        let speed = v.length();
         let ph = mats.phys(p.cell.material);
         let safe = if ph.kind == Kind::Liquid { PELT_SAFE_LIQUID } else { PELT_SAFE };
-        if speed < safe {
+        if Vec2::new(p.vel[0], p.vel[1]).length() * (TICK_HZ as f32) < safe * 0.5 {
             continue;
         }
         let at = Vec2::new(p.pos[0], p.pos[1]);
         let Some(i) = boxes.iter().position(|(lo, hi)| at.cmpge(*lo).all() && at.cmple(*hi).all()) else { continue };
+        let v = Vec2::new(p.vel[0], p.vel[1]) * TICK_HZ as f32 - moving[i];
+        let speed = v.length();
+        if speed < safe {
+            continue;
+        }
         if bloods[i] == Some(p.cell.material) {
             continue;
         }

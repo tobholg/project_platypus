@@ -14,6 +14,9 @@
 //!   shaft), W climbs; A/D pump a swing (nothing brakes it); jump lets go,
 //!   with a full jump on top of how you were swinging; E throws it again.
 //!   Touching a wall on the rope, push away from it: a kick into a swing.
+//!   Weightless (no down, no swing), steering away from the hook lets rope
+//!   out, toward it climbs; jump doesn't let go (it pushes off, the boots
+//!   fire, on the rope): E does (and again throws it).
 //! - Hanging from a ledge's lip, W or pressing toward the ledge climbs you
 //!   up onto it (a mantle). Pulled in and caught on a corner, you slip
 //!   round it.
@@ -419,6 +422,18 @@ pub fn rope(
             rope.aiming = true;
         }
         let throw = if tossed { released && std::mem::take(&mut rope.aiming) } else { pressed };
+        // (Weightless, jump doesn't let go (it pushes off, the boots fire,
+        // on the rope): E does, held on; again, it throws.)
+        let weightless = things.get(e).is_ok_and(|(_, me, ..)| crate::zerog::gravity_at(&sim, me.body.pos.y) < crate::zerog::WEIGHTLESS);
+        if weightless && throw && let Line::Held(h) = &rope.line {
+            let tip = h.pivots.last().map(|p| p.at).unwrap_or(match h.anchor {
+                Anchor::Cell { at, .. } => at,
+                Anchor::Body { .. } => rope.prev_tip,
+            });
+            rope.line = Line::Back { tip };
+            rope.aiming = false;
+            continue;
+        }
         let prev_x = std::mem::replace(&mut rope.prev_x, intent.move_x);
         let Ok((_, me, my_stats, ..)) = things.get(e) else { continue };
         let (pos, half, facing, contacts) = (me.body.pos, me.body.half, me.loco.facing, me.loco.contacts);
@@ -560,7 +575,7 @@ pub fn rope(
                 // top of the swing. Against a wall, pressing away from it: a
                 // wall jump, away; else straight up it (to hook on higher),
                 // not thrown off it.
-                if k.loco.jump_pressed(&intent) {
+                if k.loco.jump_pressed(&intent) && crate::zerog::gravity_at(&sim, k.body.pos.y) >= crate::zerog::WEIGHTLESS {
                     k.loco.jump_off(&stats, &intent, &mut k.body, LEAP_ON_TOP);
                     let wall = if contacts.wall_left { -1.0 } else if contacts.wall_right { 1.0 } else { 0.0 };
                     if wall != 0.0 {
@@ -633,15 +648,23 @@ pub fn rope(
                 // more than a couple of ticks' reeling short of where you
                 // are: caught on something, the rope doesn't wind up, to
                 // fling you when you come free.)
-                let speed = if intent.move_y > 0.0 { def.climb.max(if h.reeling { def.reel } else { 0.0 }) } else if h.reeling { def.reel } else { 0.0 };
-                if intent.move_y < 0.0 {
+                // (Weightless there's no down: steering away from the hook
+                // lets rope out, toward it climbs, whichever way it lies.)
+                let (pay, climb) = if crate::zerog::gravity_at(&sim, pos.y) < crate::zerog::WEIGHTLESS {
+                    let along = Vec2::new(intent.move_x, intent.move_y).normalize_or_zero().dot(d);
+                    (along > 0.5, along < -0.5)
+                } else {
+                    (intent.move_y < 0.0, intent.move_y > 0.0)
+                };
+                let speed = if climb { def.climb.max(if h.reeling { def.reel } else { 0.0 }) } else if h.reeling { def.reel } else { 0.0 };
+                if pay {
                     h.reeling = false;
                     h.length += def.pay * DT;
                 } else if speed > 0.0 {
                     h.length = (taut - speed * DT).max(chain + dist - 2.0 * speed * DT);
                 }
                 h.length = h.length.clamp(chain + stop, def.length.max(chain + stop));
-                let pulling = h.reeling || intent.move_y > 0.0;
+                let pulling = h.reeling || climb;
                 // (Up at the hook itself, not a corner on the way.)
                 if h.reeling && h.pivots.is_empty() && h.length <= chain + stop + 0.75 {
                     h.reeling = false;

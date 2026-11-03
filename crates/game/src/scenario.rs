@@ -6238,18 +6238,108 @@ fn soak_script(
 }
 
 /// `spaceboots`: see the list at the top.
+#[allow(clippy::too_many_arguments)]
 fn spaceboots_script(
     s: Res<Scenario>,
     mut menu: ResMut<crate::devmenu::DevMenu>,
-    player: Query<(&Kinematics, Option<&crate::creatures::body::animation::Animator>, Option<&crate::gear::boots::Lean>), With<LocalPlayer>>,
+    mut player: Query<(&mut Kinematics, Option<&crate::creatures::body::animation::Animator>, Option<&crate::gear::boots::Lean>), With<LocalPlayer>>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut said: Local<f32>,
+    mut sim: ResMut<SimWorld>,
+    mut debris: Local<(u8, Vec2)>,
+    (mut cursor, ropes): (ResMut<CursorOverride>, Query<&crate::gear::hook::Rope, With<LocalPlayer>>),
 ) {
     if s.name != "spaceboots" {
         return;
     }
     menu.open = false;
     let t = s.elapsed;
+    // (`PLATYPUS_SPACEBOOTS=hook`: the hook into the rock under it (2.6 s),
+    // reeled in; then (4.5 s) up, away from it, boots firing: rope let out
+    // as it goes; then (6 s) firing up steering nowhere: the rope holds.
+    // Logs the rope and how far it is from the hook.)
+    if std::env::var("PLATYPUS_SPACEBOOTS").is_ok_and(|v| v == "hook") {
+        let Ok((k, ..)) = player.single() else { return };
+        // (Away from the hook: the key the most that way.)
+        let away = ropes.single().ok().and_then(|r| r.tether()).map_or(Vec2::Y, |(at, _)| k.body.pos - at);
+        let off = if away.x.abs() > away.y.abs() { if away.x > 0.0 { KeyCode::KeyD } else { KeyCode::KeyA } } else if away.y > 0.0 { KeyCode::KeyW } else { KeyCode::KeyS };
+        let (way, jump, throw) = match t {
+            t if t < 2.6 => (None, false, false),
+            t if t < 2.7 => (None, false, true),
+            t if t < 4.5 => (None, false, false),
+            t if t < 6.0 => (Some(off), true, false),
+            t if t < 7.5 => (None, true, false),
+            _ => (None, false, false),
+        };
+        if t > 2.5 && t < 2.7 {
+            // (At the nearest rock under it, about.)
+            let p = CellPos::from_world(k.body.pos.x, k.body.pos.y);
+            let hit = (1..170).flat_map(|d| (-40..=40).step_by(4).map(move |dx| CellPos::new(p.x + dx, p.y - d))).find(|&q| sim.world.is_solid(q));
+            cursor.0 = hit.map(|q| Vec2::new(q.x as f32 + 0.5, q.y as f32 + 0.5));
+        }
+        for (key, on) in [(KeyCode::KeyW, way == Some(KeyCode::KeyW)), (KeyCode::KeyA, way == Some(KeyCode::KeyA)), (KeyCode::KeyS, way == Some(KeyCode::KeyS)), (KeyCode::KeyD, way == Some(KeyCode::KeyD)), (KeyCode::Space, jump), (KeyCode::KeyE, throw)] {
+            if on && !keys.pressed(key) {
+                keys.press(key);
+            } else if !on && keys.pressed(key) {
+                keys.release(key);
+            }
+        }
+        if t >= 2.5 && t >= *said {
+            *said = t + 0.25;
+            let line = ropes.single().ok().and_then(|r| r.tether());
+            let doing = ropes.single().map_or("no rope", |r| r.state().0);
+            info!("spaceboots: hook t {t:.2} [{doing}] at ({:.0}, {:.0}) going ({:.0}, {:.0}) {} rope {}", k.body.pos.x, k.body.pos.y, k.body.vel.x, k.body.vel.y, if k.loco.rocketing() { "FIRING" } else { "off" }, line.map_or("none".to_string(), |(at, len)| format!("{len:.0} long, {:.0} from the hook", at.distance(k.body.pos))));
+        }
+        return;
+    }
+    // (`PLATYPUS_SPACEBOOTS=debris`: specks and crumbs of rock strewn ahead
+    // (2.6 s), the player sent through them at 240 cells/s (2.8 s); a lump
+    // of rock beside it cut at (3.6 s): it drifts off. Logs its speed, the
+    // bodies, what's left of the specks.)
+    if std::env::var("PLATYPUS_SPACEBOOTS").is_ok_and(|v| v == "debris") {
+        let Ok((mut k, ..)) = player.single_mut() else { return };
+        let stone = sim.materials().expect_id("stone");
+        let at = |d: Vec2, o: (i32, i32)| CellPos::new(d.x as i32 + o.0, d.y as i32 + o.1);
+        match debris.0 {
+            0 if t > 2.6 => {
+                debris.1 = k.body.pos;
+                let d = debris.1;
+                for i in 0..10 {
+                    sim.world.set(at(d, (40 + i * 14, (i % 3) - 1)), platypus_sim::Cell::new(stone, 0));
+                    if i % 3 == 0 {
+                        sim.world.set(at(d, (47 + i * 14, 4)), platypus_sim::Cell::new(stone, 0));
+                        sim.world.set(at(d, (48 + i * 14, 4)), platypus_sim::Cell::new(stone, 0));
+                        sim.world.set(at(d, (48 + i * 14, 5)), platypus_sim::Cell::new(stone, 0));
+                    }
+                }
+                for dx in 0..6 {
+                    for dy in 0..6 {
+                        sim.world.set(at(d, (80 + dx, 60 + dy)), platypus_sim::Cell::new(stone, 0));
+                    }
+                }
+                k.body.vel = Vec2::ZERO;
+                debris.0 = 1;
+            }
+            1 if t > 2.8 => {
+                k.body.vel = Vec2::new(240.0, 0.0);
+                debris.0 = 2;
+            }
+            2 if t > 3.6 => {
+                let d = debris.1;
+                sim.queue(WorldEdit::Dig { center: at(d, (80, 62)), radius: 1, max_hardness: 255 });
+                debris.0 = 3;
+            }
+            _ => {}
+        }
+        if t >= *said && debris.0 >= 1 {
+            *said = t + 0.1;
+            let d = debris.1;
+            let left = (0..200).flat_map(|dx| (-3..=7).map(move |dy| (dx, dy))).filter(|&o| sim.world.get(at(d, o)).is_some_and(|c| c.material == stone)).count();
+            let bodies: Vec<String> = sim.world.bodies().iter().map(|b| format!("{} cells at ({:.0},{:.0}) going ({:.2},{:.2})", b.loot(sim.materials()).iter().map(|x| x.1).sum::<u32>(), b.pos[0] - d.x, b.pos[1] - d.y, b.vel[0] * 60.0, b.vel[1] * 60.0)).collect();
+            info!("spaceboots: debris t {t:.1} player at +{:.0} going ({:.0}, {:.0}); specks left on its line {left}; bodies {:?}", k.body.pos.x - d.x, k.body.vel.x, k.body.vel.y, bodies);
+        }
+        return;
+    }
     // (What's held when: the way, and jump.)
     // (`PLATYPUS_SPACEBOOTS=ground`: off the ground: a jump, then jump held
     // again steering right, then left: leaning, kicking up the floor.)
@@ -6291,6 +6381,7 @@ fn spaceboots_script(
         _ => {}
     }
     let Ok((k, anim, lean)) = player.single() else { return };
+    let k = &*k;
     if t >= 2.5 && t >= *said {
         *said = t + 0.1;
         let c = k.loco.contacts;

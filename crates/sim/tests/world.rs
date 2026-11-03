@@ -3051,6 +3051,35 @@ fn a_spring_pours_a_waterfall_for_ever() {
 /// In the void (no gravity, no air, bitterly cold: `Climate::weightless`):
 /// sand and water hang where they're put, a lone speck of sand drifts,
 /// fire goes out, and the water freezes where it hangs.
+/// In the void, a lump cut free drifts off as a body, away from the cut
+/// (not hanging there as rubble); a crumb drifts off as dust; a lump
+/// left alone (or water that freezes into one) stays where it is.
+#[test]
+fn in_the_void_what_is_cut_free_drifts_off() {
+    let mut w = boxed_world(2, 2, 8);
+    w.set_climate(platypus_sim::Climate { weightless: (-200, -100), ..Default::default() });
+    let stone = w.materials().expect_id("stone");
+    fill(&mut w, "stone", 40, 52, 60, 72);
+    fill(&mut w, "stone", 90, 92, 60, 62);
+    for _ in 0..30 {
+        w.step();
+    }
+    assert!(w.bodies().is_empty(), "left alone, nothing drifts");
+    // A bite out of the lump's left side.
+    w.apply_edit(&WorldEdit::Dig { center: CellPos::new(39, 66), radius: 2, max_hardness: 255 });
+    assert_eq!(w.bodies().len(), 1, "the lump came away");
+    let v = w.bodies()[0].vel;
+    assert!(v[0] > 0.05, "away from the bite ({v:?})");
+    // A crumb cut off: dust, gone from where it was.
+    w.apply_edit(&WorldEdit::Dig { center: CellPos::new(90, 60), radius: 1, max_hardness: 255 });
+    for _ in 0..30 {
+        w.step();
+    }
+    let hanging = (88..96).flat_map(|x| (58..66).map(move |y| CellPos::new(x, y))).filter(|&p| w.get(p).is_some_and(|c| c.material == stone)).count();
+    assert_eq!(hanging, 0, "the crumb drifted off");
+    assert_eq!(w.bodies().len(), 1, "the lump drifts on (no settling in the middle of nothing)");
+}
+
 #[test]
 fn in_the_void_nothing_falls_and_nothing_burns() {
     let mut w = boxed_world(2, 2, 7);
