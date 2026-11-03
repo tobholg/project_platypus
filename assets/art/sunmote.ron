@@ -1,0 +1,49 @@
+// A sunmote (the space arc): a mote that lives on sunlight, a sunstone
+// spark in a dark shell on pale, veined wings. They hunt in packs, diving
+// at what moves and burns: your lamp, your thrust.
+(
+    size: (17, 10),
+    feet: (8.5, 10),
+    outline: (14, 12, 22),
+    palette: {
+        'o': (52, 40, 44),     // its shell
+        'G': (255, 170, 60),   // its glow
+        'g': (255, 236, 170),  // its core, white-hot
+        'k': (255, 255, 255),  // its eye
+        'W': (70, 120, 180),   // wing, its edge
+        'C': (130, 205, 245),  // wing, the veins
+        'c': (180, 228, 255),  // wing, the membrane
+    },
+    frames: {
+        "up": [
+            "........o........",
+            ".W.....ooo.....W.",
+            ".WC...oGGGo...CW.",
+            ".WcC.oGgggGo.CcW.",
+            ".WccCoGgkgGoCccW.",
+            ".WcccCoGGGoCcccW.",
+            "..WccCooGooCccW..",
+            "...WWc.ooo.cWW...",
+            "........o........",
+            ".................",
+        ],
+        "down": [
+            ".................",
+            "........o........",
+            ".......ooo.......",
+            "......oGGGo......",
+            "..WCCCoGgGoCCCW..",
+            ".WcccCoGkGoCcccW.",
+            "WccCC.oGGGo.CCccW",
+            "WcC....ooo....CcW",
+            "WC......o......CW",
+            ".................",
+        ],
+    },
+    clips: {
+        "idle": (frames: ["up", "down"], fps: 16),
+        "run": (frames: ["up", "down"], fps: 16),
+        "jump": (frames: ["up", "down"], fps: 16),
+        "fall": (frames: ["up", "down"], fps: 16),
+    },
+)

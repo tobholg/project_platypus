@@ -6399,6 +6399,7 @@ fn spaceboots_script(
     mut sim: ResMut<SimWorld>,
     mut debris: Local<(u8, Vec2)>,
     (mut cursor, ropes): (ResMut<CursorOverride>, Query<&crate::gear::hook::Rope, With<LocalPlayer>>),
+    (mut commands, mut cheats, healths, motes): (Commands, ResMut<crate::devmenu::Cheats>, Query<&crate::creatures::Health, With<LocalPlayer>>, Query<&Kinematics, (With<crate::creatures::Creature>, Without<LocalPlayer>)>),
     (items, mut kit): (Option<Res<crate::hands::items::Items>>, Query<(&mut crate::gear::Equipment, &mut crate::hands::items::Inventory, Option<&crate::breath::Breath>, Option<&crate::gear::boots::FuelReserve>, &crate::creatures::MoveStats), With<LocalPlayer>>),
 ) {
     if s.name != "spaceboots" {
@@ -6406,6 +6407,28 @@ fn spaceboots_script(
     }
     menu.open = false;
     let t = s.elapsed;
+    // (`PLATYPUS_SPACEBOOTS=motes`: in the void gear, six sunmotes round
+    // the player, 120 cells out (2.6 s), god mode off: logs its health, how
+    // many are left.)
+    if std::env::var("PLATYPUS_SPACEBOOTS").is_ok_and(|v| v == "motes") {
+        let Ok((k, ..)) = player.single() else { return };
+        let me = k.body.pos;
+        if debris.0 == 0 && t > 2.6 {
+            for i in 0..6 {
+                let a = i as f32 / 6.0 * std::f32::consts::TAU;
+                crate::creatures::def::spawn_creature(&mut commands, "sunmote", me + Vec2::from_angle(a) * 120.0, |_| {});
+            }
+            debris.0 = 1;
+        }
+        cheats.god = false;
+        if t >= *said && t > 2.6 {
+            *said = t + 0.25;
+            let hp = healths.single().map_or(0.0, |h| h.hp);
+            let near: Vec<String> = motes.iter().map(|m| format!("{:.0}", m.body.pos.distance(me))).collect();
+            info!("spaceboots: motes t {t:.2} hp {hp:.0}; {} motes at {:?}", near.len(), near);
+        }
+        return;
+    }
     // (`PLATYPUS_SPACEBOOTS=pack`: the void helm, suit and thruster pack put
     // on and three sunstone in the pack (2.5 s); then right (3 s), let go
     // (4 s: it steadies to a stop), then up, held from 6 s to 34 s (past the

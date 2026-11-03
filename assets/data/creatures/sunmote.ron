@@ -1,0 +1,36 @@
+// A sunmote (the space arc): a mote that lives on sunlight, a sunstone
+// spark in a dark shell on pale, veined wings. Space's bats, and worse:
+// they come in packs, fast, diving in from every side (no wall out here to
+// put your back to) and peeling away; their touch is cold, drinking your
+// warmth. One's a nuisance; a pack of eight is a fight. Fire can't hurt
+// them (they eat it); frost does.
+(
+    name: "Sunmote",
+    loot: "sunmote",
+    size: (8, 6),
+    health: 18,
+    // (Light as a leaf: a blow swats it away.)
+    heft: 0.3,
+    team: Enemy,
+    faction: "sunmotes",
+    kind: "beast",
+    profile: {fire: 0.0, radiant: 0.5, frost: 1.6, storm: 1.3},
+    blood: "",
+    corpse: false,
+    art: "sunmote",
+    eyes: (255, 255, 255),
+    light: (color: (255, 190, 90), strength: 0.45, pulse: 2.4),
+    movement: (
+        run_speed: 30,
+        fly_speed: 310,
+        fly_accel: 1900,
+        air_jumps: 0,
+        step_height: 0,
+        dash_speed: 0,
+    ),
+    touch: (damage: 9, harm: frost, knock: 150, stun: 0.12, every: 0.7),
+    brain: (
+        kind: "hunter",
+        params: (aggro: 380, close: Swoop(hover: (30, 85), dive_time: 0.42, dive_every: 1.1)),
+    ),
+)

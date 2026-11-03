@@ -14,6 +14,8 @@
         "raptors": ["orcs"],
         "tyrants": ["raptors", "orcs"],
         "bats": [],
+        // Sunmotes: no one's, but they'll swarm anything that comes by.
+        "sunmotes": [],
         // Rats are everyone's prey and no one's hunter but yours.
         "rats": [],
     },
