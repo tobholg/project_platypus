@@ -82,6 +82,9 @@ stats! {
     Breath: "breath", true;
     /// Faster strokes under water (flippers').
     SwimSpeed: "swim speed", true;
+    /// A sealed helm (the void helm's): air for ever, under water, in thin
+    /// air and in the void (`breath`).
+    Sealed: "sealed", false;
 }
 
 /// What gear adds up to, on a creature (none worn: all zero).

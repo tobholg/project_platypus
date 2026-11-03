@@ -111,6 +111,50 @@ pub fn lean(mut commands: Commands, time: Res<Time>, mut q: Query<(Entity, &Kine
     }
 }
 
+/// What a fuelled pack has in reserve (seconds of thrust): it tops the
+/// tank up from this, and burns another of its fuel (sunstone) from the
+/// pack when the reserve's out and the tank's running low (`refuel`).
+#[derive(Component, Default)]
+pub struct FuelReserve(pub f32);
+
+/// The tank topped up from the reserve this fast (seconds of thrust a
+/// second); another of its fuel burnt once it's under this share.
+const TOP_UP: f32 = 4.0;
+const BURN_BELOW: f32 = 0.5;
+
+/// A fuelled pack (`RocketDef::fuel`): its tank kept topped up from the
+/// reserve, the reserve from the fuel in the pack. Nothing to do: it just
+/// lasts (two minutes of thrust a sunstone).
+pub fn refuel(
+    mut commands: Commands,
+    items: Option<Res<Items>>,
+    mut q: Query<(Entity, &mut Kinematics, &Equipment, &crate::creatures::MoveStats, Option<&mut crate::hands::items::Inventory>, Option<&mut FuelReserve>)>,
+) {
+    let Some(items) = items else { return };
+    for (e, mut k, eq, stats, inv, reserve) in &mut q {
+        let Some((fuel, secs)) = eq.pieces(&items).filter_map(|s| items.def(s.item).gear.as_ref()?.rocket.as_ref()?.fuel.clone()).next() else { continue };
+        let Some(mut reserve) = reserve else {
+            commands.entity(e).insert(FuelReserve::default());
+            continue;
+        };
+        let tank = stats.0.rocket_time;
+        let left = k.loco.rocket_left;
+        if reserve.0 <= 0.0
+            && left < tank * BURN_BELOW
+            && let (Some(mut inv), Some(id)) = (inv, items.id(&fuel))
+            && inv.take_item(&items, id, 1)
+        {
+            reserve.0 += secs;
+        }
+        let need = (tank - left).max(0.0);
+        let give = need.min(reserve.0).min(TOP_UP / TICK_HZ as f32);
+        if give > 0.0 {
+            k.loco.rocket_left += give;
+            reserve.0 -= give;
+        }
+    }
+}
+
 type Scorched<'a> = (Entity, &'a Kinematics, &'a mut Health, Option<&'a Coated>);
 
 /// Last tick a pair of boots fired: where, which way out, in space.

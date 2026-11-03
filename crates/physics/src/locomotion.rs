@@ -58,6 +58,10 @@ const ROCKET_FLOAT: (f32, f32) = (0.12, 1.0);
 const REBOUND: f32 = 0.45;
 const SKID: f32 = 0.85;
 const REST: f32 = 30.0;
+/// Stabilised (a thruster pack), letting go: this share of its speed lost
+/// a second, and under this (cells/s) it stops.
+const STABILISE: f32 = 1.4;
+const STABILISE_STOP: f32 = 4.0;
 
 /// On a rope, steering pushes at this share of gravity (a pendulum's own
 /// scale, whatever the air control), while it's going slower than this
@@ -229,6 +233,10 @@ pub struct MovementStats {
     /// player: its grappling hook holds it); set each tick, not from a file.
     #[serde(skip)]
     pub bounces: bool,
+    /// Weightless, steering nowhere and not thrusting, it slows to a stop
+    /// (a thruster pack: `STABILISE`); set from what's worn.
+    #[serde(skip)]
+    pub stabilise: bool,
 }
 
 impl MovementStats {
@@ -293,6 +301,7 @@ impl Default for MovementStats {
             scale: 1.0,
             weightless: false,
             bounces: false,
+            stabilise: false,
         }
     }
 }
@@ -1106,6 +1115,13 @@ impl Locomotion {
             ev.jumped = true;
         } else {
             self.float_rocket(s, intent, body, dt, steer, ev);
+        }
+        // (A thruster pack, let go of: it brings you to a stop.)
+        if s.stabilise && steer == Vec2::ZERO && !self.rocketing {
+            body.vel *= (-STABILISE * dt).exp();
+            if body.vel.length() < STABILISE_STOP {
+                body.vel = Vec2::ZERO;
+            }
         }
         body.vel.y -= s.gravity * dt;
         self.pre_vel = body.vel;
@@ -1959,6 +1975,27 @@ mod tests {
         assert!(ev.jumped && b.vel.x > 50.0 && b.vel.y > 50.0, "pushed off up and right ({:?})", b.vel);
         let ev = tick(&g, &s, &mut l, &mut b, hold);
         assert!(ev.rocketed && ev.rocket_dir == Vec2::X, "firing the way it steers ({:?})", ev.rocket_dir);
+    }
+
+    /// With a thruster pack (`stabilise`), let go of, it slows you to a
+    /// stop; without, you drift on.
+    #[test]
+    fn weightless_a_stabilised_body_stops_when_let_go() {
+        for stabilise in [false, true] {
+            let (g, mut s, mut l, mut b) = weightless();
+            s.bounces = true;
+            s.stabilise = stabilise;
+            // (Slow enough not to reach the room's walls.)
+            b.vel = Vec2::new(20.0, 5.0);
+            for _ in 0..120 {
+                tick(&g, &s, &mut l, &mut b, Intent::default());
+            }
+            if stabilise {
+                assert_eq!(b.vel, Vec2::ZERO, "stopped in 2 s");
+            } else {
+                assert!(b.vel.length() > 20.0, "drifting on ({:?})", b.vel);
+            }
+        }
     }
 
     #[test]

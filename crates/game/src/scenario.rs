@@ -6317,12 +6317,59 @@ fn spaceboots_script(
     mut sim: ResMut<SimWorld>,
     mut debris: Local<(u8, Vec2)>,
     (mut cursor, ropes): (ResMut<CursorOverride>, Query<&crate::gear::hook::Rope, With<LocalPlayer>>),
+    (items, mut kit): (Option<Res<crate::hands::items::Items>>, Query<(&mut crate::gear::Equipment, &mut crate::hands::items::Inventory, Option<&crate::breath::Breath>, Option<&crate::gear::boots::FuelReserve>, &crate::creatures::MoveStats), With<LocalPlayer>>),
 ) {
     if s.name != "spaceboots" {
         return;
     }
     menu.open = false;
     let t = s.elapsed;
+    // (`PLATYPUS_SPACEBOOTS=pack`: the void helm, suit and thruster pack put
+    // on and three sunstone in the pack (2.5 s); then right (3 s), let go
+    // (4 s: it steadies to a stop), then up, held from 6 s to 34 s (past the
+    // tank: sunstone burnt). Logs speed, fuel, the reserve, sunstone left,
+    // breath.)
+    if std::env::var("PLATYPUS_SPACEBOOTS").is_ok_and(|v| v == "pack") {
+        let (Some(items), Ok((mut eq, mut inv, breath, reserve, moves))) = (items, kit.single_mut()) else { return };
+        if debris.0 == 0 && t > 2.5 {
+            for (slot, id) in [(0, "void_helm"), (1, "void_suit"), (8, "thruster_pack")] {
+                if let Some(item) = items.id(id) {
+                    eq.worn[slot] = Some(crate::hands::items::Stack::new(item, 1));
+                }
+            }
+            // (No rocket boots: the pack's the thrust.)
+            eq.worn[4] = None;
+            if let Some(stone) = items.id("sunstone") {
+                inv.add(&items, crate::hands::items::Stack::new(stone, 3));
+            }
+            debris.0 = 1;
+        }
+        let (way, jump) = match t {
+            t if t < 3.0 => (None, false),
+            t if t < 4.0 => (Some(KeyCode::KeyD), true),
+            t if t < 6.0 => (None, false),
+            t if t < 34.0 => (Some(KeyCode::KeyW), true),
+            _ => (None, false),
+        };
+        for (key, on) in [(KeyCode::KeyD, way == Some(KeyCode::KeyD)), (KeyCode::KeyW, way == Some(KeyCode::KeyW)), (KeyCode::Space, jump)] {
+            if on && !keys.pressed(key) {
+                keys.press(key);
+            } else if !on && keys.pressed(key) {
+                keys.release(key);
+            }
+        }
+        if t >= 2.6 && t >= *said {
+            *said = t + 0.5;
+            let Ok((k, ..)) = player.single() else { return };
+            let stones = items.id("sunstone").map_or(0, |i| inv.count(i));
+            info!(
+                "spaceboots: pack t {t:.1} going ({:.0}, {:.0}) {} fuel {:.1}/{:.0} reserve {:.1} sunstone {stones} breath {}",
+                k.body.vel.x, k.body.vel.y, if k.loco.rocketing() { "FIRING" } else { "off" }, k.loco.rocket_left, moves.0.rocket_time, reserve.map_or(0.0, |r| r.0),
+                breath.map_or("-".into(), |b| format!("{:.1}/{:.1}", b.left, b.most))
+            );
+        }
+        return;
+    }
     // (`PLATYPUS_SPACEBOOTS=hook`: the hook into the rock under it (2.6 s),
     // reeled in; then (4.5 s) up, away from it, boots firing: rope let out
     // as it goes; then (6 s) firing up steering nowhere: the rope holds.

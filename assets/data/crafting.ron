@@ -793,7 +793,7 @@
         (makes: "gold_pickaxe", needs: [("gold_bar", 10), ("block:planks", 2)], at: "anvil"),
         (makes: "mithril_pickaxe", needs: [("mithril_bar", 12)], at: "anvil", locked: true),
         (makes: "starmetal_pickaxe", needs: [("starmetal_bar", 12)], at: "anvil"),
-        (makes: "void_helm", needs: [("starmetal_bar", 8), ("block:glass", 6)], at: "anvil"),
+        (makes: "void_helm", needs: [("starmetal_bar", 16), ("sunstone", 6), ("block:glass", 10)], at: "anvil"),
         (makes: "void_suit", needs: [("starmetal_bar", 14), ("sunstone", 4)], at: "anvil"),
         (makes: "thruster_pack", needs: [("starmetal_bar", 10), ("sunstone", 6)], at: "anvil"),
         (makes: "copper_axe", needs: [("copper_bar", 5), ("block:planks", 2)], at: "anvil"),

@@ -6,7 +6,8 @@
 //! wears. Its head out, it's back in a couple of seconds (a gasp, if it
 //! was low). Wading, swimming at the top: none of that. A bladder pod
 //! (a cluster of them on the rock under water) bursts as you swim into it,
-//! a gulp of air: a third of a full breath back.
+//! a gulp of air: a third of a full breath back. A sealed helm (`Sealed`,
+//! the void helm) never runs out.
 
 use bevy::prelude::*;
 use platypus_sim::{CellPos, Kind};
@@ -87,6 +88,11 @@ fn breathe(
         sounds.write(crate::sound::PlaySound::at("gasp", head));
     }
     b.under = under;
+    // (A sealed helm: air for ever, wherever.)
+    if stats.is_some_and(|s| s.get(crate::gear::Stat::Sealed) > 0.0) {
+        b.left = most;
+        return;
+    }
     // High in the sky the air thins: breath runs down (faster the higher:
     // none to breathe at the world's top), and out of it you suffocate.
     let thin = if under || dying.0.is_some() { 0.0 } else { sim.generator.sky_layers().map_or(0.0, |s| s.thin(head.y)) };

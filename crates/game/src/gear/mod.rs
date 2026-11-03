@@ -156,6 +156,14 @@ pub struct RocketDef {
     pub run: f32,
     #[serde(default)]
     pub fire: bool,
+    /// Weightless, letting go of everything it slows you to a stop (a
+    /// thruster pack's: `physics` `MovementStats::stabilise`).
+    #[serde(default)]
+    pub stabilise: bool,
+    /// An item it burns for more (sunstone), and how many seconds of thrust
+    /// one gives (`pack::refuel`): used as it runs low, from the pack.
+    #[serde(default)]
+    pub fuel: Option<(String, f32)>,
 }
 
 fn rocket_thrust() -> f32 {
@@ -315,6 +323,7 @@ impl Plugin for GearPlugin {
             .init_resource::<hook::RopeCanvas>()
             .add_systems(Update, (shield::raise, shield::ward, shield::draw).chain())
             .add_systems(PostUpdate, boots::lean.after(crate::zerog::turn).before(bevy::transform::TransformSystems::Propagate))
+            .add_systems(FixedUpdate, boots::refuel.before(crate::creatures::move_creatures).in_set(crate::world::TickSet::Bodies))
             .add_systems(FixedUpdate, (boots::exhaust.in_set(crate::world::TickSet::Bodies), hook::rope.in_set(crate::world::TickSet::Bodies).before(crate::creatures::move_creatures)))
             .add_systems(Update, hook::let_go.after(crate::death::DeathSet))
             .add_systems(PostUpdate, hook::draw.after(crate::creatures::interpolate).before(bevy::transform::TransformSystems::Propagate));
@@ -386,6 +395,7 @@ pub(crate) fn apply(items: Option<Res<Items>>, rules: Res<GearRules>, creatures:
             m.rocket_thrust = r.thrust;
             m.rocket_speed = r.speed;
             m.rocket_run = r.run;
+            m.stabilise = r.stabilise;
         }
         // (And slower for what it's lost: `wounds`.)
         if let (Some(legs), Some(lost)) = (def.legs.as_ref(), severed) {
