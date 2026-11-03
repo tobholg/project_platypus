@@ -366,7 +366,19 @@ fn spawn(mut commands: Commands) {
             ))
             .with_children(|panel| {
                 panel.spawn(small("Worn"));
-                for i in 0..WORN.len() {
+                for i in 0..crate::gear::AMMO_FROM {
+                    slot(panel, Holder::Equip, i);
+                }
+            });
+            // What weapons fire, beside it.
+            root.spawn((
+                Interaction::None,
+                Node { flex_direction: FlexDirection::Column, row_gap: px(3), padding: UiRect::all(px(8)), align_items: AlignItems::Center, border_radius: BorderRadius::all(px(ROUND)), ..default() },
+                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.62)),
+            ))
+            .with_children(|panel| {
+                panel.spawn(small("Ammo"));
+                for i in crate::gear::AMMO_FROM..WORN.len() {
                     slot(panel, Holder::Equip, i);
                 }
             });
@@ -854,8 +866,14 @@ fn show(
         bg.set_if_neq(BackgroundColor(color));
     }
     for (&SlotCount(which, i), mut text) in &mut counts {
-        let n = slot_of(which, i).map_or(0, |s| whole(&items, &s));
-        let shown = if n > 1 { n.to_string() } else { String::new() };
+        let stack = slot_of(which, i);
+        let n = stack.map_or(0, |s| whole(&items, &s));
+        // (A weapon that fires something: how much of it there is.)
+        let shown = match stack.and_then(|s| items.def(s.item).fires()) {
+            Some(kind) => eq.ammo_count(Some(inv), &items, kind).to_string(),
+            None if n > 1 => n.to_string(),
+            None => String::new(),
+        };
         if text.0 != shown {
             text.0 = shown;
         }

@@ -133,6 +133,11 @@ pub struct ItemDef {
     /// looks on a body.
     #[serde(default)]
     pub gear: Option<crate::gear::GearDef>,
+    /// What it is to a weapon that fires it ("arrow", "shot", "comet"):
+    /// it goes in the ammo slots (`gear::Slot::Ammo`), a weapon taking it
+    /// from there first.
+    #[serde(default)]
+    pub ammo: Option<String>,
     /// Held, it glows and gives off sparks at its tip (a fire wand's
     /// embers), more while it's used.
     #[serde(default)]
@@ -148,6 +153,17 @@ pub struct ItemDef {
     /// What sort of thing it is, where what it does doesn't say (`Items::category`).
     #[serde(default)]
     pub category: Option<Category>,
+}
+
+impl ItemDef {
+    /// The ammo it fires (`ItemDef::ammo` of what it takes), if it's a
+    /// weapon that fires something.
+    pub fn fires(&self) -> Option<&'static str> {
+        match self.use_ {
+            Use::Bow(_) => Some("arrow"),
+            _ => None,
+        }
+    }
 }
 
 /// What sort of thing an item is: the crafting panel's tabs and the order
@@ -313,7 +329,7 @@ impl Items {
                 if let Some(first) = name.get_mut(0..1) {
                     first.make_ascii_uppercase();
                 }
-                defs.push(ItemDef { id: format!("block:{}", def.name), name, stack: 999, color: (r, g, b), use_: Use::Block(id), about: None, gear: None, aura: None, light: None, loot: def.loot, category: None });
+                defs.push(ItemDef { id: format!("block:{}", def.name), name, stack: 999, color: (r, g, b), use_: Use::Block(id), about: None, gear: None, ammo: None, aura: None, light: None, loot: def.loot, category: None });
             }
         }
         let mut by_id = HashMap::new();
@@ -414,6 +430,7 @@ impl Items {
                     Slot::Held => Category::Weapons,
                     Slot::OffHand if d.light.is_some() => Category::Lights,
                     Slot::OffHand => Category::Armour,
+                    Slot::Ammo => Category::Weapons,
                 },
                 None if d.light.is_some() => Category::Lights,
                 None => Category::Materials,

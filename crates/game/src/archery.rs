@@ -151,7 +151,7 @@ pub struct Arrow {
     back: bool,
 }
 
-type Bowman<'a> = (Entity, &'a Wielding, &'a Kinematics, Option<&'a HandPos>, Option<&'a Team>, Option<&'a mut Nocked>, Option<&'a mut Stamina>, Option<&'a mut Inventory>, Option<&'a crate::gear::Stats>);
+type Bowman<'a> = (Entity, &'a Wielding, &'a Kinematics, Option<&'a HandPos>, Option<&'a Team>, Option<&'a mut Nocked>, Option<&'a mut Stamina>, (Option<&'a mut Inventory>, Option<&'a mut crate::gear::Equipment>), Option<&'a crate::gear::Stats>);
 
 /// Drawing while asked; loosing when not.
 #[allow(clippy::too_many_arguments)]
@@ -169,7 +169,7 @@ fn nock(
 ) {
     let Some(weapons) = weapons else { return };
     for ask in asks.read() {
-        let Ok((_, wielding, k, hand, _, nocked, _, inv, stats)) = archers.get_mut(ask.archer) else { continue };
+        let Ok((_, wielding, k, hand, _, nocked, _, (inv, _), stats)) = archers.get_mut(ask.archer) else { continue };
         let Some(bow) = wielding.0.as_deref().and_then(|id| weapons.bow_index(id)) else { continue };
         let speed = stats.map_or(1.0, |s| s.mult(crate::gear::Stat::AttackSpeed));
         match nocked {
@@ -191,9 +191,8 @@ fn nock(
             }
         }
     }
-    let arrow_item = items.as_ref().and_then(|i| i.id("arrow"));
     let tick = sim.world.tick();
-    for (e, _, k, hand, team, nocked, stamina, inv, stats) in &mut archers {
+    for (e, _, k, hand, team, nocked, stamina, (inv, eq), stats) in &mut archers {
         let Some(mut n) = nocked else { continue };
         if n.asked {
             n.asked = false;
@@ -203,10 +202,18 @@ fn nock(
         // Let go: loose, if there's an arrow to (the player's pack; others
         // don't run out).
         commands.entity(e).remove::<Nocked>();
-        if let (Some(mut inv), Some(items), Some(item)) = (inv, items.as_ref(), arrow_item)
-            && !inv.take_item(items, item, 1)
-        {
-            continue;
+        // (An arrow: from the ammo slots first, then the pack.)
+        if let (Some(inv), Some(items)) = (inv, items.as_ref()) {
+            let took = match eq {
+                Some(mut eq) => eq.take_ammo(Some(inv.into_inner()), items, "arrow"),
+                None => {
+                    let mut inv = inv;
+                    items.id("arrow").filter(|&a| inv.take_item(items, a, 1))
+                }
+            };
+            if took.is_none() {
+                continue;
+            }
         }
         let def = weapons.bow(n.bow);
         let d = n.drawn(&weapons);

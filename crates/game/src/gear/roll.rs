@@ -60,6 +60,7 @@ fn kinds(item: &ItemDef, g: &GearDef) -> Vec<&'static str> {
         Slot::Hook => "hook",
         Slot::Back => "back",
         Slot::OffHand => "offhand",
+        Slot::Ammo => "ammo",
         Slot::Held => match item.use_ {
             Use::Melee(_) => "melee",
             Use::Bow(_) => "bow",

@@ -53,6 +53,9 @@ pub enum Slot {
     Held,
     /// The other hand: a light (a torch, a flashlight, a lantern).
     OffHand,
+    /// What a weapon fires (arrows, starmetal shot, comet rockets: an
+    /// item's `ammo`), taken from these first, then from the pack.
+    Ammo,
 }
 
 impl Slot {
@@ -68,13 +71,17 @@ impl Slot {
             Slot::Back => "Back",
             Slot::Held => "Held",
             Slot::OffHand => "Off hand",
+            Slot::Ammo => "Ammo",
         }
     }
 }
 
 /// The worn slots, in order (what `Equipment::worn` holds).
 /// (New slots go at the end: a save keeps them by place.)
-pub const WORN: [Slot; 10] = [Slot::Head, Slot::Body, Slot::Hands, Slot::Legs, Slot::Feet, Slot::Trinket, Slot::Trinket, Slot::Hook, Slot::Back, Slot::OffHand];
+pub const WORN: [Slot; 14] = [Slot::Head, Slot::Body, Slot::Hands, Slot::Legs, Slot::Feet, Slot::Trinket, Slot::Trinket, Slot::Hook, Slot::Back, Slot::OffHand, Slot::Ammo, Slot::Ammo, Slot::Ammo, Slot::Ammo];
+
+/// Where the ammo slots begin in `WORN` (they're its last).
+pub const AMMO_FROM: usize = 10;
 
 /// The off hand's place in `WORN`.
 pub const OFF_HAND: usize = 9;
@@ -216,7 +223,37 @@ impl Equipment {
     pub fn fits(items: &Items, i: usize, stack: &Stack) -> bool {
         let def = items.def(stack.item);
         // (A light to hold goes in the off hand, gear or not: a torch.)
-        def.gear.as_ref().is_some_and(|g| WORN.get(i) == Some(&g.slot)) || (i == OFF_HAND && def.light.is_some_and(|l| l.held()))
+        def.gear.as_ref().is_some_and(|g| WORN.get(i) == Some(&g.slot)) || (i == OFF_HAND && def.light.is_some_and(|l| l.held())) || (WORN.get(i) == Some(&Slot::Ammo) && def.ammo.is_some())
+    }
+
+    /// One round of ammo of `kind` (an item's `ammo`) taken: from the ammo
+    /// slots first (the first that has some), then the pack. What was
+    /// taken, or none (out of it).
+    pub fn take_ammo(&mut self, inv: Option<&mut crate::hands::items::Inventory>, items: &Items, kind: &str) -> Option<crate::hands::items::ItemId> {
+        let is = |s: &Stack| items.def(s.item).ammo.as_deref() == Some(kind);
+        for slot in self.worn[AMMO_FROM..].iter_mut() {
+            if let Some(s) = slot.as_mut()
+                && is(s)
+            {
+                let item = s.item;
+                let unit = items.unit(item);
+                s.count = s.count.saturating_sub(unit);
+                if s.count == 0 {
+                    *slot = None;
+                }
+                return Some(item);
+            }
+        }
+        let inv = inv?;
+        let item = inv.slots.iter().flatten().find(|s| is(s)).map(|s| s.item)?;
+        inv.take_item(items, item, 1).then_some(item)
+    }
+
+    /// How many rounds of `kind` there are (the ammo slots and the pack).
+    pub fn ammo_count(&self, inv: Option<&crate::hands::items::Inventory>, items: &Items, kind: &str) -> u32 {
+        let is = |s: &&Stack| items.def(s.item).ammo.as_deref() == Some(kind);
+        let n: u32 = self.worn[AMMO_FROM..].iter().flatten().filter(is).map(|s| s.count / items.unit(s.item).max(1)).sum();
+        n + inv.map_or(0, |inv| inv.slots.iter().flatten().filter(is).map(|s| s.count / items.unit(s.item).max(1)).sum())
     }
 
     /// The worn slot an item would go in: an empty one of its kind first.
