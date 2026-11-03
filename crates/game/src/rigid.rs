@@ -48,7 +48,7 @@ impl Plugin for RigidPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<DrawnBodies>()
             .add_systems(Update, draw_bodies)
-            .add_systems(FixedUpdate, (crush, logs).chain().after(TickSet::Cells));
+            .add_systems(FixedUpdate, (crush, bump, logs).chain().after(TickSet::Cells));
     }
 }
 
@@ -167,6 +167,10 @@ fn crush(
             // tipping over as it's chopped up barely moves, however its
             // end swings.)
             let v = Vec2::from(if body.felled() { body.velocity_at([at.x, at.y]) } else { body.vel });
+            // (Weightless, how hard it hits is how fast it comes at you, and
+            // what it does to how you move is `bump`'s: it only hurts.)
+            let weightless = crate::zerog::gravity_at(&sim, pos.y) < crate::zerog::WEIGHTLESS;
+            let v = if weightless { v - k.body.vel / TICK_HZ as f32 } else { v };
             let speed = v.length();
             let harmless = if player && woody && !body.felled() { LOG_HARMLESS } else { HARMLESS_SPEED };
             if speed < harmless {
@@ -175,6 +179,9 @@ fn crush(
             hit.insert((body.id, entity));
             let share = if player { crate::creatures::PLAYER_DEBRIS } else { 1.0 };
             health.harm_by((speed * DAMAGE_PER_SPEED).min(MAX_DAMAGE) * share, crate::creatures::Harm::Blunt, || crate::death::Cause::new("Something heavy", "crushed"));
+            if weightless {
+                continue;
+            }
             let k = &mut *k;
             let push = v * TICK_HZ as f32 * 0.7 + Vec2::new(0.0, 180.0);
             k.loco.knock(&mut k.body, push, 0.4);
@@ -229,6 +236,66 @@ fn logs(
             if let Some(item) = items.block(material) {
                 crate::hands::spawn_drop(&mut commands, &items, Vec2::from(l.at), crate::hands::items::Stack::new(item, n));
             }
+        }
+    }
+}
+
+/// Weightless, what bounces back off a body (of the speed into it), as
+/// off rock (`physics::locomotion`'s `REBOUND`).
+const BUMP_REBOUND: f32 = 0.45;
+
+/// Weightless, a creature and a body (a chunk cut off an asteroid, a log)
+/// don't pass through each other: overlapping, coming together, they
+/// bounce apart, each taking the push by the other's weight against its
+/// own (a crumb is flung off you; a boulder hardly moves and you're
+/// thrown back), and the creature's put out of it.
+fn bump(mut sim: ResMut<SimWorld>, mut creatures: Query<&mut Kinematics>) {
+    if sim.world.bodies().is_empty() {
+        return;
+    }
+    let hz = TICK_HZ as f32;
+    for mut k in &mut creatures {
+        if crate::zerog::gravity_at(&sim, k.body.pos.y) >= crate::zerog::WEIGHTLESS {
+            continue;
+        }
+        let k = &mut *k;
+        let (pos, half) = (k.body.pos, k.body.half);
+        let (lo, hi) = (pos - half, pos + half);
+        for body in sim.world.bodies_mut() {
+            let (blo, bhi) = body.bounds();
+            if hi.x < blo.x as f32 || lo.x > bhi.x as f32 + 1.0 || hi.y < blo.y as f32 || lo.y > bhi.y as f32 + 1.0 {
+                continue;
+            }
+            // Where they overlap: its cells inside the creature's box.
+            let mut inside = Vec2::ZERO;
+            let mut n = 0;
+            for (p, _) in body.world_cells() {
+                let c = Vec2::new(p.x as f32 + 0.5, p.y as f32 + 0.5);
+                if c.cmpge(lo).all() && c.cmple(hi).all() {
+                    inside += c;
+                    n += 1;
+                }
+            }
+            if n == 0 {
+                continue;
+            }
+            let at = inside / n as f32;
+            // (Out of it: from the body's middle through where they meet.)
+            let normal = (pos - Vec2::from(body.pos)).normalize_or(Vec2::Y);
+            let vb = Vec2::from(body.velocity_at(at.into())) * hz;
+            let closing = (k.body.vel - vb).dot(normal);
+            // Pushed apart (by how deep: up to a cell a tick).
+            k.body.pos += normal * (n as f32 / 16.0).min(1.0);
+            if closing >= 0.0 {
+                continue;
+            }
+            let (mine, its) = ((half.x * half.y * 4.0).max(1.0), body.mass().max(1.0));
+            let j = -(1.0 + BUMP_REBOUND) * closing / (1.0 / mine + 1.0 / its);
+            if std::env::var("PLATYPUS_BUMPLOG").is_ok() {
+                info!("bump: body {} ({its:.0} cells) normal ({:.2}, {:.2}) closing {closing:.0} overlap {n}; me {mine:.0} going ({:.0}, {:.0}), it ({:.0}, {:.0})", body.id, normal.x, normal.y, k.body.vel.x, k.body.vel.y, vb.x, vb.y);
+            }
+            k.body.vel += normal * j / mine;
+            body.impulse((-normal * j / hz).into(), at.into());
         }
     }
 }

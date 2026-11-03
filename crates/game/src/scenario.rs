@@ -6365,6 +6365,60 @@ fn spaceboots_script(
     // (2.6 s), the player sent through them at 240 cells/s (2.8 s); a lump
     // of rock beside it cut at (3.6 s): it drifts off. Logs its speed, the
     // bodies, what's left of the specks.)
+    // (`PLATYPUS_SPACEBOOTS=bump`: a small lump (6×6) and a big one (18×18)
+    // cut free on the player's line (2.7 s), the player sent into them at
+    // 200 cells/s (3 s): logs its speed and theirs.)
+    if std::env::var("PLATYPUS_SPACEBOOTS").is_ok_and(|v| v == "bump") {
+        let Ok((mut k, ..)) = player.single_mut() else { return };
+        let stone = sim.materials().expect_id("stone");
+        let at = |d: Vec2, o: (i32, i32)| CellPos::new(d.x as i32 + o.0, d.y as i32 + o.1);
+        match debris.0 {
+            0 if t > 2.5 => {
+                // (Up in the open, clear of the asteroid it was put by.)
+                k.body.pos.y += 400.0;
+                k.prev_pos = k.body.pos;
+                debris.1 = k.body.pos;
+                let d = debris.1;
+                for (x0, n) in [(60, 6), (200, 18)] {
+                    for dx in 0..n {
+                        for dy in 0..n {
+                            sim.world.set(at(d, (x0 + dx, dy - n / 2)), platypus_sim::Cell::new(stone, 0));
+                        }
+                    }
+                }
+                k.body.vel = Vec2::ZERO;
+                debris.0 = 1;
+            }
+            1 if t > 2.7 => {
+                let d = debris.1;
+                // (A bite out of each one's top: it comes free.)
+                sim.queue(WorldEdit::Dig { center: at(d, (63, 3)), radius: 1, max_hardness: 255 });
+                sim.queue(WorldEdit::Dig { center: at(d, (209, 9)), radius: 1, max_hardness: 255 });
+                debris.0 = 2;
+            }
+            2 if t > 3.0 => {
+                k.body.vel = Vec2::new(200.0, 0.0);
+                debris.0 = 3;
+            }
+            // (Then straight at the big one, level with it.)
+            3 if t > 4.5 => {
+                if let Some(b) = sim.world.bodies().iter().find(|b| b.mass() > 200.0) {
+                    k.body.pos = Vec2::new(b.pos[0] - 40.0, b.pos[1]);
+                    k.prev_pos = k.body.pos;
+                    k.body.vel = Vec2::new(200.0, 0.0);
+                }
+                debris.0 = 4;
+            }
+            _ => {}
+        }
+        if t >= *said && debris.0 >= 3 {
+            *said = t + 0.1;
+            let d = debris.1;
+            let bodies: Vec<String> = sim.world.bodies().iter().map(|b| format!("{} cells at +{:.0},{:+.0} going {:.0}", b.loot(sim.materials()).iter().map(|x| x.1).sum::<u32>(), b.pos[0] - d.x, b.pos[1] - d.y, b.vel[0] * 60.0)).collect();
+            info!("spaceboots: bump t {t:.1} player at +{:.0},{:+.0} going ({:.0}, {:.0}); {:?}", k.body.pos.x - d.x, k.body.pos.y - d.y, k.body.vel.x, k.body.vel.y, bodies);
+        }
+        return;
+    }
     if std::env::var("PLATYPUS_SPACEBOOTS").is_ok_and(|v| v == "debris") {
         let Ok((mut k, ..)) = player.single_mut() else { return };
         let stone = sim.materials().expect_id("stone");
