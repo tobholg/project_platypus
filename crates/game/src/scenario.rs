@@ -778,11 +778,14 @@ fn stormglass_script(
     mut sim: ResMut<SimWorld>,
     mut player: Query<(Entity, &mut Kinematics, &crate::creatures::Health, Option<&mut crate::creatures::body::elements::Coated>), With<LocalPlayer>>,
     mut commands: Commands,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
     mut st: Local<(u8, f32)>,
 ) {
     if s.name != "stormglass" {
         return;
     }
+    // (The dev menu open is god mode: closed, so it can be hurt.)
+    menu.open = false;
     let Ok((me, mut k, h, coated)) = player.single_mut() else { return };
     let t = s.elapsed;
     let fl = platypus_worldgen::arena::FLOOR;
