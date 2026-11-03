@@ -15,6 +15,11 @@
 //! - `stormglass` (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`) fulgurite on the floor (a
 //!   speck of three cells, a seam), lightning nearby (1 s: it's charged), the player
 //!   soaked and walked over the speck, then the seam; logs its health
+//! - `glowdamp`   (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`) the player coated in acid
+//!   (0.5 s: it glows), washed clean at 2 s (the glow out), then firedamp all round it at
+//!   3 s, nothing carried (`PLATYPUS_GLOWDAMP=torch`: no acid, a torch out; `=none`:
+//!   neither; `=lit`: the acid left on, glowing, as the gas comes); logs its hurt-glow
+//!   light and the gas (the `hazards:` lines: what lit it)
 //! - `burn`       sets the base of that tree alight at t = 2 s instead
 //! - `strike`     lightning onto that tree at t = 2 s instead
 //! - `acid`       pours acid into a glass basin beside the player, boils it at 2 s, lights the fumes at 3.6 s
@@ -443,6 +448,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, pack_script.after(bevy::ui::UiSystems::Focus).before(crate::pause::key))
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
             .add_systems(FixedUpdate, stormglass_script)
+            .add_systems(Update, glowdamp_script)
             .add_systems(Update, spaceboots_script)
             .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script, wands_script, melee_script, fight_script, archery_script).after(InputSystems).before(crate::camera::track_cursor));
     }
@@ -832,6 +838,69 @@ fn stormglass_script(
     if t >= st.1 {
         st.1 = t + 0.25;
         info!("stormglass: t {t:.2} at x {:.0}: hp {:.1}/{:.0}", k.body.pos.x, h.hp, h.max);
+    }
+}
+
+/// `glowdamp`: see the list at the top.
+#[allow(clippy::type_complexity)]
+fn glowdamp_script(
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    mut toggles: ResMut<crate::light::LightToggles>,
+    mut commands: Commands,
+    mut player: Query<(Entity, &mut Kinematics, Option<&mut crate::creatures::body::elements::Coated>), With<LocalPlayer>>,
+    signs: Query<(&Name, &crate::light::LightSource)>,
+    mut st: Local<(u8, f32)>,
+) {
+    if s.name != "glowdamp" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let mode = std::env::var("PLATYPUS_GLOWDAMP").unwrap_or_default();
+    toggles.carry = if mode == "torch" { crate::light::Carry::Torch } else { crate::light::Carry::Nothing };
+    let Ok((me, mut k, coated)) = player.single_mut() else { return };
+    let fl = platypus_worldgen::arena::FLOOR as f32;
+    // (Held still in the open, on the floor.)
+    k.body.pos.x = 960.0;
+    k.prev_pos.x = 960.0;
+    match st.0 {
+        0 if t > 0.5 => {
+            if mode.is_empty() || mode == "lit" {
+                let acid = vec![("acid".to_string(), if mode == "lit" { 1.0 } else { 0.6 })];
+                match coated {
+                    Some(mut c) => c.coats = acid,
+                    None => {
+                        commands.entity(me).insert(crate::creatures::body::elements::Coated { coats: acid });
+                    }
+                }
+            }
+            st.0 = 1;
+        }
+        1 if t > 2.0 => {
+            if let Some(mut c) = coated
+                && mode != "lit"
+            {
+                c.coats.clear();
+            }
+            st.0 = 2;
+        }
+        2 if t > 3.0 => {
+            if let Some(gas) = sim.materials().id("firedamp") {
+                sim.queue(WorldEdit::Paint { center: CellPos::new(960, fl as i32 + 22), radius: 14, material: gas, overwrite: false });
+            }
+            st.0 = 3;
+        }
+        _ => {}
+    }
+    if t >= st.1 {
+        st.1 = t + 0.25;
+        let glow: Vec<String> = signs.iter().filter(|(n, _)| n.as_str() == "Signs light").map(|(_, l)| format!("[{:.2}, {:.2}, {:.2}] flicker {:.2}", l.color[0], l.color[1], l.color[2], l.flicker)).collect();
+        let gas = sim.materials().id("firedamp");
+        let damp = (-30..=30).flat_map(|dx| (0..60).map(move |dy| CellPos::new(960 + dx, fl as i32 + dy))).filter(|&p| sim.world.get(p).is_some_and(|c| Some(c.material) == gas)).count();
+        let fire = (-30..=30).flat_map(|dx| (0..60).map(move |dy| CellPos::new(960 + dx, fl as i32 + dy))).filter(|&p| sim.world.get(p).is_some_and(|c| Some(c.material) == sim.materials().id("fire"))).count();
+        info!("glowdamp: t {t:.2} [{}] signs light {:?}, firedamp {damp}, fire {fire}", if mode.is_empty() { "acid, washed" } else { mode.as_str() }, glow);
     }
 }
 

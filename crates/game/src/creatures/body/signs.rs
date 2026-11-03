@@ -19,6 +19,12 @@ use crate::magic::runes::Emitter;
 use crate::vfx::Sparks;
 use crate::world::{SimWorld, TICK_HZ};
 
+/// The faint light of what's hurting a creature (a coating's glow,
+/// searing heat's): a glow, not a flame. It never lights firedamp (a
+/// burning creature's own fire does: `elements::Blaze`).
+#[derive(Component)]
+pub struct HurtGlow;
+
 /// What it's felt lately, by kind (`Harm as usize`): 1 just now, as hard
 /// as it was (at least `FELT_LEAST`), fading to 0 over `FELT_FOR`.
 #[derive(Component, Default)]
@@ -202,16 +208,22 @@ pub fn show(
         }
     }
 
-    // Its light: one, of all of them.
+    // Its light: one, of all of them; gone when it's dark. (A glow, not a
+    // flame: it lights no firedamp, `HurtGlow`.)
     let color = glow;
+    let dark = !color.iter().any(|&c| c > 0.0);
     match signs.light {
+        Some(e) if dark => {
+            commands.entity(e).try_despawn();
+            signs.light = None;
+        }
         Some(e) => {
             if let Ok(mut l) = lights.get_mut(e) {
                 l.color = color;
             }
         }
-        None if color.iter().any(|&c| c > 0.0) => {
-            let e = commands.spawn((Name::new("Signs light"), Transform::default(), Visibility::default(), LightSource { color, flicker: 0.1 })).id();
+        None if !dark => {
+            let e = commands.spawn((Name::new("Signs light"), HurtGlow, Transform::default(), Visibility::default(), LightSource { color, flicker: 0.1 })).id();
             commands.entity(me).add_child(e);
             signs.light = Some(e);
         }

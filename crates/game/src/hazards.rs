@@ -372,7 +372,7 @@ fn firedamp(
     mut damp: ResMut<Firedamp>,
     (toggles, switched): (Res<crate::light::LightToggles>, Res<crate::light::switch::Switch>),
     player: Query<&Kinematics, With<LocalPlayer>>,
-    flames: Query<(Entity, &GlobalTransform, &crate::light::LightSource, Has<crate::light::torch::HeldFlame>, Option<&crate::combat::AuraGlow>)>,
+    flames: Query<(Entity, &GlobalTransform, &crate::light::LightSource, Has<crate::light::torch::HeldFlame>, Option<&crate::combat::AuraGlow>), Without<crate::creatures::body::signs::HurtGlow>>,
     names: Query<&Name>,
     mut quiet: Local<u64>,
 ) {
@@ -381,7 +381,9 @@ fn firedamp(
     let is_gas = |sim: &SimWorld, p: CellPos| sim.world.get(p).is_some_and(|c| c.material == gas);
     // (A light that flickers is a flame; the one in hand is one unless it's
     // a safety lamp's, or a flashlight's; a held focus's glow only if it's a
-    // fire one's.)
+    // fire one's; what's hurting a creature glowing on it never is, dark or
+    // lit: `HurtGlow`. Searing heat lights nothing: a creature on fire does,
+    // by its own flame.)
     let mut lit = Vec::new();
     let mut by = None;
     for (e, tf, light, held, aura) in &flames {
