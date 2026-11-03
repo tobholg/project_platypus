@@ -213,6 +213,10 @@ pub enum Modifier {
     /// Never strikes its caster, however long it flies or wherever it's
     /// turned (a creature's own, round its own great body: never a wand's).
     Spares,
+    /// Steers for the cursor (where it is now, as it moves) at most this
+    /// many degrees a second, till it reaches it or passes it; then on
+    /// straight (a comet rocket: it never turns back).
+    SeekCursor(f32),
 }
 
 fn full_pace() -> (f32, f32) {
@@ -360,6 +364,10 @@ impl Cast {
     /// Whether it never strikes its caster (`Spares`).
     pub fn spares(&self) -> bool {
         self.modifiers.iter().any(|m| matches!(m, Modifier::Spares))
+    }
+
+    pub fn seeks_cursor(&self) -> Option<f32> {
+        self.modifiers.iter().find_map(|m| if let Modifier::SeekCursor(r) = m { Some(*r) } else { None })
     }
 
     pub fn homing(&self) -> Option<f32> {

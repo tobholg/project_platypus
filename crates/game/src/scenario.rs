@@ -20,6 +20,10 @@
 //!   3 s, nothing carried (`PLATYPUS_GLOWDAMP=torch`: no acid, a torch out; `=none`:
 //!   neither; `=lit`: the acid left on, glowing, as the gas comes); logs its hurt-glow
 //!   light and the gas (the `hazards:` lines: what lit it)
+//! - `guns`       (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`) the star-forged guns: the
+//!   repeater held on the nearest dummy (1–3 s, its shot in an ammo slot), then the comet
+//!   launcher, three rockets fired high, the cursor put on it just after (4–6.5 s);
+//!   logs the ammo, the shots in the air, the dummy's health
 //! - `burn`       sets the base of that tree alight at t = 2 s instead
 //! - `strike`     lightning onto that tree at t = 2 s instead
 //! - `acid`       pours acid into a glass basin beside the player, boils it at 2 s, lights the fumes at 3.6 s
@@ -449,6 +453,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, (tree_script, blast_script, fell_script, acid_script, rain_script, swim_script, dark_script, flood_script))
             .add_systems(FixedUpdate, stormglass_script)
             .add_systems(Update, glowdamp_script)
+            .add_systems(PreUpdate, guns_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spaceboots_script)
             .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script, wands_script, melee_script, fight_script, archery_script).after(InputSystems).before(crate::camera::track_cursor));
     }
@@ -901,6 +906,71 @@ fn glowdamp_script(
         let damp = (-30..=30).flat_map(|dx| (0..60).map(move |dy| CellPos::new(960 + dx, fl as i32 + dy))).filter(|&p| sim.world.get(p).is_some_and(|c| Some(c.material) == gas)).count();
         let fire = (-30..=30).flat_map(|dx| (0..60).map(move |dy| CellPos::new(960 + dx, fl as i32 + dy))).filter(|&p| sim.world.get(p).is_some_and(|c| Some(c.material) == sim.materials().id("fire"))).count();
         info!("glowdamp: t {t:.2} [{}] signs light {:?}, firedamp {damp}, fire {fire}", if mode.is_empty() { "acid, washed" } else { mode.as_str() }, glow);
+    }
+}
+
+/// `guns`: see the list at the top.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn guns_script(
+    s: Res<Scenario>,
+    items: Option<Res<crate::hands::items::Items>>,
+    mut menu: ResMut<crate::devmenu::DevMenu>,
+    mut hand: ResMut<crate::hands::Hand>,
+    mut player: Query<(&Kinematics, &mut crate::hands::items::Inventory, &mut crate::gear::Equipment), With<LocalPlayer>>,
+    dummies: Query<(&Kinematics, Option<&crate::creatures::custom::dummy::Tally>), (With<crate::creatures::custom::dummy::Dummy>, Without<LocalPlayer>)>,
+    spells: Query<&crate::magic::Spell>,
+    (mut mouse, mut cursor): (ResMut<ButtonInput<MouseButton>>, ResMut<CursorOverride>),
+    mut st: Local<(u8, f32)>,
+) {
+    if s.name != "guns" {
+        return;
+    }
+    menu.open = false;
+    let t = s.elapsed;
+    let (Some(items), Ok((k, mut inv, mut eq))) = (items, player.single_mut()) else { return };
+    let me = k.body.pos;
+    let target = dummies.iter().filter(|(d, _)| d.body.pos.x > me.x).min_by(|a, b| a.0.body.pos.distance(me).total_cmp(&b.0.body.pos.distance(me))).map(|(d, t)| (d.body.pos, t.map_or((0.0, 0), |t| (t.total, t.hits))));
+    let stack = |id: &str, n: u32| items.id(id).map(|i| crate::hands::items::Stack::new(i, n));
+    if st.0 == 0 && t > 0.5 {
+        inv.slots[0] = stack("starforged_repeater", 1);
+        inv.slots[1] = stack("comet_launcher", 1);
+        inv.add(&items, stack("comet_rocket", 12).expect("comet_rocket"));
+        eq.worn[crate::gear::AMMO_FROM] = stack("starmetal_shot", 200);
+        hand.bar = 0;
+        hand.slot = 0;
+        st.0 = 1;
+    }
+    let Some((at, (dealt, hits))) = target else { return };
+    // The repeater, held on it; then the launcher.
+    let firing = match t {
+        t if (1.0..3.0).contains(&t) => {
+            cursor.0 = Some(at);
+            true
+        }
+        t if (3.0..3.5).contains(&t) => {
+            hand.slot = 1;
+            false
+        }
+        t if (4.0..6.6).contains(&t) => {
+            // (Fired high over it, the cursor put on it a moment after:
+            // the rocket curves down onto it. A press a rocket: at 4, 5
+            // and 6.)
+            let since = (t - 4.0).fract();
+            cursor.0 = Some(if since < 0.12 { at + Vec2::new(0.0, 25.0) } else { at });
+            since < 0.1
+        }
+        _ => false,
+    };
+    match (firing, mouse.pressed(MouseButton::Left)) {
+        (true, false) => mouse.press(MouseButton::Left),
+        (false, true) => mouse.release(MouseButton::Left),
+        _ => {}
+    }
+    if t >= st.1 && t > 0.6 {
+        st.1 = t + 0.25;
+        let shot = items.id("starmetal_shot").map_or(0, |_| eq.ammo_count(Some(&inv), &items, "shot"));
+        let rockets = eq.ammo_count(Some(&inv), &items, "comet");
+        info!("guns: t {t:.2} shot {shot} rockets {rockets}; {} shots in the air; the dummy {:.0} off: {hits} hits, {dealt:.0} damage", spells.iter().count(), at.distance(me));
     }
 }
 

@@ -1086,6 +1086,15 @@ pub(crate) fn describe(items: &Items, book: Option<&Spellbook>, weapons: Option<
                 lines.push(format!("{:.0} damage, knockback {:.0}; {}", w.damage, w.knock, names.join(", then ")));
             }
         }
+        Use::Gun { ammo, rate, auto, .. } => {
+            lines.push(format!("Gun: {} the left button to fire at the cursor", if *auto { "hold" } else { "click" }));
+            let shot = match ammo.as_str() {
+                "shot" => "starmetal shot",
+                "comet" => "comet rockets",
+                other => other,
+            };
+            lines.push(format!("{rate} shots a second; fires {shot} (the ammo slots first, then your pack)"));
+        }
         Use::Throw(t) => lines.push(format!("{t:?}: click to throw it toward the cursor")),
         Use::Torch => lines.push("Click to plant it on a block: light".into()),
         Use::Vessel { holds, hot, acidproof } => {

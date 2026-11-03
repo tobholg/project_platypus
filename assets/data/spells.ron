@@ -67,6 +67,11 @@
         (id: "great_force", name: "Great force", runes: ["force_ii"], delay: 0.1, recharge: 0.2, tier: 2, element: Force,
             about: "Stronger force: wider, harder, tears out rock."),
         // Creatures' own (`beast`: never on a wand).
+        // The star-forged guns' shots (fired with ammo: `guns.rs`).
+        (id: "star_shot", name: "Star shot", runes: ["star_shot", "star_slug"], delay: 0.1, recharge: 0.1, element: Radiant, beast: true,
+            about: "A starmetal slug, fast and straight."),
+        (id: "comet_rocket", name: "Comet rocket", runes: ["seek_cursor", "comet", "comet_strike", "comet_burst"], delay: 0.7, recharge: 0.7, element: Fire, beast: true,
+            about: "A rocket that steers for the cursor till it gets there, and bursts."),
         (id: "strider_missile", name: "Strider missile", runes: ["homing", "missile", "missile_blast"], delay: 0.1, recharge: 0.1, element: Fire, beast: true,
             about: "A smoking missile from a strider's pod: it curves onto you and bursts."),
         (id: "strider_laser", name: "Strider laser", runes: ["laser", "laser_burn"], delay: 0.1, recharge: 0.1, element: Radiant, beast: true,

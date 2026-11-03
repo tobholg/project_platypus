@@ -45,6 +45,7 @@ mod cursor;
 mod hands;
 mod hazards;
 mod breath;
+mod guns;
 mod hearts;
 mod hud;
 mod kick;
@@ -199,7 +200,7 @@ fn main() {
             light::LightPlugin,
             scenario::ScenarioPlugin,
         ))
-        .add_plugins((dev::DevPlugin, magic::MagicPlugin, vfx::VfxPlugin, arena::ArenaPlugin, editor::EditorPlugin, combat::CombatPlugin, archery::ArcheryPlugin, gear::GearPlugin))
+        .add_plugins((dev::DevPlugin, magic::MagicPlugin, vfx::VfxPlugin, arena::ArenaPlugin, editor::EditorPlugin, combat::CombatPlugin, archery::ArcheryPlugin, gear::GearPlugin, guns::GunsPlugin))
         .add_plugins((replay::ReplayPlugin, fight::FightPlugin, bestiary::panel::BestiaryPlugin, bestiary::stage::StagePlugin, bestiary::cli::CliPlugin))
         .add_plugins(shoals::ShoalsPlugin)
         .add_plugins(drift::DriftPlugin)

@@ -102,6 +102,25 @@ pub enum Use {
         #[serde(default)]
         acidproof: bool,
     },
+    /// A gun (`guns.rs`): the left button fires `shot` (a spell in
+    /// spells.ron: what flies, what it does) at the cursor, a round of
+    /// `ammo` each (an item's `ammo`, from the ammo slots, then the pack),
+    /// `rate` shots a second, held down with `auto`, a press each without;
+    /// `spread` degrees either side; `kick` pushes you back each shot
+    /// (weightless, it moves you).
+    Gun {
+        shot: String,
+        ammo: String,
+        rate: f32,
+        #[serde(default)]
+        auto: bool,
+        #[serde(default)]
+        spread: f32,
+        #[serde(default)]
+        kick: f32,
+        #[serde(default)]
+        sound: Option<String>,
+    },
     /// A block of a material (made from the materials table, not written).
     #[serde(skip)]
     Block(MaterialId),
@@ -158,9 +177,10 @@ pub struct ItemDef {
 impl ItemDef {
     /// The ammo it fires (`ItemDef::ammo` of what it takes), if it's a
     /// weapon that fires something.
-    pub fn fires(&self) -> Option<&'static str> {
-        match self.use_ {
+    pub fn fires(&self) -> Option<&str> {
+        match &self.use_ {
             Use::Bow(_) => Some("arrow"),
+            Use::Gun { ammo, .. } => Some(ammo.as_str()),
             _ => None,
         }
     }
@@ -413,7 +433,7 @@ impl Items {
         }
         match &d.use_ {
             Use::Mine { .. } | Use::Vessel { .. } | Use::Hammer { .. } => Category::Tools,
-            Use::Melee(_) | Use::Bow(_) | Use::Throw(Throwable::Bomb) => Category::Weapons,
+            Use::Melee(_) | Use::Bow(_) | Use::Gun { .. } | Use::Throw(Throwable::Bomb) => Category::Weapons,
             Use::Focus { .. } => Category::Magic,
             Use::Potion { .. } => Category::Potions,
             Use::Station(_) | Use::Chest | Use::Door => Category::Furniture,

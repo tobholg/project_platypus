@@ -223,20 +223,27 @@ impl Wands {
 }
 
 /// A cast going off this tick.
-struct Fire {
-    cast: Arc<Cast>,
-    caster: Entity,
-    from: Vec2,
-    dir: Vec2,
+pub(crate) struct Fire {
+    pub(crate) cast: Arc<Cast>,
+    pub(crate) caster: Entity,
+    pub(crate) from: Vec2,
+    pub(crate) dir: Vec2,
     /// How far the aim is (lightning goes there when nothing's near it).
-    reach: f32,
+    pub(crate) reach: f32,
     /// The share of its speed it goes at (a spray's shards: each its own).
-    pace: f32,
+    pub(crate) pace: f32,
 }
 
 /// Casts to go off (set off by a wand, or by a spell landing: next tick).
 #[derive(Resource, Default)]
-struct Firing(Vec<Fire>);
+pub(crate) struct Firing(pub(crate) Vec<Fire>);
+
+/// A rocket steering for the cursor this near it is there (cells): it
+/// goes on straight.
+const SEEK_THERE: f32 = 6.0;
+/// It's past the cursor once it's come this near it and the cursor's
+/// behind it (cells).
+const SEEK_PASS: f32 = 24.0;
 
 /// A bolt or orb in flight.
 #[derive(Component)]
@@ -261,6 +268,10 @@ pub struct Spell {
     slow: f32,
     /// Turned back (off a wall, a repulsor): it can hit its caster at once.
     pub(super) back: bool,
+    /// Still steering for the cursor (`SeekCursor`): not yet there or past;
+    /// and the nearest it's come to it (cells).
+    seeking: bool,
+    closest: f32,
 }
 
 impl Spell {
@@ -703,6 +714,8 @@ fn spawn_spell(commands: &mut Commands, f: &Fire, speed: f32, life: f32, bounces
             held: false,
             slow: 1.0,
             back: false,
+            seeking: true,
+            closest: f32::MAX,
         },
         LightSource { color: color.map(|x| x * glow), flicker: 0.15 },
         Sprite::from_color(core, size),
@@ -928,6 +941,7 @@ fn fly(
     drinkers: Res<Drinkers>,
     pictures: Query<&crate::creatures::body::animation::Animator>,
     mut tints: ResMut<crate::fx::FlashTints>,
+    cursor: Res<crate::camera::CursorWorld>,
 ) {
     let mut booms = Vec::new();
     let mut landed = Vec::new();
@@ -968,6 +982,25 @@ fn fly(
                     // (Turning harder the longer it flies: up and wide off
                     // the launch, then biting in, not circling.)
                     let most = rate.to_radians() * (0.4 + 1.2 * s.age).min(2.5) * dt;
+                    s.vel = Vec2::from_angle(now + d.clamp(-most, most)) * s.vel.length();
+                }
+            }
+            // One that steers for the cursor (a comet rocket): toward where
+            // it is now (behind it too: it comes round), turning so fast at
+            // most, till it gets there or goes past it; then on straight,
+            // never back.
+            if let (Some(rate), Some(aim), true) = (s.cast.seeks_cursor(), cursor.0, s.seeking) {
+                let to = aim - s.pos;
+                let d = to.length();
+                // (There; or it came close and it's behind it now: past.)
+                let past = s.closest < SEEK_PASS && to.dot(s.vel) < 0.0;
+                s.closest = s.closest.min(d);
+                if d < SEEK_THERE || past {
+                    s.seeking = false;
+                } else {
+                    let now = s.vel.to_angle();
+                    let d = (to.to_angle() - now + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI;
+                    let most = rate.to_radians() * dt;
                     s.vel = Vec2::from_angle(now + d.clamp(-most, most)) * s.vel.length();
                 }
             }

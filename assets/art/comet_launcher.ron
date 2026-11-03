@@ -1,0 +1,41 @@
+// The comet launcher (guns.rs), held in the hand, pointing right from the
+// grip: an engraved starmetal tube, silver bands, a constellation of
+// runes along it, a sunstone sight, a sun at its back, a flared mouth.
+(
+    size: (44, 13),
+    feet: (22, 13),
+    outline: (12, 10, 16),
+    palette: {
+        'k': (22, 24, 34),     // starmetal, shade
+        'K': (40, 44, 62),     // starmetal
+        'l': (96, 110, 150),   // starmetal, its edge lit
+        's': (214, 220, 234),  // silver, lit
+        'S': (150, 156, 176),  // silver
+        'r': (140, 232, 255),  // runes, glowing
+        'g': (255, 236, 170),  // sunstone, white-hot
+        'G': (255, 170, 60),   // sunstone
+        'w': (255, 255, 255),  // glint
+        'h': (96, 66, 44),     // grip, lit
+        'H': (58, 38, 24),     // grip
+    },
+    frames: {
+        "launcher": [
+            ".........................GgG................",
+            ".GG......................GwG................",
+            ".GG.....................sssss...........sSSS",
+            "GGGGlllllsSlllllllllllllllllllsSllllllllsSkk",
+            "GgGGKKKKKSSKKKKKKKKrKKKKKKKrKKSSKKKKKKKKsSkk",
+            "GGgGKKKKKSSKKrKKKrKKKrKKKrKKKKSSKKKKKKKKsSkk",
+            "GgGGKKKKKSSKKKKrKKKKKKKrKKKKKKSSKKKKKKKKsSkk",
+            "GGgGKKKKKSSKKKKKKKKKKKKKKKKKKKSSKKKKKKKKsSkk",
+            "GGGGkkkkkSSkkkkkkkkkkkkkkkkkkkSSkkkkkkkksSkk",
+            ".GG............Hh.......................sSSS",
+            ".GG............hH...........................",
+            "..............HH............................",
+            "..............HH............................",
+        ],
+    },
+    clips: { "held": (frames: ["launcher"], fps: 1) },
+    // grip: where the hand holds it; tip: the mouth.
+    anchors: { "tip": { "launcher": (43, 5) }, "grip": { "launcher": (15, 9) } },
+)

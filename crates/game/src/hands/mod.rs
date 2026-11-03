@@ -553,7 +553,7 @@ fn wield(
     }
 }
 
-type User<'a> = (Entity, &'a Kinematics, &'a mut Inventory, Option<&'a crate::creatures::body::animation::HandPos>, Option<&'a filter::PickupFilter>);
+type User<'a> = (Entity, &'a Kinematics, &'a mut Inventory, Option<&'a crate::creatures::body::animation::HandPos>, (Option<&'a filter::PickupFilter>, Option<&'a crate::gear::Equipment>));
 type StationHit<'a> = (Entity, &'a mut crate::craft::Station, &'a Kinematics);
 
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
@@ -573,12 +573,12 @@ fn use_hands(
     (crafting, mut stations): (Res<crate::craft::Crafting>, Query<StationHit, (Without<LocalPlayer>, Without<chests::Chest>)>),
     book: Res<crate::magic::Spellbook>,
     (mut casts, mut swings, mut draws, mut sounds, mut drinks, mut dug, mut outs, mut recoils): (MessageWriter<crate::magic::CastRequest>, MessageWriter<crate::combat::MeleeRequest>, MessageWriter<crate::archery::DrawBow>, MessageWriter<crate::sound::PlaySound>, MessageWriter<crate::potion::Drink>, MessageWriter<crate::gold::Dug>, MessageWriter<lights::LightOut>, MessageWriter<crate::drift::Recoil>),
-    mut toasts: MessageWriter<crate::progress::Toast>,
+    (mut toasts, mut shots): (MessageWriter<crate::progress::Toast>, MessageWriter<crate::guns::Shoot>),
 ) {
     let clicked = std::mem::take(&mut input.clicked);
     hand.cooldown = (hand.cooldown - DT).max(0.0);
     let (Some(items), Some(cursor)) = (items, input.cursor) else { return };
-    let Ok((me, k, mut inv, hand_pos, filter)) = player.single_mut() else { return };
+    let Ok((me, k, mut inv, hand_pos, (filter, eq))) = player.single_mut() else { return };
     // (A block the player won't pick up, dug, crumbles rather than drop.)
     let keeps = |s: &Stack| filter.is_none_or(|f| f.takes(&items, s));
     let from = hand_at(k);
@@ -857,8 +857,14 @@ fn use_hands(
             swings.write(crate::combat::MeleeRequest { attacker: me, at: cursor, fresh: clicked });
         }
         // (Drawn while held, loosed on letting go: `archery::nock`.)
-        Use::Bow(_) if input.primary && items.id("arrow").is_some_and(|a| inv.count(a) > 0) => {
+        Use::Bow(_) if input.primary && eq.map_or_else(|| items.id("arrow").map_or(0, |a| inv.count(a)), |eq| eq.ammo_count(Some(&inv), &items, "arrow")) > 0 => {
             draws.write(crate::archery::DrawBow { archer: me, at: cursor });
+        }
+        // (Fired at the cursor, a round of its ammo a shot: `guns`.)
+        Use::Gun { .. } if input.primary => {
+            commands.entity(me).insert(crate::creatures::body::animation::Aiming { at: cursor, left: AIM_HOLD });
+            let from = hand_pos.and_then(|h| h.at).unwrap_or(from);
+            shots.write(crate::guns::Shoot { shooter: me, item: stack.item, from, at: cursor, fresh: clicked });
         }
         // (Drunk, healed, the sickness after: `potion::drink`.)
         Use::Potion { .. } if clicked => {

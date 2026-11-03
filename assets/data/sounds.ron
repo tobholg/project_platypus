@@ -129,6 +129,11 @@
         // A felled tree: it creaks as it starts to go, and each log cracks
         // off it (`rigid::logs`).
         // Rocket boots: lighting (a pop), and nearly out (a cough).
+        // The star-forged guns (guns.rs): the repeater's crack, the
+        // launcher's whoosh, a dry click out of ammo.
+        "repeater_shot": (make: Impact(body: 140, crack: 0.8, flesh: 300, length: 0.08, muffle: 3200), variants: 4, pitch: 0.1, volume: 0.45, every: 0.05),
+        "comet_launch": (make: Burst(cutoff: 700, length: 0.4, q: 1.0, body: 70, grit: 0.6), variants: 2, pitch: 0.08, volume: 0.6),
+        "gun_dry": (make: Impact(body: 300, crack: 0.9, flesh: 900, length: 0.04, muffle: 5000), variants: 2, pitch: 0.1, volume: 0.35, every: 0.2),
         "rocket_light": (make: Burst(cutoff: 900, length: 0.12, q: 1.2, body: 90, grit: 0.5), variants: 2, pitch: 0.08, volume: 0.5, every: 0.1),
         "rocket_cough": (make: Burst(cutoff: 500, length: 0.09, q: 1.5, body: 60, grit: 0.8), variants: 3, pitch: 0.15, volume: 0.45, every: 0.12),
         "timber": (make: Burst(cutoff: 380, length: 0.45, q: 3.5, body: 55, grit: 0.9), variants: 2, pitch: 0.08, volume: 0.55),

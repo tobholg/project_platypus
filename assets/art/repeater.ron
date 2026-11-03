@@ -1,0 +1,42 @@
+// The starforged repeater (guns.rs), held in the hand, pointing right from
+// the grip: dark starmetal, a silver drum under it, a crystal sight on
+// top, runes glowing along the barrel, a sunstone at the breech.
+(
+    size: (36, 12),
+    feet: (18, 12),
+    outline: (12, 10, 16),
+    palette: {
+        'k': (22, 24, 34),     // starmetal, shade
+        'K': (40, 44, 62),     // starmetal
+        'l': (96, 110, 150),   // starmetal, its edge lit
+        's': (214, 220, 234),  // silver, lit
+        'S': (150, 156, 176),  // silver
+        'r': (140, 232, 255),  // runes, glowing
+        'g': (255, 236, 170),  // sunstone, white-hot
+        'G': (255, 170, 60),   // sunstone
+        'c': (210, 248, 255),  // crystal, lit
+        'C': (110, 200, 240),  // crystal
+        'w': (255, 255, 255),  // glint
+        'h': (96, 66, 44),     // grip, lit
+        'H': (58, 38, 24),     // grip
+    },
+    frames: {
+        "repeater": [
+            ".............CcC....................",
+            ".............cwC....................",
+            "............sssss...................",
+            "..llllllllllllllllllllllllllllllllSs",
+            "kkKKgGKKKKKKKKrKKrKKrKKrKKrKKKKKKKSS",
+            "kkKKGGKKKKKKKKKKKKKKKKKKKKKKKKKKKKSS",
+            "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkSs",
+            "..kHH..sssssss......................",
+            "...Hh..SsSsSsS......................",
+            "..Hh...SSSSSSS......................",
+            "..hH....SSSSS.......................",
+            ".HH.................................",
+        ],
+    },
+    clips: { "held": (frames: ["repeater"], fps: 1) },
+    // grip: where the hand holds it; tip: the muzzle.
+    anchors: { "tip": { "repeater": (35, 4) }, "grip": { "repeater": (3, 8) } },
+)
