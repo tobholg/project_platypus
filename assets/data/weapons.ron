@@ -197,6 +197,7 @@
         // The star-forged guns (guns.rs): held level, pointed at the cursor.
         "repeater": (rest: 0),
         "comet_launcher": (rest: 0),
+        "harpoon_gun": (rest: 0),
         "torch": (rest: 75, burns: true),
         "bomb": (rest: 0, recolor: true),
         "glowstick": (rest: 70, recolor: true),

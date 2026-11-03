@@ -22,7 +22,8 @@
 //!   light and the gas (the `hazards:` lines: what lit it)
 //! - `guns`       (`PLATYPUS_WORLD=arena PLATYPUS_ARENA=flat`) the star-forged guns: the
 //!   repeater held on the nearest dummy (1–3 s, its shot in an ammo slot), then the comet
-//!   launcher, three rockets fired high, the cursor put on it just after (4–6.5 s);
+//!   launcher, three rockets fired high, the cursor put on it just after (4–6.5 s); then the
+//!   skyhook harpoon fired at it (7.5 s);
 //!   logs the ammo, the shots in the air, the dummy's health
 //! - `burn`       sets the base of that tree alight at t = 2 s instead
 //! - `strike`     lightning onto that tree at t = 2 s instead
@@ -918,7 +919,7 @@ fn guns_script(
     mut hand: ResMut<crate::hands::Hand>,
     mut player: Query<(&Kinematics, &mut crate::hands::items::Inventory, &mut crate::gear::Equipment), With<LocalPlayer>>,
     dummies: Query<(&Kinematics, Option<&crate::creatures::custom::dummy::Tally>), (With<crate::creatures::custom::dummy::Dummy>, Without<LocalPlayer>)>,
-    spells: Query<&crate::magic::Spell>,
+    (spells, ropes): (Query<&crate::magic::Spell>, Query<&crate::gear::hook::Rope, With<LocalPlayer>>),
     (mut mouse, mut cursor): (ResMut<ButtonInput<MouseButton>>, ResMut<CursorOverride>),
     mut st: Local<(u8, f32)>,
 ) {
@@ -934,6 +935,7 @@ fn guns_script(
     if st.0 == 0 && t > 0.5 {
         inv.slots[0] = stack("starforged_repeater", 1);
         inv.slots[1] = stack("comet_launcher", 1);
+        inv.slots[2] = stack("skyhook_harpoon", 1);
         inv.add(&items, stack("comet_rocket", 12).expect("comet_rocket"));
         eq.worn[crate::gear::AMMO_FROM] = stack("starmetal_shot", 200);
         hand.bar = 0;
@@ -959,6 +961,15 @@ fn guns_script(
             cursor.0 = Some(if since < 0.12 { at + Vec2::new(0.0, 25.0) } else { at });
             since < 0.1
         }
+        // (Then the harpoon, at it: it bites, and pulls it in.)
+        t if (7.0..7.4).contains(&t) => {
+            hand.slot = 2;
+            false
+        }
+        t if (7.5..7.6).contains(&t) => {
+            cursor.0 = Some(at);
+            true
+        }
         _ => false,
     };
     match (firing, mouse.pressed(MouseButton::Left)) {
@@ -970,7 +981,8 @@ fn guns_script(
         st.1 = t + 0.25;
         let shot = items.id("starmetal_shot").map_or(0, |_| eq.ammo_count(Some(&inv), &items, "shot"));
         let rockets = eq.ammo_count(Some(&inv), &items, "comet");
-        info!("guns: t {t:.2} shot {shot} rockets {rockets}; {} shots in the air; the dummy {:.0} off: {hits} hits, {dealt:.0} damage", spells.iter().count(), at.distance(me));
+        let rope = ropes.single().map_or("-", |r| r.state().0);
+        info!("guns: t {t:.2} shot {shot} rockets {rockets}; {} shots in the air; rope {rope}; the dummy {:.0} off: {hits} hits, {dealt:.0} damage", spells.iter().count(), at.distance(me));
     }
 }
 

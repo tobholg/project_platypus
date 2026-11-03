@@ -41,7 +41,17 @@ pub(crate) struct HeldKeys {
     hook_tapped: bool,
 }
 
-pub(crate) fn sample_keys(keys: Res<ButtonInput<KeyCode>>, cursor: Res<CursorWorld>, taken: Res<crate::dev::KeyboardTaken>, open: Res<crate::hands::InventoryOpen>, dying: Res<crate::death::Dying>, mut held: ResMut<HeldKeys>) {
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn sample_keys(
+    keys: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    harpoon: Res<crate::gear::hook::HarpoonInHand>,
+    cursor: Res<CursorWorld>,
+    taken: Res<crate::dev::KeyboardTaken>,
+    open: Res<crate::hands::InventoryOpen>,
+    dying: Res<crate::death::Dying>,
+    mut held: ResMut<HeldKeys>,
+) {
     // (Dead, on the death screen: nothing moves it.)
     if taken.0 || dying.0.is_some() {
         // (The art editor has the keyboard: stand still, keep looking.)
@@ -59,12 +69,14 @@ pub(crate) fn sample_keys(keys: Res<ButtonInput<KeyCode>>, cursor: Res<CursorWor
     held.intent.crouch = modifiers && keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]);
     held.intent.jump = keys.pressed(KeyCode::Space);
     held.intent.dash = modifiers && keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
-    held.intent.hook = keys.pressed(KeyCode::KeyE);
+    // (A harpoon in hand: the left button fires it too.)
+    let harpooning = harpoon.0 && !open.0;
+    held.intent.hook = keys.pressed(KeyCode::KeyE) || (harpooning && mouse.pressed(MouseButton::Left));
     held.intent.down = keys.any_pressed([KeyCode::KeyS, KeyCode::ArrowDown]);
     held.intent.move_y = keys.any_pressed([KeyCode::KeyW, KeyCode::ArrowUp]) as i32 as f32 - held.intent.down as i32 as f32;
     held.jump_tapped |= keys.just_pressed(KeyCode::Space);
     held.dash_tapped |= modifiers && keys.any_just_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
-    held.hook_tapped |= keys.just_pressed(KeyCode::KeyE);
+    held.hook_tapped |= keys.just_pressed(KeyCode::KeyE) || (harpooning && mouse.just_pressed(MouseButton::Left));
     if let Some(c) = cursor.0 {
         held.intent.aim = c;
     }

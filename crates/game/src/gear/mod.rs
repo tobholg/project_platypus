@@ -323,6 +323,7 @@ impl Plugin for GearPlugin {
             .init_resource::<hook::RopeCanvas>()
             .add_systems(Update, (shield::raise, shield::ward, shield::draw).chain())
             .add_systems(PostUpdate, boots::lean.after(crate::zerog::turn).before(bevy::transform::TransformSystems::Propagate))
+.init_resource::<hook::HarpoonInHand>()
             .add_systems(FixedUpdate, boots::refuel.before(crate::creatures::move_creatures).in_set(crate::world::TickSet::Bodies))
             .add_systems(FixedUpdate, (boots::exhaust.in_set(crate::world::TickSet::Bodies), hook::rope.in_set(crate::world::TickSet::Bodies).before(crate::creatures::move_creatures)))
             .add_systems(Update, hook::let_go.after(crate::death::DeathSet))

@@ -530,12 +530,18 @@ fn wield(
     hand: Res<Hand>,
     dev: Res<DevTools>,
     mut player: Query<(&Inventory, &mut crate::combat::Wielding, &mut crate::gear::Equipment), With<LocalPlayer>>,
+    mut harpoon_in_hand: ResMut<crate::gear::hook::HarpoonInHand>,
 ) {
     let (Some(items), Some(weapons), Ok((inv, mut w, mut eq))) = (items, weapons, player.single_mut()) else { return };
     let held = inv.slots.get(hand.active()).copied().flatten().filter(|_| !dev.0);
     let in_hand = held.filter(|s| items.def(s.item).gear.is_some());
     if eq.held != in_hand {
         eq.held = in_hand;
+    }
+    // (A harpoon in hand: the left button fires it, `player::sample_keys`.)
+    let harpoon = in_hand.is_some_and(|s| items.def(s.item).gear.as_ref().is_some_and(|g| g.hook.is_some()));
+    if harpoon_in_hand.0 != harpoon {
+        harpoon_in_hand.0 = harpoon;
     }
     // A weapon by its weapon id; anything else by its own, if it's held
     // (tools, wands, torches: `held` in weapons.ron).

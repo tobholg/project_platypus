@@ -1,0 +1,40 @@
+// The skyhook harpoon (gear/hook.rs: a held hook), in the hand, pointing
+// right from the grip: a starmetal rail, a rune-headed harpoon on it, a
+// silver line on a reel under it.
+(
+    size: (36, 12),
+    feet: (18, 12),
+    outline: (12, 10, 16),
+    palette: {
+        'k': (22, 24, 34),     // starmetal, shade
+        'K': (40, 44, 62),     // starmetal
+        'l': (96, 110, 150),   // starmetal, its edge lit
+        's': (214, 220, 234),  // silver, lit
+        'S': (150, 156, 176),  // silver
+        'r': (140, 232, 255),  // runes, the harpoon's head
+        'c': (230, 252, 255),  // its point, bright
+        'g': (255, 236, 170),  // sunstone, white-hot
+        'G': (255, 170, 60),   // sunstone
+        'h': (96, 66, 44),     // grip, lit
+        'H': (58, 38, 24),     // grip
+    },
+    frames: {
+        "harpoon": [
+            "....................................",
+            "..............................Srr...",
+            "........sSSSSSSSSSSSSSSSSSSSSSSrrcr.",
+            ".klllllllllllllllllllllllllll.Srr...",
+            "kkKKKGgKKKKKrKKKrKKKrKKKKKKKK.......",
+            "kkkkkkkkkkkkkkkkkkkkkkkkkkkkk.......",
+            "kk..HH...sssssss....................",
+            "....Hh...SsksksS....................",
+            "...Hh....SSkkkSS....................",
+            "...hH....SSSSSSS....................",
+            "..HH......SSSSS.....................",
+            "....................................",
+        ],
+    },
+    clips: { "held": (frames: ["harpoon"], fps: 1) },
+    // grip: where the hand holds it; tip: the harpoon's point.
+    anchors: { "tip": { "harpoon": (34, 2) }, "grip": { "harpoon": (4, 7) } },
+)

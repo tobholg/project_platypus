@@ -281,6 +281,11 @@ pub fn toss_path(rope: &Rope, eq: &Equipment, items: &Items, k: &Kinematics, to:
     Some((out, false))
 }
 
+/// The harpoon in the player's hand (a held item with a hook: the skyhook
+/// harpoon): the left button fires it as E does (`player::sample_keys`).
+#[derive(Resource, Default)]
+pub struct HarpoonInHand(pub bool);
+
 /// The best hook it wears (the longest rope).
 fn worn_hook<'a>(eq: &'a Equipment, items: &'a Items) -> Option<&'a HookDef> {
     eq.pieces(items).filter_map(|s| items.def(s.item).gear.as_ref()?.hook.as_ref()).max_by(|a, b| a.length.total_cmp(&b.length))

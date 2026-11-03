@@ -797,6 +797,7 @@
         (makes: "comet_launcher", needs: [("starmetal_bar", 18), ("sunstone", 5)], at: "anvil"),
         (makes: "starmetal_shot", count: 60, needs: [("starmetal_bar", 1)], at: "anvil"),
         (makes: "comet_rocket", count: 6, needs: [("starmetal_bar", 1), ("sunstone", 1)], at: "anvil"),
+        (makes: "skyhook_harpoon", needs: [("starmetal_bar", 12), ("silk_line", 1), ("sunstone", 1)], at: "anvil"),
         (makes: "void_helm", needs: [("starmetal_bar", 16), ("sunstone", 6), ("block:glass", 10)], at: "anvil"),
         (makes: "void_suit", needs: [("starmetal_bar", 14), ("sunstone", 4)], at: "anvil"),
         (makes: "thruster_pack", needs: [("starmetal_bar", 10), ("sunstone", 6)], at: "anvil"),
