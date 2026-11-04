@@ -8,6 +8,17 @@
 //!   swarm that cuts through you, loops back for another pass, and drifts
 //!   home to merge into the mass again (it shrinks as it throws, and swells
 //!   as they come back). Close in, its tendrils wind back and lash.
+//! - **It spears you.** Now and then, from well off, it gathers itself
+//!   toward you (its mass bunching your way, its eyes opening on that side,
+//!   its whisper gone quiet, a tendril drawn back, quivering) and shoots
+//!   that tendril out at you, fed by motes streaming out of its mass. Missed,
+//!   it hangs there twitching and reels slowly back. Struck, it holds on and
+//!   hauls you in while the mass opens a maw your way, its heart bare in it,
+//!   eyes round it; if it gets you there, everything lashes at once and it
+//!   closes on you. Thrusting away holds you off (it hauls far less hard)
+//!   and pulls the line out till it snaps, your plume burning it; a harpoon
+//!   in rock holds you too. Held, your shots run along the line, into its
+//!   open maw: your one clear shot at its heart.
 //! - **It's made of what it's lost.** Shot, the motes a bullet meets are
 //!   gone and the bullet stops in it; a blast scatters it, and it takes a
 //!   few seconds to pull itself together. A tendril shot through is cut
@@ -16,9 +27,9 @@
 //! - **It eats rubble.** Loose rock and dust it drifts through it takes
 //!   in, to grow back faster, and past its size (to half again as big):
 //!   where you've been mining, it's worse.
-//! - **Light hurts it.** It shies from bright light (a sunstone's, a
-//!   comet's, your rocket plume) and what's in the bright of it burns
-//!   away; its heart flees from it.
+//! - **Light hurts it.** It shies from bright light (a lamp, a flare,
+//!   your rocket plume) and what's in the bright of it burns away; its
+//!   heart flees from it. (Not a shot's glow: shots strike it.)
 //! - **Its heart** is the only thing that kills it, in a hollow in the
 //!   middle of it: a shot only gets there through a hole in the mass.
 //!
@@ -105,6 +116,30 @@ const WIND: f32 = 0.38;
 const STRIKE: f32 = 0.42;
 const LASH_REST: f32 = 1.9;
 const LASH_APART: f32 = 0.8;
+/// The spear: one this often (s, from, to), at you from this far (from,
+/// to; cells); its tell (s); out this fast, this far at most (cells/s,
+/// cells, from its root); fed so many motes more from its mass; what it
+/// does striking, hauling you (cells/s², at most cells/s), for at most this
+/// long; missed, it hangs this long, then reels in this fast; the feast
+/// (s) and its bite. (Harm before the difficulty's share.)
+const SPEAR_EVERY: (f32, f32) = (8.0, 12.0);
+const SPEAR_FROM: (f32, f32) = (55.0, 190.0);
+const TELL: f32 = 0.6;
+const SPEAR_SPEED: f32 = 620.0;
+const SPEAR_REACH: f32 = 210.0;
+const SPEAR_FEED: usize = 110;
+const SPEAR_HIT: f32 = 4.0;
+const HAUL: f32 = 520.0;
+const HAUL_TOP: f32 = 100.0;
+/// Thrusting away, it hauls only this share as hard; stretched this far
+/// past its reach, it snaps.
+const HAUL_THRUSTING: f32 = 0.2;
+const SNAP: f32 = 30.0;
+const HOLD_MOST: f32 = 3.0;
+const HANG: f32 = 0.45;
+const REEL: f32 = 150.0;
+const FEAST: f32 = 1.5;
+const FEAST_BITE: f32 = 4.0;
 /// Shot: a bullet takes the motes this near where it stops (cells, and so
 /// much more for each point of its damage), at most so many for each; a
 /// blast takes all within this share of its radius and scatters those out
@@ -188,6 +223,42 @@ struct Tendril {
     lash: Lash,
     rest: f32,
     struck: bool,
+    /// Its tip's speed last tick (its motes keep up with it).
+    tip_vel: Vec2,
+}
+
+/// The spear (a tendril, `i`): gathering itself; out (that way, so
+/// long); holding you (so many motes in it when it struck); missed or let
+/// go, hanging and reeling back; you in its maw.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Spear {
+    Idle,
+    Tell { t: f32, i: usize },
+    Fly { i: usize, dir: Vec2, len: f32 },
+    Held { t: f32, i: usize, motes: usize },
+    Miss { t: f32, i: usize, dir: Vec2, len: f32 },
+    Feast { t: f32 },
+}
+
+impl Spear {
+    /// The tendril it's using, steered by it (not curling, not lashing).
+    fn tendril(self) -> Option<usize> {
+        match self {
+            Spear::Tell { i, .. } | Spear::Fly { i, .. } | Spear::Held { i, .. } | Spear::Miss { i, .. } => Some(i),
+            _ => None,
+        }
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Spear::Idle => "idle",
+            Spear::Tell { .. } => "tell",
+            Spear::Fly { .. } => "fly",
+            Spear::Held { .. } => "held",
+            Spear::Miss { .. } => "miss",
+            Spear::Feast { .. } => "feast",
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -243,6 +314,13 @@ pub struct Murk {
     age: f32,
     /// Till another tendril may lash (one at a time, near enough).
     lashed: f32,
+    /// The spear, and till the next; how much its mass leans your way
+    /// (its tell), how open its maw is, and which way.
+    spear: Spear,
+    spear_next: f32,
+    lean: f32,
+    maw: f32,
+    maw_dir: Vec2,
 }
 
 /// What a spell did meeting a murk: where it stopped, which way it was
@@ -284,6 +362,18 @@ impl Murks {
         self.list.iter().map(|m| (m.core, m.hp, m.motes.iter().filter(|o| o.role != Role::Loose).count(), m.clumps.len())).collect()
     }
 
+    /// Each one's spear (idle, tell, fly, held, miss, feast) and the line
+    /// from its root to its tip when it's out (for the scenarios).
+    pub fn spears(&self) -> Vec<(&'static str, Option<(Vec2, Vec2)>)> {
+        self.list
+            .iter()
+            .map(|m| {
+                let line = m.spear.tendril().filter(|_| !matches!(m.spear, Spear::Tell { .. })).map(|i| (m.tendrils[i].pts[0], m.tendrils[i].pts[SEGS]));
+                (m.spear.name(), line)
+            })
+            .collect()
+    }
+
     /// One at `at`, now.
     pub fn summon(&mut self, commands: &mut Commands, at: Vec2, seed: u64) {
         let light = commands.spawn((Name::new("Murk heart"), MurkLight, LightSource { color: HEART_LIGHT, flicker: 0.0 }, Transform::from_translation(at.extend(0.0)))).id();
@@ -307,7 +397,7 @@ impl Murk {
         let tendrils = (0..TENDRILS)
             .map(|i| {
                 let angle = i as f32 / TENDRILS as f32 * TAU + unit(&[seed, i as u64, 0x7E]) * 0.8;
-                Tendril { pts: [at; SEGS + 1], angle, lash: Lash::Idle, rest: unit(&[seed, i as u64, 0x7F]) * LASH_REST, struck: false }
+                Tendril { pts: [at; SEGS + 1], angle, lash: Lash::Idle, rest: unit(&[seed, i as u64, 0x7F]) * LASH_REST, struck: false, tip_vel: Vec2::ZERO }
             })
             .collect();
         let mut m = Murk {
@@ -333,6 +423,11 @@ impl Murk {
             whisper: 0.0,
             age: 0.0,
             lashed: 0.0,
+            spear: Spear::Idle,
+            spear_next: SPEAR_EVERY.0 * 0.4,
+            lean: 0.0,
+            maw: 0.0,
+            maw_dir: Vec2::X,
         };
         let r = body_radius(MOTES - TENDRILS * TENDRIL_MOTES);
         for i in 0..MOTES {
@@ -566,6 +661,8 @@ fn live(
         m.hunting = dist < AGGRO;
         let want = if m.scared > 0.0 {
             (m.core - m.scared_from).normalize_or(Vec2::X) * HUNT_SPEED * 1.4
+        } else if m.spear != Spear::Idle {
+            Vec2::ZERO
         } else if let (true, Some((p, ..))) = (m.hunting, you) {
             let off = (m.core - p).normalize_or(Vec2::X);
             let around = if m.seed % 2 == 0 { 0.45 } else { -0.45 };
@@ -591,6 +688,201 @@ fn live(
         if let Ok((mut tf, _)) = hearts.get_mut(m.light) {
             tf.translation = m.core.extend(0.0);
         }
+        // The spear: gathering, out, holding, reeling back; what it does to
+        // you. (Its tendril's tip is set here: `steer`.)
+        m.spear_next -= dt;
+        let r_root = r_body * 0.55;
+        let root_of = |core: Vec2, td: &Tendril| core + Vec2::from_angle(td.angle) * r_root;
+        let mut steer: Option<(usize, Vec2, f32, bool)> = None;
+        if let (Spear::Idle, Some((p, ..))) = (m.spear, you)
+            && m.hunting
+            && m.spear_next <= 0.0
+            && m.scared <= 0.0
+            && (SPEAR_FROM.0..SPEAR_FROM.1).contains(&dist)
+            && in_body as f32 > full_body as f32 * 0.6
+        {
+            // (The tendril rooted nearest your way.)
+            let way = (p - m.core).to_angle();
+            let off = |a: f32| ((a - way + std::f32::consts::PI).rem_euclid(TAU) - std::f32::consts::PI).abs();
+            let i = (0..TENDRILS).min_by(|&a, &b| off(m.tendrils[a].angle).total_cmp(&off(m.tendrils[b].angle))).unwrap_or(0);
+            m.tendrils[i].lash = Lash::Idle;
+            // (Fed out of its mass, from round its root.)
+            let root = root_of(m.core, &m.tendrils[i]);
+            let mut near: Vec<(usize, f32)> = m.motes.iter().enumerate().filter(|(_, o)| o.role == Role::Body).map(|(k, o)| (k, o.pos.distance_squared(root))).collect();
+            near.sort_by(|a, b| a.1.total_cmp(&b.1));
+            let fed = SPEAR_FEED.min(near.len());
+            for (n, &(k, _)) in near.iter().take(fed).enumerate() {
+                let o = &mut m.motes[k];
+                o.role = Role::Tendril(i as u8);
+                o.a = unit(&[m.seed, tick, n as u64, 0x5E1]);
+                o.b = unit(&[m.seed, tick, n as u64, 0x5E2]) * 2.0 - 1.0;
+            }
+            in_tendril[i] += fed;
+            in_body -= fed;
+            // (Its eyes open on your side.)
+            for n in 0..5u64 {
+                let a = way + (unit(&[m.seed, tick, n, 0x5E3]) - 0.5) * 1.6;
+                let r = HOLLOW + 3.0 + unit(&[m.seed, tick, n, 0x5E4]) * (r_body * 0.6 - HOLLOW).max(1.0);
+                m.eyes.push(Eye { off: Vec2::from_angle(a) * r, age: 0.0, life: TELL + 1.2 + n as f32 * 0.1 });
+            }
+            m.spear = Spear::Tell { t: 0.0, i };
+            sounds.write(crate::sound::PlaySound::at("murk_hiss", m.core).volume(0.9).pitch(0.6));
+            debug!("murk: spear: tell (tendril {i}), you {dist:.0} off");
+        }
+        let was_idle = m.spear == Spear::Idle;
+        match m.spear {
+            Spear::Idle => m.lean = (m.lean - dt * 3.0).max(0.0),
+            Spear::Tell { t, i } => {
+                m.lean = (t / TELL).min(1.0);
+                if let Some((p, pv, ..)) = you {
+                    // (Its root turned your way, the tendril drawn back,
+                    // quivering.)
+                    let core = m.core;
+                    let td = &mut m.tendrils[i];
+                    let way = (p - core).to_angle();
+                    let d = (way - td.angle + std::f32::consts::PI).rem_euclid(TAU) - std::f32::consts::PI;
+                    td.angle += d.clamp(-5.0 * dt, 5.0 * dt);
+                    let root = root_of(core, td);
+                    let to = (p - root).normalize_or(Vec2::X);
+                    let tip = root - to * 7.0 + to.perp() * (t * 45.0).sin() * 3.0;
+                    steer = Some((i, tip, REACH * 0.4, false));
+                    if t + dt >= TELL {
+                        let dir = (p + pv * 0.12 - root).normalize_or(to);
+                        let len = td.pts[SEGS].distance(root).min(REACH * 0.4);
+                        m.spear = Spear::Fly { i, dir, len };
+                        sounds.write(crate::sound::PlaySound::at("murk_spear", root));
+                        debug!("murk: spear: out");
+                    } else {
+                        m.spear = Spear::Tell { t: t + dt, i };
+                    }
+                } else {
+                    m.spear = Spear::Miss { t: HANG, i, dir: Vec2::X, len: REACH * 0.4 };
+                }
+            }
+            Spear::Fly { i, dir, len } => {
+                m.lean = (m.lean - dt * 3.0).max(0.0);
+                let root = root_of(m.core, &m.tendrils[i]);
+                let was = root + dir * len;
+                let len = len + SPEAR_SPEED * dt;
+                let tip = root + dir * len;
+                steer = Some((i, tip, len, true));
+                // (Through you, this tick?)
+                let struck = me.as_ref().is_some_and(|(k, _)| {
+                    let (p, half) = (k.body.pos, k.body.half);
+                    let ab = tip - was;
+                    let f = ((p - was).dot(ab) / ab.length_squared().max(1e-6)).clamp(0.0, 1.0);
+                    ((was + ab * f - p).abs() - half).max_element() < 2.5
+                });
+                if struck {
+                    // (Hurt, not knocked: you can thrust at once.)
+                    if let Some((_, h)) = me.as_mut() {
+                        h.harm_by(SPEAR_HIT, Harm::Void, || crate::death::Cause::new("The murk", "speared by the murk"));
+                    }
+                    sounds.write(crate::sound::PlaySound::at("murk_tear", tip));
+                    sounds.write(crate::sound::PlaySound::at("slam", tip).volume(0.5));
+                    m.spear = Spear::Held { t: 0.0, i, motes: in_tendril[i] };
+                    debug!("murk: spear: struck, {len:.0} out");
+                } else if len > SPEAR_REACH || solid(&sim, tip) {
+                    m.spear = Spear::Miss { t: 0.0, i, dir, len };
+                    debug!("murk: spear: missed, {len:.0} out");
+                } else {
+                    m.spear = Spear::Fly { i, dir, len };
+                }
+            }
+            Spear::Held { t, i, motes } => {
+                let root = root_of(m.core, &m.tendrils[i]);
+                let tip = m.tendrils[i].pts[SEGS];
+                let loose = Spear::Miss { t: HANG, i, dir: (tip - root).normalize_or(Vec2::X), len: tip.distance(root) };
+                match me.as_mut() {
+                    // (Cut through, burnt: let go.)
+                    Some(_) if in_tendril[i] * 10 < motes * 6 => {
+                        m.spear = loose;
+                        sounds.write(crate::sound::PlaySound::at("murk_death", root).volume(0.4).pitch(1.4));
+                        debug!("murk: spear: cut loose, {} of {motes} left", in_tendril[i]);
+                    }
+                    Some((k, _)) if k.body.pos.distance(m.core) < r_body * 0.8 => {
+                        m.spear = Spear::Feast { t: 0.0 };
+                        for td in &mut m.tendrils {
+                            td.lash = Lash::Wind(WIND * 0.4);
+                            td.struck = false;
+                            td.rest = 0.0;
+                        }
+                        debug!("murk: spear: the feast");
+                    }
+                    Some((k, _)) if k.body.pos.distance(root) > SPEAR_REACH + SNAP => {
+                        m.spear = loose;
+                        sounds.write(crate::sound::PlaySound::at("murk_death", root).volume(0.4).pitch(1.4));
+                        debug!("murk: spear: snapped, pulled free");
+                    }
+                    Some((k, _)) if t < HOLD_MOST => {
+                        // (Hauled in, no faster than so fast toward it;
+                        // thrusting away, hardly: you pull it out till it
+                        // snaps. A rope holds you too.)
+                        let p = k.body.pos;
+                        let to = (root - p).normalize_or(Vec2::X);
+                        let along = k.body.vel.dot(to);
+                        let fighting = k.loco.rocketing() && k.loco.thrust().dot(-to) > 0.5;
+                        let haul = if fighting { HAUL * HAUL_THRUSTING } else { HAUL };
+                        if along < HAUL_TOP {
+                            k.body.vel += to * (haul * dt).min(HAUL_TOP - along);
+                        }
+                        steer = Some((i, p, p.distance(root), true));
+                        m.maw = (m.maw + dt * 2.5).min(1.0);
+                        m.maw_dir = (p - m.core).normalize_or(m.maw_dir);
+                        m.spear = Spear::Held { t: t + dt, i, motes };
+                    }
+                    _ => {
+                        m.spear = loose;
+                        debug!("murk: spear: let go");
+                    }
+                }
+            }
+            Spear::Miss { t, i, dir, len } => {
+                let root = root_of(m.core, &m.tendrils[i]);
+                let rest = REACH * (in_tendril[i].min(TENDRIL_MOTES) as f32 / TENDRIL_MOTES as f32).max(0.06);
+                let len = if t < HANG { len } else { (len - REEL * dt).max(rest) };
+                let twitch = if t < HANG { (t * 50.0).sin() * 3.0 * (1.0 - t / HANG) } else { 0.0 };
+                steer = Some((i, root + dir * len + dir.perp() * twitch, len, true));
+                m.spear = if t >= HANG && len <= rest + 0.5 { Spear::Idle } else { Spear::Miss { t: t + dt, i, dir, len } };
+            }
+            Spear::Feast { t } => {
+                // (Held in it while it closes on you.)
+                if let Some((k, h)) = me.as_mut() {
+                    if t == 0.0 {
+                        h.harm_by(FEAST_BITE, Harm::Void, || crate::death::Cause::new("The murk", "devoured by the murk"));
+                        sounds.write(crate::sound::PlaySound::at("murk_death", m.core).volume(0.8).pitch(0.7));
+                    }
+                    let to = m.core - k.body.pos;
+                    k.body.vel = k.body.vel * (1.0 - 6.0 * dt) + to * 4.0 * dt;
+                }
+                m.spear = if t + dt > FEAST { Spear::Idle } else { Spear::Feast { t: t + dt } };
+            }
+        }
+        if m.spear == Spear::Idle {
+            if !was_idle {
+                m.spear_next = SPEAR_EVERY.0 + (SPEAR_EVERY.1 - SPEAR_EVERY.0) * unit(&[m.seed, tick, 0x5E7]);
+            }
+            m.maw = (m.maw - dt * 1.5).max(0.0);
+            // (What it fed out goes back into its mass.)
+            for (i, count) in in_tendril.iter_mut().enumerate() {
+                let mut extra = count.saturating_sub(TENDRIL_MOTES);
+                *count -= extra;
+                in_body += extra;
+                for (n, o) in m.motes.iter_mut().enumerate() {
+                    if extra == 0 {
+                        break;
+                    }
+                    if o.role == Role::Tendril(i as u8) {
+                        o.role = Role::Body;
+                        o.a = unit(&[m.seed, tick, n as u64, 0x5E5]) * TAU;
+                        o.b = unit(&[m.seed, tick, n as u64, 0x5E6]).sqrt();
+                        extra -= 1;
+                    }
+                }
+            }
+        } else if !matches!(m.spear, Spear::Held { .. }) {
+            m.maw = (m.maw - dt * 1.2).max(0.0);
+        }
         // Its tendrils: each from a root in its mass, its tip where it
         // wants (curling about; winding back, then lashing at you), the
         // links after it (FABRIK: back from the tip, then out from the
@@ -605,8 +897,20 @@ fn live(
             let sway = Vec2::from_angle(td.angle + 0.7 * (t * 0.55 + i as f32 * 1.7).sin());
             let mut target = root + sway * len * 0.95 + sway.perp() * (t * 1.3 + i as f32).sin() * len * 0.3;
             let mut speed = 60.0;
+            let (mut len, mut seg) = (len, seg);
+            let mut direct = false;
+            let spearing = steer.is_some_and(|s| s.0 == i);
+            if let Some((_, tip, l, d)) = steer.filter(|_| spearing) {
+                target = tip;
+                len = l.max(1.0);
+                seg = len / SEGS as f32;
+                direct = d;
+                speed = 260.0;
+                td.lash = Lash::Idle;
+            }
             match (td.lash, you) {
-                (Lash::Idle, Some((p, ..))) if td.rest <= 0.0 && m.lashed <= 0.0 && share > 0.5 && p.distance(root) < len * 1.05 + 6.0 => {
+                _ if spearing => {}
+                (Lash::Idle, Some((p, ..))) if td.rest <= 0.0 && m.lashed <= 0.0 && !matches!(m.spear, Spear::Held { .. }) && share > 0.5 && p.distance(root) < len * 1.05 + 6.0 => {
                     m.lashed = LASH_APART;
                     td.lash = Lash::Wind(0.0);
                     td.struck = false;
@@ -633,8 +937,9 @@ fn live(
                 (_, None) => td.lash = Lash::Idle,
                 _ => {}
             }
-            let tip = td.pts[SEGS];
-            let tip = tip + (target - tip).clamp_length_max(speed * dt);
+            let was = td.pts[SEGS];
+            let tip = if direct { target } else { was + (target - was).clamp_length_max(speed * dt) };
+            td.tip_vel = (tip - was) / dt;
             td.pts[SEGS] = tip;
             for j in (0..SEGS).rev() {
                 let d = (td.pts[j] - td.pts[j + 1]).normalize_or(-sway);
@@ -651,8 +956,11 @@ fn live(
                 && ((td.pts[SEGS] - k.body.pos).abs() - k.body.half).max_element() < 3.0
             {
                 td.struck = true;
-                let push = (td.pts[SEGS] - td.pts[SEGS - 2]).normalize_or(Vec2::X) * LASH_KNOCK;
-                strike(k, h, LASH_HIT, push, "lashed by the murk");
+                // (In its feast: held, not flung off; half as hard, all
+                // at once.)
+                let feast = matches!(m.spear, Spear::Feast { .. });
+                let push = if feast { Vec2::ZERO } else { (td.pts[SEGS] - td.pts[SEGS - 2]).normalize_or(Vec2::X) * LASH_KNOCK };
+                strike(k, h, if feast { LASH_HIT * 0.5 } else { LASH_HIT }, push, "lashed by the murk");
                 sounds.write(crate::sound::PlaySound::at("slam", td.pts[SEGS]).volume(0.4));
             }
         }
@@ -783,7 +1091,12 @@ fn live(
         let spin = if m.seed % 3 == 0 { 0.12 } else { -0.09 };
         let seedf = (m.seed % 1000) as f32;
         let clumps: HashMap<u16, (Vec2, Vec2, f32)> = m.clumps.iter().map(|c| (c.id, (c.pos, c.vel, (in_clump.get(&c.id).copied().unwrap_or(1) as f32).sqrt() * 0.85))).collect();
-        let tendrils: Vec<([Vec2; SEGS + 1], f32)> = m.tendrils.iter().enumerate().map(|(i, td)| (td.pts, (in_tendril[i] as f32 / TENDRIL_MOTES as f32).clamp(0.0, 1.0))).collect();
+        let spearing = m.spear.tendril();
+        let tendrils: Vec<([Vec2; SEGS + 1], f32, Vec2, bool)> = m.tendrils.iter().enumerate().map(|(i, td)| (td.pts, (in_tendril[i] as f32 / TENDRIL_MOTES as f32).clamp(0.0, 1.0), td.tip_vel, spearing == Some(i))).collect();
+        // (Its tell: its mass bunched your way. Its maw: what's in front of
+        // its heart parted to either side.)
+        let lean = you.map_or(Vec2::ZERO, |y| (y.0 - m.core).normalize_or(Vec2::X) * r_body * 0.3 * m.lean);
+        let (maw_at, gap) = (m.maw_dir.to_angle(), 0.8 * m.maw);
         let room = (alive as f32 + m.owed) < MOTES as f32 * EAT_MOST;
         let mut ate = 0;
         for o in &mut m.motes {
@@ -794,16 +1107,24 @@ fn live(
             } else {
                 match o.role {
                     Role::Body => {
-                        let a = o.a + t * spin;
-                        let home = m.core + Vec2::from_angle(a) * (HOLLOW + o.b * (edge(r_body, a, t, seedf) - HOLLOW).max(1.0));
+                        let mut a = o.a + t * spin;
+                        if gap > 0.0 {
+                            let d = (a - maw_at + std::f32::consts::PI).rem_euclid(TAU) - std::f32::consts::PI;
+                            if d.abs() < gap {
+                                a = maw_at + d.signum() * (gap + (gap - d.abs()) * 0.3);
+                            }
+                        }
+                        let home = m.core + lean * o.b + Vec2::from_angle(a) * (HOLLOW + o.b * (edge(r_body, a, t, seedf) - HOLLOW).max(1.0));
                         (home - o.pos) * 7.0 - (o.vel - m.vel) * 2.6 + swirl * 26.0
                     }
                     Role::Tendril(i) => {
-                        let (pts, share) = &tendrils[i as usize];
+                        let (pts, share, tip_vel, stiff) = &tendrils[i as usize];
                         let (c, d) = along(pts, o.a);
                         let width = (3.2 * (1.0 - o.a) + 0.7) * share.max(0.5);
                         let home = c + d.perp() * o.b * width;
-                        (home - o.pos) * 55.0 - o.vel * 9.0 + swirl * 10.0
+                        // (Keeping up with its tip: a spear's hard.)
+                        let (k, d) = if *stiff { (170.0, 24.0) } else { (55.0, 9.0) };
+                        (home - o.pos) * k - (o.vel - *tip_vel * o.a) * d + swirl * 10.0
                     }
                     Role::Clump(id) => match clumps.get(&id) {
                         Some(&(c, v, r)) => {
@@ -882,6 +1203,13 @@ fn live(
         }
         m.motes.retain(|o| o.role != Role::Loose || o.life > 0.0);
         // Its eyes: opening here and there in it, more when it hunts.
+        // (Round its maw.)
+        if m.maw > 0.5 && m.eyes.len() < 14 && tick.is_multiple_of(4) {
+            let side = if tick.is_multiple_of(8) { 1.0 } else { -1.0 };
+            let a = m.maw_dir.to_angle() + side * (0.8 * m.maw + 0.15 + 0.25 * unit(&[m.seed, tick, 0xE5]));
+            let r = r_body * (0.35 + 0.4 * unit(&[m.seed, tick, 0xE6]));
+            m.eyes.push(Eye { off: Vec2::from_angle(a) * r, age: 0.0, life: 0.8 + unit(&[m.seed, tick, 0xE7]) });
+        }
         let most_eyes = if m.hunting { 9 } else { 3 };
         if m.eyes.len() < most_eyes && unit(&[m.seed, tick, 0xE1]) < dt * if m.hunting { 4.0 } else { 1.6 } {
             let a = unit(&[m.seed, tick, 0xE2]) * TAU;
@@ -895,6 +1223,10 @@ fn live(
         m.eyes.retain(|e| e.age < e.life);
         // A whisper, now and then, near you; louder with clumps out.
         m.whisper -= dt;
+        // (Gathering itself, it's quiet.)
+        if matches!(m.spear, Spear::Tell { .. }) {
+            m.whisper = m.whisper.max(1.0);
+        }
         if m.whisper <= 0.0 && dist < 380.0 {
             m.whisper = 2.2 + 2.0 * unit(&[m.seed, tick, 0x77]);
             let v = 0.25 + 0.15 * m.clumps.len() as f32;
@@ -909,7 +1241,10 @@ fn live(
     let Murks { list, field, .. } = &mut *murks;
     field.clear();
     for m in list.iter().filter(|m| m.dying.is_none()) {
-        for o in m.motes.iter().filter(|o| o.role != Role::Loose) {
+        // (The line it holds you by is in the way of every shot you fire
+        // from its end: they run along it, into its maw.)
+        let line = if let Spear::Held { i, .. } = m.spear { Some(Role::Tendril(i as u8)) } else { None };
+        for o in m.motes.iter().filter(|o| o.role != Role::Loose && Some(o.role) != line) {
             *field.entry(bin(o.pos)).or_default() += 1;
         }
     }
@@ -932,7 +1267,9 @@ fn take(m: &mut Murk, h: &MurkHit, sparks: &mut crate::vfx::Sparks, sounds: &mut
         sounds.write(crate::sound::PlaySound::at("murk_death", h.at).volume(0.35).pitch(1.6));
     }
     let r = SHOT_R.0 + h.damage * SHOT_R.1;
-    let mut near: Vec<(usize, f32)> = m.motes.iter().enumerate().filter(|(_, o)| o.role != Role::Loose).map(|(i, o)| (i, o.pos.distance(h.at))).filter(|(_, d)| *d < r.max(h.blast * BLAST_SCATTERS)).collect();
+    // (Not the line it holds you by: what you fire runs along it.)
+    let line = if let Spear::Held { i, .. } = m.spear { Some(Role::Tendril(i as u8)) } else { None };
+    let mut near: Vec<(usize, f32)> = m.motes.iter().enumerate().filter(|(_, o)| o.role != Role::Loose && Some(o.role) != line).map(|(i, o)| (i, o.pos.distance(h.at))).filter(|(_, d)| *d < r.max(h.blast * BLAST_SCATTERS)).collect();
     near.sort_by(|a, b| a.1.total_cmp(&b.1));
     let most = if h.blast > 0.0 { usize::MAX } else { (h.damage * SHOT_MOST).ceil() as usize };
     let mut taken = 0;
@@ -1081,10 +1418,54 @@ fn show(
         if m.dying.is_some() {
             continue;
         }
-        // Its heart, beating in its hollow.
+        // Its maw: a throat glowing dull red where it's parted, pale fangs
+        // along its lips.
+        if m.maw > 0.15 {
+            let r_body = body_radius(m.motes.iter().filter(|o| o.role == Role::Body).count());
+            let (at, gap) = (m.maw_dir.to_angle(), 0.8 * m.maw);
+            let reach = r_body * 1.25;
+            let ri = reach.ceil() as i32;
+            let c = m.core;
+            for dy in -ri..=ri {
+                for dx in -ri..=ri {
+                    let d = Vec2::new(dx as f32, dy as f32);
+                    let l = d.length();
+                    if l > reach || l < 1.0 {
+                        continue;
+                    }
+                    let off = ((d.to_angle() - at + std::f32::consts::PI).rem_euclid(TAU) - std::f32::consts::PI).abs();
+                    if off > gap * 0.85 {
+                        continue;
+                    }
+                    let k = (1.0 - l / reach) * (1.0 - off / gap) * m.maw;
+                    let pulse = 0.75 + 0.25 * (t * 9.0 - l * 0.4).sin();
+                    px.put((c.x + d.x).floor() as i32, (c.y + d.y).floor() as i32, rgba([110.0 * pulse, 12.0, 46.0 * pulse], (0.85 * k).min(0.8)));
+                }
+            }
+            // (Fangs: along each lip, pointing in across the opening.)
+            for side in [-1.0f32, 1.0] {
+                let lip = Vec2::from_angle(at + side * gap * 0.85);
+                let inward = Vec2::from_angle(at + side * gap * 0.85 - side * std::f32::consts::FRAC_PI_2);
+                let mut l = HOLLOW + 1.0;
+                while l < r_body * 1.1 {
+                    let base = c + lip * l;
+                    let long = 1.0 + 2.5 * m.maw * (1.0 - l / (r_body * 1.1));
+                    let mut f = 0.0;
+                    while f <= long {
+                        let q = base + inward * f;
+                        px.put(q.x.floor() as i32, q.y.floor() as i32, rgba([232.0, 220.0, 250.0], 0.95));
+                        f += 0.7;
+                    }
+                    l += 3.2;
+                }
+            }
+        }
+        // Its heart, beating in its hollow (bigger, brighter, bared).
         let beat = (t * TAU * if m.hunting { 1.6 } else { 0.9 }).sin().max(0.0).powi(3);
-        let heart = [120.0 + 110.0 * beat + 60.0 * flash, 18.0 + 50.0 * beat, 66.0 + 80.0 * beat + 60.0 * flash];
-        let r = CORE_R * (0.55 + 0.12 * beat);
+        let bare = m.maw;
+        let heart = [120.0 + 110.0 * beat + 60.0 * flash + 60.0 * bare, 18.0 + 50.0 * beat + 20.0 * bare, 66.0 + 80.0 * beat + 60.0 * flash];
+        let heart = heart.map(|v| v.min(255.0));
+        let r = CORE_R * (0.55 + 0.12 * beat + 0.3 * bare);
         let c = m.core.floor().as_ivec2();
         let ri = r.ceil() as i32;
         for dy in -ri..=ri {

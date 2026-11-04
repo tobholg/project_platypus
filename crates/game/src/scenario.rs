@@ -228,7 +228,9 @@
 //!   it hunt (god mode off), `fight` holds the repeater on its heart from 4 s
 //!   to 9 s and fires comet rockets at it at 10, 11, 12 s, `comet` only the
 //!   rockets, at 4, 5, 6, 7 s, `burn` thrusts
-//!   away from it from 1.6 s to 2.6 s (the plume on it: try `PLATYPUS_MURK_AT=50`). Logs its health, motes, clumps, yours.
+//!   away from it from 1.6 s to 2.6 s (the plume on it: try `PLATYPUS_MURK_AT=50`);
+//!   speared and held, `thrust` thrusts away, `maw` shoots at its heart
+//!   through its maw. Logs its health, motes, clumps, yours.
 //! - `spaceboots` (`PLATYPUS_SURVEY_AT=space`: by an asteroid) rocket boots in space:
 //!   from 3 s held up, right, down, left (a second each), let go (adrift), then
 //!   down hard into the rock and let go (it bounces off); logs the pose, the
@@ -6445,7 +6447,14 @@ fn murk_script(
     }
     let about = murks.about();
     let heart = about.first().map(|a| a.0);
+    let spear = murks.spears().first().copied();
+    let held = spear.is_some_and(|s| s.0 == "held");
     let firing = match (test.as_str(), heart) {
+        // (`maw`: held, the repeater on its heart, through its maw.)
+        ("maw", Some(at)) if held => {
+            cursor.0 = Some(at);
+            true
+        }
         ("fight", Some(at)) if (4.0..9.0).contains(&t) => {
             cursor.0 = Some(at);
             true
@@ -6474,7 +6483,7 @@ fn murk_script(
         _ => {}
     }
     // (`burn`: from 4 s to 6 s thrusting away from it, the plume on it.)
-    let away = heart.map(|h| me - h).filter(|_| test == "burn" && (1.6..2.6).contains(&t));
+    let away = heart.map(|h| me - h).filter(|_| (test == "burn" && (1.6..2.6).contains(&t)) || (test == "thrust" && held));
     let way = away.map(|d| if d.x.abs() > d.y.abs() { if d.x > 0.0 { KeyCode::KeyD } else { KeyCode::KeyA } } else if d.y > 0.0 { KeyCode::KeyW } else { KeyCode::KeyS });
     for key in [KeyCode::KeyW, KeyCode::KeyA, KeyCode::KeyS, KeyCode::KeyD, KeyCode::Space] {
         let on = way == Some(key) || (key == KeyCode::Space && way.is_some());
@@ -6486,7 +6495,7 @@ fn murk_script(
     }
     if t >= st.1 && t > 1.0 {
         st.1 = t + 0.25;
-        let said: Vec<String> = about.iter().map(|(c, hp, n, clumps)| format!("heart {:.0} off, health {hp:.0}, {n} motes, {clumps} clumps", c.distance(me))).collect();
+        let said: Vec<String> = about.iter().map(|(c, hp, n, clumps)| format!("heart {:.0} off, health {hp:.0}, {n} motes, {clumps} clumps, spear {}", c.distance(me), spear.map_or("-", |s| s.0))).collect();
         info!("murk: t {t:.2} you {:.0} at ({:.0}, {:.0}); {}", health.hp, me.x, me.y, said.join("; "));
     }
 }
