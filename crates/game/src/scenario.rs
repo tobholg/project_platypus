@@ -222,6 +222,13 @@
 //!   in a three-cell water puddle (a little wet, not put out: logs it at
 //!   4.4 s; `PLATYPUS_SCENARIO_SECS=5.3` for a screenshot of it), then into
 //!   deep water (the acid washed off, the fire out)
+//! - `murk` (`PLATYPUS_SURVEY_AT=space`) a murk summoned 130 cells off the player
+//!   (`PLATYPUS_MURK_AT`: another distance)
+//!   (in the void gear) at 1 s; `PLATYPUS_MURK_TEST=watch` (the default) lets
+//!   it hunt (god mode off), `fight` holds the repeater on its heart from 4 s
+//!   to 9 s and fires comet rockets at it at 10, 11, 12 s, `comet` only the
+//!   rockets, at 4, 5, 6, 7 s, `burn` thrusts
+//!   away from it from 1.6 s to 2.6 s (the plume on it: try `PLATYPUS_MURK_AT=50`). Logs its health, motes, clumps, yours.
 //! - `spaceboots` (`PLATYPUS_SURVEY_AT=space`: by an asteroid) rocket boots in space:
 //!   from 3 s held up, right, down, left (a second each), let go (adrift), then
 //!   down hard into the rock and let go (it bounces off); logs the pose, the
@@ -456,6 +463,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(Update, glowdamp_script)
             .add_systems(PreUpdate, guns_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spaceboots_script)
+            .add_systems(PreUpdate, murk_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script, wands_script, melee_script, fight_script, archery_script).after(InputSystems).before(crate::camera::track_cursor));
     }
 }
@@ -6385,6 +6393,101 @@ fn soak_script(
             state.0 = 7;
         }
         _ => {}
+    }
+}
+
+/// `murk`: see the list at the top.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+fn murk_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    items: Option<Res<crate::hands::items::Items>>,
+    (mut menu, mut cheats): (ResMut<crate::devmenu::DevMenu>, ResMut<crate::devmenu::Cheats>),
+    mut hand: ResMut<crate::hands::Hand>,
+    mut player: Query<(&mut Kinematics, &crate::creatures::Health, &mut crate::hands::items::Inventory, &mut crate::gear::Equipment), With<LocalPlayer>>,
+    mut murks: ResMut<crate::murk::Murks>,
+    (mut mouse, mut cursor, mut keys): (ResMut<ButtonInput<MouseButton>>, ResMut<CursorOverride>, ResMut<ButtonInput<KeyCode>>),
+    mut st: Local<(u8, f32)>,
+) {
+    if s.name != "murk" {
+        return;
+    }
+    menu.open = false;
+    cheats.god = std::env::var("PLATYPUS_MURK_GOD").is_ok();
+    let t = s.elapsed;
+    let test = std::env::var("PLATYPUS_MURK_TEST").unwrap_or_else(|_| "watch".into());
+    let (Some(items), Ok((mut k, health, mut inv, mut eq))) = (items, player.single_mut()) else { return };
+    let me = k.body.pos;
+    // (`fight`: held where it is, not kicked back by its own shots.)
+    if (test == "fight" || test == "comet") && st.0 >= 2 {
+        k.body.vel = Vec2::ZERO;
+    }
+    let stack = |id: &str, n: u32| items.id(id).map(|i| crate::hands::items::Stack::new(i, n));
+    if st.0 == 0 && t > 0.5 {
+        for (slot, id) in [(0, "void_helm"), (1, "void_suit"), (8, "thruster_pack")] {
+            eq.worn[slot] = stack(id, 1);
+        }
+        inv.slots[0] = stack("starforged_repeater", 1);
+        inv.slots[1] = stack("comet_launcher", 1);
+        // (In the ammo slots: the dev kit's pack is full.)
+        inv.slots[2] = stack("sunstone", 5);
+        eq.worn[crate::gear::AMMO_FROM] = stack("starmetal_shot", 400);
+        eq.worn[crate::gear::AMMO_FROM + 1] = stack("comet_rocket", 12);
+        hand.bar = 0;
+        hand.slot = 0;
+        st.0 = 1;
+    }
+    if st.0 == 1 && t > 1.0 {
+        // (`PLATYPUS_MURK_AT=x`: that far off instead.)
+        let off = std::env::var("PLATYPUS_MURK_AT").ok().and_then(|v| v.parse().ok()).unwrap_or(130.0);
+        murks.summon(&mut commands, me + Vec2::new(off, 15.0), 0x3A11);
+        st.0 = 2;
+    }
+    let about = murks.about();
+    let heart = about.first().map(|a| a.0);
+    let firing = match (test.as_str(), heart) {
+        ("fight", Some(at)) if (4.0..9.0).contains(&t) => {
+            cursor.0 = Some(at);
+            true
+        }
+        ("fight", _) if (9.0..9.5).contains(&t) => {
+            hand.slot = 1;
+            false
+        }
+        ("comet", _) if (3.0..3.5).contains(&t) => {
+            hand.slot = 1;
+            false
+        }
+        ("comet", Some(at)) if (4.0..7.6).contains(&t) => {
+            cursor.0 = Some(at);
+            (t - 4.0).fract() < 0.1
+        }
+        ("fight", Some(at)) if (10.0..12.6).contains(&t) => {
+            cursor.0 = Some(at);
+            (t - 10.0).fract() < 0.1
+        }
+        _ => false,
+    };
+    match (firing, mouse.pressed(MouseButton::Left)) {
+        (true, false) => mouse.press(MouseButton::Left),
+        (false, true) => mouse.release(MouseButton::Left),
+        _ => {}
+    }
+    // (`burn`: from 4 s to 6 s thrusting away from it, the plume on it.)
+    let away = heart.map(|h| me - h).filter(|_| test == "burn" && (1.6..2.6).contains(&t));
+    let way = away.map(|d| if d.x.abs() > d.y.abs() { if d.x > 0.0 { KeyCode::KeyD } else { KeyCode::KeyA } } else if d.y > 0.0 { KeyCode::KeyW } else { KeyCode::KeyS });
+    for key in [KeyCode::KeyW, KeyCode::KeyA, KeyCode::KeyS, KeyCode::KeyD, KeyCode::Space] {
+        let on = way == Some(key) || (key == KeyCode::Space && way.is_some());
+        match (on, keys.pressed(key)) {
+            (true, false) => keys.press(key),
+            (false, true) => keys.release(key),
+            _ => {}
+        }
+    }
+    if t >= st.1 && t > 1.0 {
+        st.1 = t + 0.25;
+        let said: Vec<String> = about.iter().map(|(c, hp, n, clumps)| format!("heart {:.0} off, health {hp:.0}, {n} motes, {clumps} clumps", c.distance(me))).collect();
+        info!("murk: t {t:.2} you {:.0} at ({:.0}, {:.0}); {}", health.hp, me.x, me.y, said.join("; "));
     }
 }
 

@@ -73,6 +73,7 @@ mod drift;
 mod sky;
 mod space;
 mod shoals;
+mod murk;
 #[cfg(feature = "spikes")]
 mod spikes;
 mod talk;
@@ -203,6 +204,7 @@ fn main() {
         .add_plugins((dev::DevPlugin, magic::MagicPlugin, vfx::VfxPlugin, arena::ArenaPlugin, editor::EditorPlugin, combat::CombatPlugin, archery::ArcheryPlugin, gear::GearPlugin, guns::GunsPlugin))
         .add_plugins((replay::ReplayPlugin, fight::FightPlugin, bestiary::panel::BestiaryPlugin, bestiary::stage::StagePlugin, bestiary::cli::CliPlugin))
         .add_plugins(shoals::ShoalsPlugin)
+        .add_plugins(murk::MurkPlugin)
         .add_plugins(drift::DriftPlugin)
         .add_plugins(sky::SkyPlugin)
         .add_plugins(zerog::ZeroGPlugin)

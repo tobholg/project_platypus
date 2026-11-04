@@ -942,6 +942,7 @@ fn fly(
     pictures: Query<&crate::creatures::body::animation::Animator>,
     mut tints: ResMut<crate::fx::FlashTints>,
     cursor: Res<crate::camera::CursorWorld>,
+    mut murks: ResMut<crate::murk::Murks>,
 ) {
     let mut booms = Vec::new();
     let mut landed = Vec::new();
@@ -1093,6 +1094,15 @@ fn fly(
                 let spares = s.cast.spares();
                 if let Some((hit, ..)) = bodies.iter().find(|(b, k, ..)| (*b != caster || (age > SELF_SAFE && !spares)) && !ours(*b) && inside(*b, k)) {
                     end = Some((Some(hit), Vec2::ZERO));
+                    break;
+                }
+                // (Into a murk's thick, or its heart: it stops there, and the
+                // murk has what it does: `murk::take`.)
+                if murks.thick(next) {
+                    let damage = s.cast.payloads.iter().map(|p| if let &Payload::Damage(d) = p { d } else { 0.0 }).sum();
+                    let blast = s.cast.payloads.iter().map(|p| match *p { Payload::Blast { radius, .. } => radius as f32, Payload::Nova { radius, .. } => radius as f32, _ => 0.0 }).fold(0.0, f32::max);
+                    murks.struck(crate::murk::MurkHit { at: next, dir: s.vel.normalize_or(Vec2::X), damage, blast });
+                    end = Some((None, Vec2::ZERO));
                     break;
                 }
                 if let Some((material, burning)) = s.cast.trail()

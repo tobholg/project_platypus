@@ -39,8 +39,6 @@
     // Out in space: star wisps, cold flames drifting among the asteroids,
     // diving at what comes by (a few at a time).
     (kind: "star_wisp", place: Space, most: 3, rate: 0.12),
-    // And sunmotes: space's bats, in packs of four to eight, fast and cold.
-    (kind: "sunmote", place: Space, group: (4, 8), most: 10, rate: 0.05),
     (kind: "bird", place: Surface, when: Day, most: 6, rate: 0.6),
     (kind: "frog", place: Shore, most: 4, rate: 0.6),
     (kind: "firefly", place: Surface, when: Night, above: (9, 36), most: 14, rate: 3.0),
