@@ -689,7 +689,7 @@ fn use_hands(
                     sounds.write(crate::sound::PlaySound::at("break", at).volume(0.8));
                 }
                 hand.cooldown = 1.0 / speed.max(0.1);
-                recoils.write(crate::drift::Recoil { who: me, from, push: (from - at).normalize_or_zero() * crate::zerog::KICK_PICK });
+                recoils.write(crate::drift::Recoil { who: me, from, push: (from - at).normalize_or_zero() * crate::zerog::KICK_PICK, turns: true });
                 for &(material, n) in &report.removed {
                     if let Some(item) = items.block(material) {
                         if keeps(&Stack::new(item, n)) {
@@ -726,7 +726,7 @@ fn use_hands(
             debug!("hit {block:?} removed {:?}", report.removed);
             hand.cooldown = 1.0 / speed.max(0.1);
             // (Weightless, the blow pushes you back off what it struck.)
-            recoils.write(crate::drift::Recoil { who: me, from, push: (from - centre).normalize_or_zero() * crate::zerog::KICK_PICK });
+            recoils.write(crate::drift::Recoil { who: me, from, push: (from - centre).normalize_or_zero() * crate::zerog::KICK_PICK, turns: true });
             let centre = Vec2::new((block.x as f32 + 0.5) * BLOCK as f32, (block.y as f32 + 0.5) * BLOCK as f32);
             for &(material, n) in &report.removed {
                 if let Some(item) = items.block(material) {

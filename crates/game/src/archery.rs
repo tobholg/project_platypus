@@ -231,7 +231,7 @@ fn nock(
         let (damage, knock, crit) = stats.cloned().unwrap_or_default().strike(lerp(def.damage), lerp(def.knock), roll, keen);
         spawn_arrow(&mut commands, &weapons, from + dir * 4.5, dir * lerp(def.speed), e, team.copied(), (damage, crit), knock, def.stun);
         // (Standing on a drifter, it kicks it the other way.)
-        recoils.write(crate::drift::Recoil { who: e, from, push: -dir * crate::drift::KICK_ARROW * d });
+        recoils.write(crate::drift::Recoil { who: e, from, push: -dir * crate::drift::KICK_ARROW * d, turns: true });
         sounds.write(crate::sound::PlaySound::at("bow", from).volume(0.5 + 0.5 * d));
     }
 }

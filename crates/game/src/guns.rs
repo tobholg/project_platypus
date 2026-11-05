@@ -97,9 +97,9 @@ fn shoot(
         let roll = platypus_sim::rng::hash(&[*tick, s.shooter.to_bits(), 0x6075]) as f32 / u64::MAX as f32 - 0.5;
         let dir = Vec2::from_angle((roll * 2.0 * spread).to_radians()).rotate(aim);
         let from = s.from + aim * MUZZLE;
-        firing.0.push(crate::magic::Fire { cast, caster: s.shooter, from, dir, reach: s.at.distance(s.from), pace: 1.0 });
+        firing.0.push(crate::magic::Fire { cast, caster: s.shooter, from, dir, reach: s.at.distance(s.from), pace: 1.0, gun: true });
         if *kick > 0.0 {
-            recoils.write(crate::drift::Recoil { who: s.shooter, from: s.from, push: -aim * *kick });
+            recoils.write(crate::drift::Recoil { who: s.shooter, from: s.from, push: -aim * *kick, turns: false });
         }
         sparks.emit(&FLASH, FLASH.count as usize, from, aim, Vec2::ZERO);
         if let Some(name) = sound {

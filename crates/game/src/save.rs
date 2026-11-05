@@ -580,9 +580,25 @@ fn load_world(
         Err(e) => return error!("save: {e}; starting a new world"),
     };
     let n = chunks.len();
+    // (Asteroids have nothing behind them now: a save's from before, the
+    // back walls it made them out in space taken away.)
+    // (Only the basalt it made: walls built there stay.)
+    let space = sim.generator.sky_layers().map(|s| s.weightless.1).zip(sim.materials().id("basalt"));
     for (pos, bytes) in chunks {
         match store::decode_remapped(pos, &bytes, (!same).then_some(map.as_slice())) {
-            Ok(chunk) => sim.store.put(&chunk),
+            Ok(mut chunk) => {
+                if let Some((floor, basalt)) = space {
+                    let from = (floor - pos.y * platypus_sim::CHUNK).clamp(0, platypus_sim::CHUNK) as usize;
+                    for ly in from..platypus_sim::CHUNK as usize {
+                        for lx in 0..platypus_sim::CHUNK as usize {
+                            if chunk.get_bg(lx, ly).material == basalt {
+                                chunk.set_bg(lx, ly, platypus_sim::Cell::AIR);
+                            }
+                        }
+                    }
+                }
+                sim.store.put(&chunk)
+            }
             Err(e) => warn!("save: {e}"),
         }
     }

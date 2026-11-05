@@ -71,15 +71,15 @@ pub fn eighths(g: f32) -> u8 {
 /// nothing (riding a drifter, it's the drifter's), the harder the lighter
 /// they are, and (from off its middle) set it tumbling.
 fn kick(mut commands: Commands, sim: Res<SimWorld>, mut recoils: MessageReader<Recoil>, mut hits: MessageReader<crate::combat::Hit>, riders: Res<crate::drift::Riders>, mut q: Query<(&mut Kinematics, Option<&mut Turning>)>) {
-    let mut pushes: Vec<(Entity, Vec2, Vec2)> = recoils.read().map(|r| (r.who, r.from, r.push)).collect();
+    let mut pushes: Vec<(Entity, Vec2, Vec2, bool)> = recoils.read().map(|r| (r.who, r.from, r.push, r.turns)).collect();
     for h in hits.read() {
         // (A strike downward is a pogo: that's its bounce, `combat`.)
         let Some(by) = h.by.filter(|_| h.dir.y > -DOWNWARD) else { continue };
         let Ok([(striker, _), (struck, _)]) = q.get_many([by, h.target]) else { continue };
         let share = (crate::drift::weight(&struck.body) / crate::drift::weight(&striker.body)).min(1.0);
-        pushes.push((by, h.at, -h.knock * share * BLOW_BACK * crate::drift::weight(&striker.body)));
+        pushes.push((by, h.at, -h.knock * share * BLOW_BACK * crate::drift::weight(&striker.body), true));
     }
-    for (who, from, push) in pushes {
+    for (who, from, push, turns) in pushes {
         if riders.on.contains_key(&who) {
             continue;
         }
@@ -92,6 +92,9 @@ fn kick(mut commands: Commands, sim: Res<SimWorld>, mut recoils: MessageReader<R
         let m = crate::drift::weight(&k.body);
         let dv = push * (1.0 - g) / m;
         k.body.vel += dv;
+        if !turns {
+            continue;
+        }
         // (Turned about its middle by a push from its hand, as a rod its
         // height would be: ω = r × Δv / (h² / 3).)
         let h = k.body.half.y;

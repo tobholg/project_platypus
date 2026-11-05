@@ -6406,7 +6406,7 @@ fn murk_script(
     items: Option<Res<crate::hands::items::Items>>,
     (mut menu, mut cheats): (ResMut<crate::devmenu::DevMenu>, ResMut<crate::devmenu::Cheats>),
     mut hand: ResMut<crate::hands::Hand>,
-    mut player: Query<(&mut Kinematics, &crate::creatures::Health, &mut crate::hands::items::Inventory, &mut crate::gear::Equipment), With<LocalPlayer>>,
+    mut player: Query<(&mut Kinematics, &crate::creatures::Health, &mut crate::hands::items::Inventory, &mut crate::gear::Equipment, Option<&crate::zerog::Turning>), With<LocalPlayer>>,
     mut murks: ResMut<crate::murk::Murks>,
     (mut mouse, mut cursor, mut keys): (ResMut<ButtonInput<MouseButton>>, ResMut<CursorOverride>, ResMut<ButtonInput<KeyCode>>),
     mut st: Local<(u8, f32)>,
@@ -6419,7 +6419,7 @@ fn murk_script(
     cheats.god = std::env::var("PLATYPUS_MURK_GOD").is_ok();
     let t = s.elapsed;
     let test = std::env::var("PLATYPUS_MURK_TEST").unwrap_or_else(|_| "watch".into());
-    let (Some(items), Ok((mut k, health, mut inv, mut eq))) = (items, player.single_mut()) else { return };
+    let (Some(items), Ok((mut k, health, mut inv, mut eq, turned))) = (items, player.single_mut()) else { return };
     let me = k.body.pos;
     // (`fight`: held where it is, not kicked back by its own shots.)
     if (test == "fight" || test == "comet" || test == "rock") && st.0 >= 2 {
@@ -6460,7 +6460,7 @@ fn murk_script(
         && t >= st.1
         && t > 1.0
     {
-        info!("murk: t {t:.2} rock {} solid", solid(at));
+        info!("murk: t {t:.2} rock {} solid, turned {:.2}", solid(at), turned.map_or(0.0, |t| t.angle));
     }
     if st.0 == 1 && t > 1.0 {
         // (`PLATYPUS_MURK_AT=x`: that far off instead.)

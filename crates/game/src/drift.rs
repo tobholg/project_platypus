@@ -54,6 +54,9 @@ pub struct Recoil {
     pub who: Entity,
     pub from: Vec2,
     pub push: Vec2,
+    /// From off its middle it sets them turning (not a gun's: braced, it
+    /// only pushes).
+    pub turns: bool,
 }
 
 /// Shot this near them (cells), it was from their hand.

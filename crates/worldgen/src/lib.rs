@@ -1168,10 +1168,10 @@ impl TerrainGen {
         {
             return (i.stone, None);
         }
-        // (An asteroid's rock behind it, mined out or hollow.)
+        // (Nothing behind an asteroid: what's blasted or mined out of it is
+        // gone, open to the stars.)
         if y >= self.plan.asteroids.floor {
-            let c = self.plan.asteroids.at(self.plan.wrap(x), y);
-            return (if c == space::Cell::None { i.air } else { i.basalt }, None);
+            return (i.air, None);
         }
         let depth = self.surface_at(x) - y;
         if depth > 24

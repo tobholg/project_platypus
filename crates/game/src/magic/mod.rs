@@ -232,6 +232,9 @@ pub(crate) struct Fire {
     pub(crate) reach: f32,
     /// The share of its speed it goes at (a spray's shards: each its own).
     pub(crate) pace: f32,
+    /// A gun's shot: its kick pushes, it doesn't set you turning (the
+    /// gun's held braced, its muzzle where the shot comes out).
+    pub(crate) gun: bool,
 }
 
 /// Casts to go off (set off by a wand, or by a spell landing: next tick).
@@ -457,11 +460,11 @@ fn request(
                 // (Bunched toward the middle: two rolls averaged.)
                 let off = (roll(1) + roll(2) - 1.0) * spread;
                 let pace = slow + (fast - slow) * roll(3);
-                firing.0.push(Fire { cast: cast.clone(), caster: r.caster, from: r.from, dir: Vec2::from_angle(off.to_radians()).rotate(dir), reach: aim.length(), pace });
+                firing.0.push(Fire { cast: cast.clone(), caster: r.caster, from: r.from, dir: Vec2::from_angle(off.to_radians()).rotate(dir), reach: aim.length(), pace, gun: false });
             }
             continue;
         }
-        firing.0.push(Fire { cast, caster: r.caster, from: r.from, dir, reach: aim.length(), pace: 1.0 });
+        firing.0.push(Fire { cast, caster: r.caster, from: r.from, dir, reach: aim.length(), pace: 1.0, gun: false });
     }
 }
 
@@ -517,7 +520,7 @@ fn fire(
             _ => 0.0,
         };
         if kick > 0.0 {
-            recoils.write(crate::drift::Recoil { who: f.caster, from: f.from, push: -f.dir * kick * f.pace });
+            recoils.write(crate::drift::Recoil { who: f.caster, from: f.from, push: -f.dir * kick * f.pace, turns: !f.gun });
         }
         match &cast.carrier {
             &Carrier::Bolt { speed, life } => spawn_spell(&mut commands, &f, speed, life, 0, 0.0, halo.clone()),
@@ -627,7 +630,7 @@ fn fire(
                 } else {
                     // Something falling (an orb that doesn't bounce), carrying the rest.
                     let falling = Arc::new(Cast { carrier: Carrier::Orb { speed, life: 6.0, bounces: 0 }, ..(*cast).clone() });
-                    let fall = Fire { cast: falling, caster: f.caster, from: above, dir: (target - above).normalize_or(Vec2::NEG_Y), reach: height, pace: 1.0 };
+                    let fall = Fire { cast: falling, caster: f.caster, from: above, dir: (target - above).normalize_or(Vec2::NEG_Y), reach: height, pace: 1.0, gun: false };
                     spawn_spell(&mut commands, &fall, speed, 6.0, 0, ORB_FALL, halo.clone());
                 }
             }
@@ -679,7 +682,7 @@ fn fire(
                     }
                     land(&mut commands, &mut sim.world, &coatings, &mut bodies, &cast, at, hit, dir, false, false, &mut booms, &drinkers);
                     if let Some(then) = &cast.then {
-                        firing.0.push(Fire { cast: then.clone(), caster: f.caster, from: at - dir * 3.0, dir, reach: TRIGGERED_REACH, pace: 1.0 });
+                        firing.0.push(Fire { cast: then.clone(), caster: f.caster, from: at - dir * 3.0, dir, reach: TRIGGERED_REACH, pace: 1.0, gun: false });
                     }
                 }
             }
@@ -1189,7 +1192,7 @@ fn fly(
         }
         if let Some(then) = &cast.then {
             let dir = if n == Vec2::ZERO { dir } else { dir - 2.0 * dir.dot(n) * n };
-            firing.0.push(Fire { cast: then.clone(), caster, from: at, dir, reach: TRIGGERED_REACH, pace: 1.0 });
+            firing.0.push(Fire { cast: then.clone(), caster, from: at, dir, reach: TRIGGERED_REACH, pace: 1.0, gun: false });
         }
     }
     blasts.write_batch(booms);
