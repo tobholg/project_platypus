@@ -3,6 +3,16 @@
 //! toward a lumpy, breathing blob round the heart and stirred by a flow
 //! that never settles, so it writhes; out of it reach a few tendrils.
 //!
+//! - **It moves by pushes.** It drifts on surges: a push throws it on
+//!   (its back squirting out behind it like a jet), and its stabilisers
+//!   settle it before the next. Its edge glows a faint violet.
+//! - **It charges.** Now and then it coils back away from you, its maw
+//!   opening your way, eyes wide, and then it comes at you all at once,
+//!   turning after you a little; through you, it flings you off to the
+//!   side and stops. Get out of its line while it's coiled.
+//! - **It shoots.** It knots a row of black spikes on its front, pointing
+//!   at you, quivering; then shoots them one after another, needles of
+//!   itself, straight at where you'll be. Move across their line.
 //! - **It hunts.** Near you, it keeps a little way off and circles. It
 //!   tears clumps of itself off and throws them at you: each one a small
 //!   swarm that cuts through you, loops back for another pass, and drifts
@@ -89,13 +99,50 @@ const EAT_TICK: usize = 3;
 const AGGRO: f32 = 460.0;
 const STANDOFF: f32 = 96.0;
 const SPEED: f32 = 22.0;
-const HUNT_SPEED: f32 = 52.0;
-const ACCEL: f32 = 70.0;
+const HUNT_SPEED: f32 = 64.0;
+/// How it moves: pushes, now and then (seconds between; sooner hunting,
+/// this share of it), each to this much past what it wants (it surges,
+/// then glides); between them its stabilisers settle it (a share of its
+/// speed lost a second). A push throws its back out behind it (a jet).
+const PULSE_EVERY: (f32, f32) = (0.55, 1.1);
+const PULSE_HUNTING: f32 = 0.65;
+const PULSE_OVER: f32 = 1.8;
+const STABILISE: f32 = 1.9;
+const JET: f32 = 60.0;
+/// Its charge: every so often (s), you so far off; coiled back (s, its maw
+/// opening), then at you this fast (cells/s), turning after you this fast
+/// (rad/s), so long at most; what it does going through you.
+const CHARGE_EVERY: (f32, f32) = (8.0, 13.0);
+const CHARGE_FROM: (f32, f32) = (70.0, 280.0);
+const COIL: f32 = 0.55;
+const CHARGE_SPEED: f32 = 330.0;
+const CHARGE_TURN: f32 = 1.3;
+const CHARGE_SECS: f32 = 1.1;
+const CHARGE_HIT: f32 = 9.0;
+const CHARGE_KNOCK: f32 = 280.0;
+/// Its volley: shards of itself (so many motes each) knotted on its front
+/// (the tell, s), then shot one after another (s apart), straight, at
+/// where you'll be (a share of the lead), a little spread (rad); gone in
+/// so long, or when they meet something.
+const VOLLEY_EVERY: (f32, f32) = (6.0, 10.0);
+/// After a spear, a charge or a volley, a breath before the next of
+/// them (s).
+const BREATHE: f32 = 2.5;
+const VOLLEY_FROM: (f32, f32) = (60.0, 330.0);
+const VOLLEY: (usize, usize) = (6, 10);
+const VOLLEY_TELL: f32 = 0.7;
+const VOLLEY_GAP: f32 = 0.085;
+const SHARD_MOTES: usize = 4;
+const SHARD_SPEED: f32 = 290.0;
+const SHARD_LEAD: f32 = 0.6;
+const SHARD_SPREAD: f32 = 0.07;
+const SHARD_SECS: f32 = 1.6;
+const SHARD_HIT: f32 = 1.6;
 /// Clumps: so many motes (from, to), one this often (s, from, to), so many
 /// out at most, thrown at you from this near; flying this fast, turning
 /// this hard; two passes, then home; gone home at most after this long.
 const CLUMP: (usize, usize) = (34, 72);
-const CLUMP_EVERY: (f32, f32) = (2.4, 4.2);
+const CLUMP_EVERY: (f32, f32) = (3.2, 5.5);
 const CLUMPS_MOST: usize = 3;
 const THROW: f32 = 340.0;
 const CLUMP_SPEED: f32 = 185.0;
@@ -169,6 +216,14 @@ const GONE: f32 = 1500.0;
 const BIN: f32 = 2.0;
 const THICK: u16 = 2;
 
+/// `PLATYPUS_MURK_ONLY=spear|charge|volley|clump`: it does only that (and
+/// sooner), to look at.
+static ONLY: std::sync::LazyLock<Option<String>> = std::sync::LazyLock::new(|| std::env::var("PLATYPUS_MURK_ONLY").ok());
+
+fn may(what: &str) -> bool {
+    ONLY.as_deref().is_none_or(|o| o == what)
+}
+
 fn unit(seed: &[u64]) -> f32 {
     (hash(seed) % 100_000) as f32 / 100_000.0
 }
@@ -191,6 +246,8 @@ enum Role {
     Tendril(u8),
     /// A clump thrown off it.
     Clump(u16),
+    /// A shard of a volley.
+    Shard(u16),
     /// Cut off, scattered in death: drifting, fading (gone at `life` 0).
     Loose,
 }
@@ -279,6 +336,34 @@ struct Clump {
     struck: bool,
 }
 
+/// Its charge: coiling back (aimed that way), then rushing at you (once
+/// through you at most).
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Charge {
+    Idle,
+    Coil { t: f32, dir: Vec2 },
+    Rush { t: f32, dir: Vec2, hit: bool },
+}
+
+/// Its volley: knotting its shards, then shooting them (the next in so
+/// long).
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Volley {
+    Idle,
+    Tell { t: f32 },
+    Fire { next: f32 },
+}
+
+/// A shard: held in the knot (its place in it) till shot.
+struct Shard {
+    id: u16,
+    pos: Vec2,
+    vel: Vec2,
+    age: f32,
+    held: bool,
+    slot: usize,
+}
+
 /// An eye opening in the mass: where (from the heart), how long it's been
 /// open, how long it stays.
 struct Eye {
@@ -321,6 +406,18 @@ pub struct Murk {
     lean: f32,
     maw: f32,
     maw_dir: Vec2,
+    /// Till its next push; its charge (and till the next), how coiled
+    /// back it is; its volley (and till the next), its shards.
+    pulse: f32,
+    charge: Charge,
+    charge_next: f32,
+    coil: f32,
+    volley: Volley,
+    volley_next: f32,
+    shards: Vec<Shard>,
+    shard_ids: u16,
+    /// Till it may spear, charge or shoot again.
+    breath: f32,
 }
 
 /// What a spell did meeting a murk: where it stopped, which way it was
@@ -370,6 +467,26 @@ impl Murks {
             .map(|m| {
                 let line = m.spear.tendril().filter(|_| !matches!(m.spear, Spear::Tell { .. })).map(|i| (m.tendrils[i].pts[0], m.tendrils[i].pts[SEGS]));
                 (m.spear.name(), line)
+            })
+            .collect()
+    }
+
+    /// Each one's charge and volley (for the scenarios).
+    pub fn moves(&self) -> Vec<(&'static str, &'static str)> {
+        self.list
+            .iter()
+            .map(|m| {
+                let c = match m.charge {
+                    Charge::Idle => "-",
+                    Charge::Coil { .. } => "coil",
+                    Charge::Rush { .. } => "rush",
+                };
+                let v = match m.volley {
+                    Volley::Idle => "-",
+                    Volley::Tell { .. } => "knot",
+                    Volley::Fire { .. } => "fire",
+                };
+                (c, v)
             })
             .collect()
     }
@@ -428,6 +545,15 @@ impl Murk {
             lean: 0.0,
             maw: 0.0,
             maw_dir: Vec2::X,
+            pulse: 0.0,
+            charge: Charge::Idle,
+            charge_next: CHARGE_EVERY.0 * 0.6,
+            coil: 0.0,
+            volley: Volley::Idle,
+            volley_next: VOLLEY_EVERY.0 * 0.5,
+            shards: Vec::new(),
+            shard_ids: 0,
+            breath: 0.0,
         };
         let r = body_radius(MOTES - TENDRILS * TENDRIL_MOTES);
         for i in 0..MOTES {
@@ -573,6 +699,7 @@ fn live(
     mut sounds: MessageWriter<crate::sound::PlaySound>,
     mut booms: MessageReader<crate::fx::Explosion>,
     items: Option<Res<crate::hands::items::Items>>,
+    mut trauma: ResMut<crate::fx::Trauma>,
 ) {
     let mut hits = std::mem::take(&mut murks.hits);
     // (Blasts: a bomb's, a meteor's. Not a shot's that struck it: its blast
@@ -598,6 +725,7 @@ fn live(
         m.hurt = (m.hurt - dt * 2.5).max(0.0);
         m.scared = (m.scared - dt).max(0.0);
         m.lashed = (m.lashed - dt).max(0.0);
+        m.breath = (m.breath - dt).max(0.0);
         let you = me.as_ref().map(|(k, _)| (k.body.pos, k.body.vel, k.body.half, k.loco.rocketing(), k.loco.thrust()));
         // What struck it.
         if m.dying.is_none() {
@@ -617,6 +745,7 @@ fn live(
                 o.life = 1.0 + 1.6 * unit(&[m.seed, i as u64, 0xDF]);
             }
             m.clumps.clear();
+            m.shards.clear();
             m.eyes.clear();
             sparks.emit(&TEAR, 80, core, Vec2::Y, Vec2::ZERO);
             sounds.write(crate::sound::PlaySound::at("murk_death", core));
@@ -644,11 +773,13 @@ fn live(
         let mut in_body = 0usize;
         let mut in_tendril = [0usize; TENDRILS];
         let mut in_clump: HashMap<u16, usize> = HashMap::default();
+        let mut in_shard: HashMap<u16, usize> = HashMap::default();
         for o in &m.motes {
             match o.role {
                 Role::Body => in_body += 1,
                 Role::Tendril(i) => in_tendril[i as usize] += 1,
                 Role::Clump(id) => *in_clump.entry(id).or_default() += 1,
+                Role::Shard(id) => *in_shard.entry(id).or_default() += 1,
                 Role::Loose => {}
             }
         }
@@ -661,7 +792,7 @@ fn live(
         m.hunting = dist < AGGRO;
         let want = if m.scared > 0.0 {
             (m.core - m.scared_from).normalize_or(Vec2::X) * HUNT_SPEED * 1.4
-        } else if m.spear != Spear::Idle {
+        } else if m.spear != Spear::Idle || m.volley != Volley::Idle {
             Vec2::ZERO
         } else if let (true, Some((p, ..))) = (m.hunting, you) {
             let off = (m.core - p).normalize_or(Vec2::X);
@@ -680,7 +811,21 @@ fn live(
                 (1..=3).all(|i| !solid(&sim, m.core + d * (r_body * 0.6 + 6.0 * i as f32)))
             })
             .unwrap_or(-want * 0.5);
-        m.vel += (want - m.vel).clamp_length_max(ACCEL * dt);
+        // (Pushed, now and then, past what it wants; settling between.
+        // Charging, it's its charge's.)
+        let mut pushed = Vec2::ZERO;
+        if m.charge == Charge::Idle {
+            m.vel *= (-STABILISE * dt).exp();
+            m.pulse -= dt;
+            if m.pulse <= 0.0 {
+                let need = want * PULSE_OVER - m.vel;
+                if need.length() > 12.0 {
+                    pushed = need;
+                }
+                let every = PULSE_EVERY.0 + (PULSE_EVERY.1 - PULSE_EVERY.0) * unit(&[m.seed, tick, 0x9A]);
+                m.pulse = every * if m.hunting { PULSE_HUNTING } else { 1.0 };
+            }
+        }
         if solid(&sim, m.core + m.vel * dt) {
             m.vel = -m.vel * 0.3;
         }
@@ -698,6 +843,10 @@ fn live(
             && m.hunting
             && m.spear_next <= 0.0
             && m.scared <= 0.0
+            && m.charge == Charge::Idle
+            && m.volley == Volley::Idle
+            && m.breath <= 0.0
+            && may("spear")
             && (SPEAR_FROM.0..SPEAR_FROM.1).contains(&dist)
             && in_body as f32 > full_body as f32 * 0.6
         {
@@ -860,6 +1009,7 @@ fn live(
         }
         if m.spear == Spear::Idle {
             if !was_idle {
+                m.breath = BREATHE;
                 m.spear_next = SPEAR_EVERY.0 + (SPEAR_EVERY.1 - SPEAR_EVERY.0) * unit(&[m.seed, tick, 0x5E7]);
             }
             m.maw = (m.maw - dt * 1.5).max(0.0);
@@ -882,6 +1032,230 @@ fn live(
             }
         } else if !matches!(m.spear, Spear::Held { .. }) {
             m.maw = (m.maw - dt * 1.2).max(0.0);
+        }
+        // Its charge: coiled back, its maw opening your way; then at you,
+        // turning after you a little, through you; settling after.
+        m.charge_next -= dt;
+        if let (Charge::Idle, Spear::Idle, Volley::Idle, Some((p, ..))) = (m.charge, m.spear, m.volley, you)
+            && m.hunting
+            && m.charge_next <= 0.0
+            && m.scared <= 0.0
+            && m.breath <= 0.0
+            && may("charge")
+            && (CHARGE_FROM.0..CHARGE_FROM.1).contains(&dist)
+            && in_body as f32 > full_body as f32 * 0.5
+        {
+            m.charge = Charge::Coil { t: 0.0, dir: (p - m.core).normalize_or(Vec2::X) };
+            for n in 0..6u64 {
+                let a = (p - m.core).to_angle() + (unit(&[m.seed, tick, n, 0xCA]) - 0.5) * 2.2;
+                let r = HOLLOW + 3.0 + unit(&[m.seed, tick, n, 0xCB]) * (r_body * 0.6 - HOLLOW).max(1.0);
+                m.eyes.push(Eye { off: Vec2::from_angle(a) * r, age: 0.0, life: COIL + 1.6 });
+            }
+            sounds.write(crate::sound::PlaySound::at("murk_hiss", m.core).volume(1.0).pitch(0.45));
+            debug!("murk: charge: coil, you {dist:.0} off");
+        }
+        match (m.charge, you) {
+            (Charge::Idle, _) => m.coil = (m.coil - dt * 3.0).max(0.0),
+            (Charge::Coil { t, dir }, Some((p, pv, ..))) => {
+                // (Drawn back, gathering; its aim on where you're going.)
+                let aim = (p + pv * 0.25 - m.core).normalize_or(dir);
+                m.vel += (-aim * 35.0 - m.vel).clamp_length_max(220.0 * dt);
+                m.coil = (t / COIL).min(1.0);
+                m.maw = (m.maw + dt * 2.0).min(0.8);
+                m.maw_dir = aim;
+                if t + dt >= COIL {
+                    let dv = aim * CHARGE_SPEED - m.vel;
+                    pushed += dv;
+                    m.charge = Charge::Rush { t: 0.0, dir: aim, hit: false };
+                    sounds.write(crate::sound::PlaySound::at("murk_spear", m.core).volume(1.2).pitch(0.55));
+                    sounds.write(crate::sound::PlaySound::at("murk_death", m.core).volume(0.6).pitch(0.5));
+                    trauma.0 = (trauma.0 + 0.2).min(1.0);
+                    debug!("murk: charge: rush");
+                } else {
+                    m.charge = Charge::Coil { t: t + dt, dir: aim };
+                }
+            }
+            (Charge::Rush { t, dir, hit }, Some((p, ..))) => {
+                m.coil = (m.coil - dt * 6.0).max(0.0);
+                m.maw = 1.0;
+                // (After you, a little, while you're ahead of it.)
+                let to = p - m.core;
+                let dir = if to.dot(dir) > 0.0 {
+                    let d = (to.to_angle() - dir.to_angle() + std::f32::consts::PI).rem_euclid(TAU) - std::f32::consts::PI;
+                    Vec2::from_angle(d.clamp(-CHARGE_TURN * dt, CHARGE_TURN * dt)).rotate(dir)
+                } else {
+                    dir
+                };
+                m.vel = dir * CHARGE_SPEED;
+                m.maw_dir = dir;
+                let mut hit = hit;
+                if let (false, Some((k, h))) = (hit, me.as_mut())
+                    && k.body.pos.distance(m.core) < r_body * 0.6 + k.body.half.length()
+                {
+                    hit = true;
+                    // (Flung out of its way, off to the side you're on; it
+                    // runs on past.)
+                    let side = if (k.body.pos - m.core).perp_dot(dir) > 0.0 { -dir.perp() } else { dir.perp() };
+                    strike(k, h, CHARGE_HIT, dir * CHARGE_KNOCK * 0.6 + side * CHARGE_KNOCK * 0.8, "run down by the murk");
+                    sounds.write(crate::sound::PlaySound::at("slam", k.body.pos).volume(0.8));
+                    sounds.write(crate::sound::PlaySound::at("murk_tear", k.body.pos));
+                    trauma.0 = (trauma.0 + 0.35).min(1.0);
+                    debug!("murk: charge: through you");
+                }
+                let passed = to.dot(dir) < -r_body * 1.2;
+                let walled = solid(&sim, m.core + dir * (r_body * 0.6 + 4.0));
+                // (Through you: a moment more, then it stops.)
+                let t = if hit { t.max(CHARGE_SECS - 0.2) } else { t };
+                if t + dt > CHARGE_SECS || passed || walled {
+                    if walled {
+                        m.vel = -m.vel * 0.2;
+                    }
+                    m.charge = Charge::Idle;
+                    m.breath = BREATHE;
+                    m.charge_next = CHARGE_EVERY.0 + (CHARGE_EVERY.1 - CHARGE_EVERY.0) * unit(&[m.seed, tick, 0xCC]);
+                    m.pulse = 0.4;
+                    debug!("murk: charge: done");
+                } else {
+                    m.charge = Charge::Rush { t: t + dt, dir, hit };
+                }
+            }
+            (_, None) => m.charge = Charge::Idle,
+        }
+        // A push: its motes go with it, its front more than its back; its
+        // back thrown out behind (a jet).
+        if pushed != Vec2::ZERO {
+            let dir = pushed.normalize_or(Vec2::X);
+            let jet = JET * (pushed.length() / 60.0).min(2.0);
+            for o in m.motes.iter_mut().filter(|o| o.role == Role::Body) {
+                let f = ((o.pos - m.core).dot(dir) / r_body).clamp(-1.0, 1.0);
+                o.vel += pushed * (0.7 + 0.3 * f) - dir * jet * (-f).max(0.0);
+            }
+            m.vel += pushed;
+        }
+        // Its volley: shards knotted on its front, quivering; then shot,
+        // one after another, at where you'll be.
+        m.volley_next -= dt;
+        if let (Volley::Idle, Spear::Idle, Charge::Idle, Some((p, ..))) = (m.volley, m.spear, m.charge, you)
+            && m.hunting
+            && m.volley_next <= 0.0
+            && m.scared <= 0.0
+            && m.breath <= 0.0
+            && may("volley")
+            && (VOLLEY_FROM.0..VOLLEY_FROM.1).contains(&dist)
+            && in_body as f32 > full_body as f32 * 0.5
+        {
+            let n = VOLLEY.0 + (unit(&[m.seed, tick, 0xF1]) * (VOLLEY.1 - VOLLEY.0 + 1) as f32) as usize;
+            let to = (p - m.core).normalize_or(Vec2::X);
+            let mut front: Vec<(usize, f32)> = m.motes.iter().enumerate().filter(|(_, o)| o.role == Role::Body).map(|(i, o)| (i, (o.pos - m.core).dot(to))).collect();
+            front.sort_by(|a, b| b.1.total_cmp(&a.1));
+            for slot in 0..n.min(front.len() / SHARD_MOTES) {
+                let id = m.shard_ids;
+                m.shard_ids = m.shard_ids.wrapping_add(1);
+                let mut mid = Vec2::ZERO;
+                for (k, &(i, _)) in front[slot * SHARD_MOTES..(slot + 1) * SHARD_MOTES].iter().enumerate() {
+                    let o = &mut m.motes[i];
+                    o.role = Role::Shard(id);
+                    o.a = unit(&[m.seed, tick, (slot * SHARD_MOTES + k) as u64, 0xF2]) * TAU;
+                    mid += o.pos;
+                }
+                m.shards.push(Shard { id, pos: mid / SHARD_MOTES as f32, vel: m.vel, age: 0.0, held: true, slot });
+                in_shard.insert(id, SHARD_MOTES);
+                in_body -= SHARD_MOTES;
+            }
+            m.volley = Volley::Tell { t: 0.0 };
+            sounds.write(crate::sound::PlaySound::at("murk_hiss", m.core).volume(0.9).pitch(1.7));
+            debug!("murk: volley: knot of {n}");
+        }
+        let held = m.shards.iter().filter(|s| s.held).count();
+        match (m.volley, you) {
+            (Volley::Idle, _) => {}
+            (Volley::Tell { t }, Some(_)) => {
+                m.volley = if t + dt >= VOLLEY_TELL { Volley::Fire { next: 0.0 } } else { Volley::Tell { t: t + dt } };
+            }
+            (Volley::Fire { next }, Some((p, pv, ..))) => {
+                let next = next - dt;
+                if next <= 0.0
+                    && let Some(sh) = m.shards.iter_mut().filter(|s| s.held).min_by_key(|s| s.slot)
+                {
+                    // (At where you'll be, a share of the way; a little
+                    // off.)
+                    let lead = p.distance(sh.pos) / SHARD_SPEED * SHARD_LEAD;
+                    let aim = (p + pv * lead - sh.pos).normalize_or(Vec2::X);
+                    let off = (unit(&[m.seed, tick, sh.id as u64, 0xF3]) - 0.5) * 2.0 * SHARD_SPREAD;
+                    sh.vel = Vec2::from_angle(off).rotate(aim) * SHARD_SPEED;
+                    sh.held = false;
+                    let (id, v) = (sh.id, sh.vel);
+                    for o in m.motes.iter_mut().filter(|o| o.role == Role::Shard(id)) {
+                        o.vel = v;
+                    }
+                    sounds.write(crate::sound::PlaySound::at("murk_spear", sh.pos).volume(0.45).pitch(1.9));
+                }
+                m.volley = if held <= 1 && next <= 0.0 {
+                    m.breath = BREATHE;
+                    m.volley_next = VOLLEY_EVERY.0 + (VOLLEY_EVERY.1 - VOLLEY_EVERY.0) * unit(&[m.seed, tick, 0xF4]);
+                    debug!("murk: volley: spent");
+                    Volley::Idle
+                } else {
+                    Volley::Fire { next: if next <= 0.0 { VOLLEY_GAP } else { next } }
+                };
+            }
+            (_, None) => {
+                m.volley = Volley::Idle;
+                for sh in &mut m.shards {
+                    sh.held = false;
+                }
+            }
+        }
+        // The shards: knotted on its front, quivering; or flying, through
+        // you, into rock, or gone.
+        let to_you = you.map_or(Vec2::X, |y| (y.0 - m.core).normalize_or(Vec2::X));
+        let knot = m.shards.iter().filter(|s| s.held).count().max(1) as f32;
+        let mut spent: Vec<u16> = Vec::new();
+        for sh in &mut m.shards {
+            if in_shard.get(&sh.id).copied().unwrap_or(0) < 2 {
+                spent.push(sh.id);
+                continue;
+            }
+            if sh.held {
+                let across = sh.slot as f32 - (knot - 1.0) * 0.5;
+                let quiver = (t * 47.0 + sh.slot as f32 * 1.9).sin() * 0.8;
+                let at = m.core + to_you * (r_body * 0.95 + 3.0 + quiver) + to_you.perp() * across * 2.6;
+                sh.vel = (at - sh.pos) * 20.0;
+                sh.pos += sh.vel * dt;
+                continue;
+            }
+            sh.age += dt;
+            let was = sh.pos;
+            sh.pos += sh.vel * dt;
+            if let Some((k, h)) = me.as_mut() {
+                let ab = sh.pos - was;
+                let f = ((k.body.pos - was).dot(ab) / ab.length_squared().max(1e-6)).clamp(0.0, 1.0);
+                if ((was + ab * f - k.body.pos).abs() - k.body.half).max_element() < 1.5 {
+                    // (Hurt, a nudge, no stun: you can still get out of
+                    // the way of the next.)
+                    h.harm_by(SHARD_HIT, Harm::Void, || crate::death::Cause::new("The murk", "shot through by the murk"));
+                    debug!("murk: shot through: {SHARD_HIT:.1}");
+                    k.body.vel += sh.vel.normalize_or(Vec2::X) * 25.0;
+                    sounds.write(crate::sound::PlaySound::at("murk_tear", sh.pos).volume(0.6).pitch(1.5));
+                    spent.push(sh.id);
+                    continue;
+                }
+            }
+            if sh.age > SHARD_SECS || solid(&sim, sh.pos) {
+                spent.push(sh.id);
+            }
+        }
+        if !spent.is_empty() {
+            m.shards.retain(|s| !spent.contains(&s.id));
+            for (i, o) in m.motes.iter_mut().enumerate() {
+                if let Role::Shard(id) = o.role
+                    && spent.contains(&id)
+                {
+                    o.role = Role::Loose;
+                    o.life = 0.3 + 0.4 * unit(&[m.seed, tick, i as u64, 0xF5]);
+                    o.vel = o.vel * 0.2 + Vec2::from_angle(unit(&[m.seed, tick, i as u64, 0xF6]) * TAU) * 40.0;
+                }
+            }
         }
         // Its tendrils: each from a root in its mass, its tip where it
         // wants (curling about; winding back, then lashing at you), the
@@ -969,6 +1343,8 @@ fn live(
         if let (true, Some((p, ..))) = (m.hunting, you)
             && m.next_clump <= 0.0
             && m.clumps.len() < CLUMPS_MOST
+            && m.charge == Charge::Idle
+            && may("clump")
             && dist < THROW
             && in_body as f32 > full_body as f32 * 0.45
         {
@@ -1064,7 +1440,7 @@ fn live(
         }
         // Growing back: what it's lost, out of its heart, the tendrils
         // first.
-        let alive = in_body + in_tendril.iter().sum::<usize>() + in_clump.values().sum::<usize>();
+        let alive = in_body + in_tendril.iter().sum::<usize>() + in_clump.values().sum::<usize>() + in_shard.values().sum::<usize>();
         if alive < m.most {
             m.owed = (m.owed + REGROW * dt).min((m.most - alive) as f32);
         } else {
@@ -1091,11 +1467,13 @@ fn live(
         let spin = if m.seed % 3 == 0 { 0.12 } else { -0.09 };
         let seedf = (m.seed % 1000) as f32;
         let clumps: HashMap<u16, (Vec2, Vec2, f32)> = m.clumps.iter().map(|c| (c.id, (c.pos, c.vel, (in_clump.get(&c.id).copied().unwrap_or(1) as f32).sqrt() * 0.85))).collect();
+        let shards: HashMap<u16, (Vec2, Vec2)> = m.shards.iter().map(|s| (s.id, (s.pos, s.vel))).collect();
         let spearing = m.spear.tendril();
         let tendrils: Vec<([Vec2; SEGS + 1], f32, Vec2, bool)> = m.tendrils.iter().enumerate().map(|(i, td)| (td.pts, (in_tendril[i] as f32 / TENDRIL_MOTES as f32).clamp(0.0, 1.0), td.tip_vel, spearing == Some(i))).collect();
         // (Its tell: its mass bunched your way. Its maw: what's in front of
         // its heart parted to either side.)
-        let lean = you.map_or(Vec2::ZERO, |y| (y.0 - m.core).normalize_or(Vec2::X) * r_body * 0.3 * m.lean);
+        // (Coiled to charge: drawn back away from you.)
+        let lean = you.map_or(Vec2::ZERO, |y| (y.0 - m.core).normalize_or(Vec2::X) * r_body * 0.3 * (m.lean - 0.8 * m.coil));
         let (maw_at, gap) = (m.maw_dir.to_angle(), 0.8 * m.maw);
         let room = (alive as f32 + m.owed) < MOTES as f32 * EAT_MOST;
         let mut ate = 0;
@@ -1126,6 +1504,13 @@ fn live(
                         let (k, d) = if *stiff { (170.0, 24.0) } else { (55.0, 9.0) };
                         (home - o.pos) * k - (o.vel - *tip_vel * o.a) * d + swirl * 10.0
                     }
+                    Role::Shard(id) => match shards.get(&id) {
+                        Some(&(c, v)) => {
+                            let home = c + Vec2::from_angle(o.a + t * 9.0) * 0.8;
+                            (home - o.pos) * 220.0 - (o.vel - v) * 22.0
+                        }
+                        None => Vec2::ZERO,
+                    },
                     Role::Clump(id) => match clumps.get(&id) {
                         Some(&(c, v, r)) => {
                             let home = c + Vec2::from_angle(o.a + t * 4.0) * o.b * r;
@@ -1199,6 +1584,7 @@ fn live(
             let n = m.motes.iter().filter(|o| o.role == Role::Body && (o.pos - p).abs().cmple(half).all()).count();
             if n >= 14 {
                 h.harm_by(SMOTHER * dt, Harm::Void, || crate::death::Cause::new("The murk", "swallowed by the murk"));
+                debug!("murk: smothered: {:.2}", SMOTHER * dt);
             }
         }
         m.motes.retain(|o| o.role != Role::Loose || o.life > 0.0);
@@ -1321,6 +1707,11 @@ impl Default for MurkCanvas {
 /// Over the light's glow (its black is black, whatever the light), under
 /// glowfish.
 const Z_MURK: f32 = 15.55;
+/// Its edge's glow: how far out (cells), how much rim near makes it full,
+/// how strong.
+const GLOW_R: f32 = 5.0;
+const GLOW_FULL: f32 = 22.0;
+const GLOW: f32 = 0.32;
 
 #[allow(clippy::too_many_arguments)]
 fn show(
@@ -1352,13 +1743,15 @@ fn show(
         }
         // How thick, cell by cell (each mote counts 2 where it is, 1 round
         // it).
-        let live = m.motes.iter().filter(|o| o.role != Role::Loose);
+        // (Not its shards: they're drawn as themselves.)
+        let live = m.motes.iter().filter(|o| !matches!(o.role, Role::Loose | Role::Shard(_)));
         let (lo, hi) = live.clone().fold((Vec2::MAX, Vec2::MIN), |(lo, hi), o| (lo.min(o.pos), hi.max(o.pos)));
         if lo.x > hi.x {
             continue;
         }
-        let lo = lo.floor().as_ivec2() - IVec2::splat(2);
-        let hi = hi.floor().as_ivec2() + IVec2::splat(2);
+        // (Room round it for its glow.)
+        let lo = lo.floor().as_ivec2() - IVec2::splat(2 + GLOW_R as i32);
+        let hi = hi.floor().as_ivec2() + IVec2::splat(2 + GLOW_R as i32);
         let (w, h) = ((hi.x - lo.x + 1) as usize, (hi.y - lo.y + 1) as usize);
         if w * h > 1_500_000 {
             continue;
@@ -1386,27 +1779,52 @@ fn show(
             }
         }
         let flash = m.hurt;
+        // (Its edge: in it, the outside within two cells.)
+        let at = |x: usize, y: usize, dx: i32, dy: i32| {
+            let (x, y) = (x as i32 + dx, y as i32 + dy);
+            if x < 0 || y < 0 || x as usize >= w || y as usize >= h { 0 } else { thick[y as usize * w + x as usize] }
+        };
+        let rim: Vec<u8> = (0..w * h)
+            .map(|i| {
+                let (x, y) = (i % w, i / w);
+                u8::from(thick[i] >= 3 && [(2, 0), (-2, 0), (0, 2), (0, -2), (1, 1), (-1, -1), (1, -1), (-1, 1)].iter().any(|&(dx, dy)| at(x, y, dx, dy) < 3))
+            })
+            .collect();
+        // (Its glow: how much rim is near, out past it, a soft violet.)
+        let gr = GLOW_R as usize;
+        let mut rows = vec![0u16; w * h];
+        for y in 0..h {
+            for x in 0..w {
+                rows[y * w + x] = (x.saturating_sub(gr)..(x + gr + 1).min(w)).map(|i| rim[y * w + i] as u16).sum();
+            }
+        }
+        let glow: Vec<u16> = (0..w * h).map(|i| (i / w).saturating_sub(gr)..(i / w + gr + 1).min(h)).enumerate().map(|(i, ys)| ys.map(|j| rows[j * w + i % w]).sum()).collect();
+        // (Brighter hunting, brightest charging; breathing.)
+        let hot = if m.dying.is_some() { 0.0 } else { 0.6 + 0.25 * f32::from(m.hunting) + 0.5 * m.coil.max(f32::from(matches!(m.charge, Charge::Rush { .. }))) };
+        let breathe = 0.8 + 0.2 * (t * 2.3 + m.seed as f32).sin();
         for y in 0..h {
             for x in 0..w {
                 let (d, n) = (thick[y * w + x], here[y * w + x]);
+                let (cx, cy) = (lo.x + x as i32, lo.y + y as i32);
+                // (Only out past it: not in its gaps.)
                 if d == 0 {
+                    let g = glow[y * w + x];
+                    if g > 0 {
+                        let k = (g as f32 / GLOW_FULL).min(1.0);
+                        let a = GLOW * k * k * hot * breathe + flash * 0.3 * k;
+                        px.put(cx, cy, rgba([130.0 + 60.0 * flash, 64.0 + 50.0 * flash, 240.0], a.min(0.8)));
+                    }
                     continue;
                 }
-                let (cx, cy) = (lo.x + x as i32, lo.y + y as i32);
                 let shimmer = 0.5 + 0.5 * (cx as f32 * 0.7 + cy as f32 * 0.45 + t * 4.0).sin();
-                // (Its edge: in it, the outside within two cells.)
-                let at = |dx: i32, dy: i32| {
-                    let (x, y) = (x as i32 + dx, y as i32 + dy);
-                    if x < 0 || y < 0 || x as usize >= w || y as usize >= h { 0 } else { thick[y as usize * w + x as usize] }
-                };
-                let edge = d >= 3 && [(2, 0), (-2, 0), (0, 2), (0, -2), (1, 1), (-1, -1), (1, -1), (-1, 1)].iter().any(|&(dx, dy)| at(dx, dy) < 3);
+                let edge = rim[y * w + x] == 1;
                 // (Inside: black, a dark sheen where a mote is (it moves in
                 // there); its edge violet; past it, fuzz.)
                 let (c, a) = match (d, edge, n > 0) {
                     (3.., false, false) => ([2.0, 0.0, 5.0], 1.0),
                     (3.., false, true) => ([10.0 + 8.0 * shimmer, 3.0, 22.0 + 14.0 * shimmer], 1.0),
-                    (3.., true, true) => ([92.0 + 50.0 * shimmer, 48.0 + 20.0 * shimmer, 165.0 + 55.0 * shimmer], 0.95),
-                    (3.., true, false) => ([40.0 + 20.0 * shimmer, 18.0, 80.0 + 30.0 * shimmer], 0.95),
+                    (3.., true, true) => ([120.0 + 60.0 * shimmer, 62.0 + 26.0 * shimmer, 205.0 + 50.0 * shimmer], 0.97),
+                    (3.., true, false) => ([62.0 + 26.0 * shimmer, 28.0, 120.0 + 36.0 * shimmer], 0.95),
                     (_, _, true) => ([110.0 + 40.0 * shimmer, 60.0, 190.0 + 40.0 * shimmer], 0.55),
                     _ => continue,
                 };
@@ -1417,6 +1835,48 @@ fn show(
         }
         if m.dying.is_some() {
             continue;
+        }
+        // Its shards: knotted, black spikes growing out of its front at
+        // you, pale-tipped, quivering; shot, needles, a pale hot head and
+        // a long violet streak.
+        let grown = match m.volley {
+            Volley::Tell { t } => (t / VOLLEY_TELL).min(1.0),
+            _ => 1.0,
+        };
+        let to_you = you.map_or(Vec2::X, |y| (y - m.core).normalize_or(Vec2::X));
+        for sh in &m.shards {
+            let (dir, long) = if sh.held { (to_you, 3.0 + 10.0 * grown) } else { (sh.vel.normalize_or(Vec2::X), 0.0) };
+            if sh.held {
+                let base = sh.pos - dir * 3.0;
+                let mut f = 0.0;
+                while f <= long + 3.0 {
+                    let q = base + dir * f;
+                    let tip = f > long + 1.0;
+                    let width = if f < 3.0 { 1.0 } else { 0.0 };
+                    for side in [-1.0f32, 0.0, 1.0] {
+                        if side != 0.0 && width == 0.0 {
+                            continue;
+                        }
+                        let q = q + dir.perp() * side;
+                        let (c, a) = if tip { ([230.0, 210.0, 255.0], 1.0) } else if side == 0.0 { ([6.0, 0.0, 14.0], 1.0) } else { ([120.0, 64.0, 220.0], 0.8) };
+                        px.put(q.x.floor() as i32, q.y.floor() as i32, rgba(c, a));
+                    }
+                    f += 0.6;
+                }
+                continue;
+            }
+            for i in 0..26 {
+                let q = sh.pos - dir * i as f32 * 0.8;
+                let k = 1.0 - i as f32 / 26.0;
+                let (c, a) = if i < 3 { ([244.0, 232.0, 255.0], 1.0) } else { ([140.0 + 60.0 * k, 70.0 + 40.0 * k, 240.0], 0.9 * k) };
+                px.put(q.x.floor() as i32, q.y.floor() as i32, rgba(c, a));
+                if i < 10 {
+                    for side in [-1.0f32, 1.0] {
+                        let s = q + dir.perp() * side;
+                        px.put(s.x.floor() as i32, s.y.floor() as i32, rgba([110.0, 50.0, 210.0], 0.45 * k));
+                    }
+                }
+            }
         }
         // Its maw: a throat glowing dull red where it's parted, pale fangs
         // along its lips.

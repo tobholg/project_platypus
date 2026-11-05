@@ -230,7 +230,9 @@
 //!   rockets, at 4, 5, 6, 7 s, `burn` thrusts
 //!   away from it from 1.6 s to 2.6 s (the plume on it: try `PLATYPUS_MURK_AT=50`);
 //!   speared and held, `thrust` thrusts away, `maw` shoots at its heart
-//!   through its maw. Logs its health, motes, clumps, yours.
+//!   through its maw; `rock` (no murk) shoots the nearest rock with the
+//!   repeater, then two comets. `PLATYPUS_MURK_ONLY=spear|charge|volley|clump`
+//!   lets it do only that. Logs its health, motes, clumps, moves, yours.
 //! - `spaceboots` (`PLATYPUS_SURVEY_AT=space`: by an asteroid) rocket boots in space:
 //!   from 3 s held up, right, down, left (a second each), let go (adrift), then
 //!   down hard into the rock and let go (it bounces off); logs the pose, the
@@ -6530,7 +6532,8 @@ fn murk_script(
     }
     if t >= st.1 && t > 1.0 {
         st.1 = t + 0.25;
-        let said: Vec<String> = about.iter().map(|(c, hp, n, clumps)| format!("heart {:.0} off, health {hp:.0}, {n} motes, {clumps} clumps, spear {}", c.distance(me), spear.map_or("-", |s| s.0))).collect();
+        let moves = murks.moves();
+        let said: Vec<String> = about.iter().zip(&moves).map(|((c, hp, n, clumps), (charge, volley))| format!("heart {:.0} off, health {hp:.0}, {n} motes, {clumps} clumps, spear {}, charge {charge}, volley {volley}", c.distance(me), spear.map_or("-", |s| s.0))).collect();
         info!("murk: t {t:.2} you {:.0} at ({:.0}, {:.0}); {}", health.hp, me.x, me.y, said.join("; "));
     }
 }
