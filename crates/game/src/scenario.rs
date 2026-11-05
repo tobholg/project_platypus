@@ -231,7 +231,8 @@
 //!   away from it from 1.6 s to 2.6 s (the plume on it: try `PLATYPUS_MURK_AT=50`);
 //!   speared and held, `thrust` thrusts away, `maw` shoots at its heart
 //!   through its maw; `rock` (no murk) shoots the nearest rock with the
-//!   repeater, then two comets. `PLATYPUS_MURK_ONLY=spear|charge|volley|clump`
+//!   repeater, then two comets; `place` puts it down as the dev menu does.
+//!   `PLATYPUS_MURK_ONLY=spear|charge|volley|clump`
 //!   lets it do only that. Logs its health, motes, clumps, moves, yours.
 //! - `spaceboots` (`PLATYPUS_SURVEY_AT=space`: by an asteroid) rocket boots in space:
 //!   from 3 s held up, right, down, left (a second each), let go (adrift), then
@@ -6413,6 +6414,7 @@ fn murk_script(
     (mut mouse, mut cursor, mut keys): (ResMut<ButtonInput<MouseButton>>, ResMut<CursorOverride>, ResMut<ButtonInput<KeyCode>>),
     mut st: Local<(u8, f32)>,
     (sim, mut rock): (Res<SimWorld>, Local<Option<Vec2>>),
+    (mut spawn_kind, mut dev): (ResMut<crate::creatures::spawn::SpawnKind>, MessageWriter<crate::dev::DevAction>),
 ) {
     if s.name != "murk" {
         return;
@@ -6467,7 +6469,14 @@ fn murk_script(
     if st.0 == 1 && t > 1.0 {
         // (`PLATYPUS_MURK_AT=x`: that far off instead.)
         let off = std::env::var("PLATYPUS_MURK_AT").ok().and_then(|v| v.parse().ok()).unwrap_or(130.0);
-        murks.summon(&mut commands, me + Vec2::new(off, 15.0), 0x3A11);
+        // (`place`: put down as the dev menu does, picked in its Creatures
+        // tab.)
+        if test == "place" {
+            spawn_kind.0 = crate::murk::KIND.to_string();
+            dev.write(crate::dev::DevAction::Spawn(Some(me + Vec2::new(off, 15.0))));
+        } else {
+            murks.summon(&mut commands, me + Vec2::new(off, 15.0), 0x3A11);
+        }
         st.0 = 2;
     }
     let about = murks.about();

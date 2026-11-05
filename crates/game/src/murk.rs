@@ -65,6 +65,9 @@ use crate::world::{SimWorld, TICK_HZ, TickSet};
 
 pub struct MurkPlugin;
 
+/// Its name in the dev menu's Creatures tab (placed there like a creature).
+pub const KIND: &str = "murk";
+
 impl Plugin for MurkPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Murks>()
