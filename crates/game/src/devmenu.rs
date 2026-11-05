@@ -479,7 +479,7 @@ pub(crate) fn clicks(
             }
         }
     }
-    // An item: one into the pack, or (Shift) a stack.
+    // An item: one (ammo: ten) into the pack, or (Shift) a stack.
     let Some(items) = items else { return };
     for (i, b) in &items_q {
         if *i != Interaction::Pressed {
@@ -487,7 +487,9 @@ pub(crate) fn clicks(
         }
         menu.typing = false;
         if let Some((_, Some(inv), ..)) = me.as_mut() {
-            let n = if shift { items.stack_units(b.0) } else { items.unit(b.0) };
+            // (Ammo comes ten at a time: one shot's nothing.)
+            let one = if items.def(b.0).ammo.is_some() { AMMO_CLICK.min(items.stack_units(b.0)) } else { items.unit(b.0) };
+            let n = if shift { items.stack_units(b.0) } else { one };
             let left = inv.add_to_pack(&items, Stack::new(b.0, n), crate::hands::items::HOTBAR * crate::hands::items::BARS);
             if left > 0 {
                 over.push(Stack::new(b.0, left));
@@ -500,6 +502,9 @@ pub(crate) fn clicks(
     }
     drop_over(&mut commands, &mut toasts, &items, me.as_ref().map(|(.., k)| k.body.pos), over);
 }
+
+/// How much ammo one click puts in the pack.
+const AMMO_CLICK: u32 = 10;
 
 /// What didn't fit in the pack, dropped at your feet (the pack takes it as
 /// room comes; the magnet holds off while it's full).
@@ -671,7 +676,7 @@ fn spawn_panel(
                     p.spawn((Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(3), row_gap: px(3), max_width: px(WIDE), ..default() }, KitRow(true)));
                     heading(p, "Kits (items.ron): into the pack, onto you");
                     p.spawn((Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(3), row_gap: px(3), max_width: px(WIDE), ..default() }, KitRow(false)));
-                    heading(p, "Click: one | Shift: a stack | right-click: in hand");
+                    heading(p, "Click: one (ammo 10) | Shift: a stack | right-click: in hand");
                     row(p, |r| {
                         button(r, "all", Act::Cat(None));
                         for c in Cat::ALL {

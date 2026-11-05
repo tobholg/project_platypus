@@ -66,13 +66,31 @@ struct Flash {
     radius: f32,
 }
 
+/// A big blast's shockwave: a thin ring racing out past the fireball.
+#[derive(Component)]
+struct Ring {
+    age: f32,
+    radius: f32,
+}
+
 #[derive(Resource)]
 struct FlashAssets {
     mesh: Handle<Mesh>,
+    ring: Handle<Mesh>,
 }
 
-/// Seconds a flash lasts.
+/// Seconds a flash lasts (a big blast's longer: `flash_life`).
 const FLASH_LIFE: f32 = 0.2;
+/// Blasts this big (radius, cells) and up throw a shockwave ring.
+const RING_FROM: f32 = 16.0;
+/// Seconds a shockwave ring lasts, and how far it gets (× the radius).
+const RING_LIFE: f32 = 0.55;
+const RING_REACH: f32 = 3.2;
+
+/// How long a blast's flash burns: a moment, longer the bigger it is.
+fn flash_life(radius: f32) -> f32 {
+    FLASH_LIFE * (radius / 12.0).clamp(1.0, 2.5)
+}
 /// Trauma lost per second.
 const TRAUMA_DECAY: f32 = 1.4;
 /// Maximum shake, in screen pixels.
@@ -89,12 +107,12 @@ impl Plugin for FxPlugin {
             .init_resource::<Trauma>()
             .init_resource::<ShakeOffset>()
             .add_systems(Startup, setup)
-            .add_systems(Update, (on_explosion, on_lightning, on_zap, shake, fade_flashes, fade_bolts).chain());
+            .add_systems(Update, (on_explosion, on_lightning, on_zap, shake, fade_flashes, fade_rings, fade_bolts).chain());
     }
 }
 
 fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
-    commands.insert_resource(FlashAssets { mesh: meshes.add(Circle::new(1.0)) });
+    commands.insert_resource(FlashAssets { mesh: meshes.add(Circle::new(1.0)), ring: meshes.add(Annulus::new(0.95, 1.0)) });
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -128,6 +146,22 @@ fn on_explosion(
             MeshMaterial2d(materials.add(ColorMaterial::from_color(color))),
             Transform::from_translation(e.at.extend(16.0)).with_scale(Vec3::splat(e.radius * 0.6)),
         ));
+        // A big one: a shockwave ring out past it, and a hot core that
+        // lingers (two flashes, the second smaller and whiter).
+        if e.radius >= RING_FROM {
+            commands.spawn((
+                Ring { age: 0.0, radius: e.radius },
+                Mesh2d(assets.ring.clone()),
+                MeshMaterial2d(materials.add(ColorMaterial::from_color(Color::srgba(1.0, 0.95, 0.85, 0.8)))),
+                Transform::from_translation(e.at.extend(16.1)).with_scale(Vec3::splat(e.radius * 0.5)),
+            ));
+            commands.spawn((
+                Flash { age: -0.04, radius: e.radius * 0.45 },
+                Mesh2d(assets.mesh.clone()),
+                MeshMaterial2d(materials.add(ColorMaterial::from_color(Color::srgba(1.0, 1.0, 0.95, 0.0)))),
+                Transform::from_translation(e.at.extend(16.2)).with_scale(Vec3::ZERO),
+            ));
+        }
     }
 }
 
@@ -148,7 +182,7 @@ fn fade_flashes(
 ) {
     for (entity, mut flash, mut tf, mat) in &mut q {
         flash.age += time.delta_secs();
-        let f = flash.age / FLASH_LIFE;
+        let f = flash.age.max(0.0) / flash_life(flash.radius);
         if f >= 1.0 {
             materials.remove(&mat.0);
             commands.entity(entity).despawn();
@@ -157,6 +191,30 @@ fn fade_flashes(
         tf.scale = Vec3::splat(flash.radius * (0.6 + 0.9 * f.sqrt()));
         if let Some(mut m) = materials.get_mut(&mat.0) {
             m.color = Color::srgba(1.0, 0.92 - 0.4 * f, 0.7 - 0.5 * f, 0.9 * (1.0 - f) * (1.0 - f));
+        }
+    }
+}
+
+/// A shockwave ring races out, thinning and fading.
+fn fade_rings(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut q: Query<(Entity, &mut Ring, &mut Transform, &MeshMaterial2d<ColorMaterial>)>,
+) {
+    for (entity, mut ring, mut tf, mat) in &mut q {
+        ring.age += time.delta_secs();
+        let f = ring.age / RING_LIFE;
+        if f >= 1.0 {
+            materials.remove(&mat.0);
+            commands.entity(entity).despawn();
+            continue;
+        }
+        // (Fast at first, slowing: out like a blast wave.)
+        let out = 1.0 - (1.0 - f).powi(3);
+        tf.scale = Vec3::splat(ring.radius * (0.5 + (RING_REACH - 0.5) * out));
+        if let Some(mut m) = materials.get_mut(&mat.0) {
+            m.color = Color::srgba(1.0, 0.97 - 0.2 * f, 0.88 - 0.25 * f, 0.9 * (1.0 - f).powi(2));
         }
     }
 }

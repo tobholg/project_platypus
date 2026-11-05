@@ -6410,6 +6410,7 @@ fn murk_script(
     mut murks: ResMut<crate::murk::Murks>,
     (mut mouse, mut cursor, mut keys): (ResMut<ButtonInput<MouseButton>>, ResMut<CursorOverride>, ResMut<ButtonInput<KeyCode>>),
     mut st: Local<(u8, f32)>,
+    (sim, mut rock): (Res<SimWorld>, Local<Option<Vec2>>),
 ) {
     if s.name != "murk" {
         return;
@@ -6421,7 +6422,7 @@ fn murk_script(
     let (Some(items), Ok((mut k, health, mut inv, mut eq))) = (items, player.single_mut()) else { return };
     let me = k.body.pos;
     // (`fight`: held where it is, not kicked back by its own shots.)
-    if (test == "fight" || test == "comet") && st.0 >= 2 {
+    if (test == "fight" || test == "comet" || test == "rock") && st.0 >= 2 {
         k.body.vel = Vec2::ZERO;
     }
     let stack = |id: &str, n: u32| items.id(id).map(|i| crate::hands::items::Stack::new(i, n));
@@ -6439,6 +6440,28 @@ fn murk_script(
         hand.slot = 0;
         st.0 = 1;
     }
+    // (`rock`: no murk; the nearest rock, shot with the repeater from 2 s
+    // to 4 s, then two comets; how much of it is left, logged.)
+    let solid = |at: Vec2| (-30..=30).flat_map(|dx| (-30..=30).map(move |dy| CellPos::new(at.x as i32 + dx, at.y as i32 + dy))).filter(|&q| sim.world.get(q).is_some_and(|c| !c.is_air() && matches!(sim.materials().phys(c.material).kind, platypus_sim::Kind::Static | platypus_sim::Kind::Powder))).count();
+    if test == "rock" && st.0 == 1 && t > 1.0 {
+        *rock = (8..260).step_by(2).find_map(|r| {
+            (0..64).map(|i| me + Vec2::from_angle(i as f32 / 64.0 * std::f32::consts::TAU) * r as f32).find(|&q| sim.world.get(CellPos::new(q.x as i32, q.y as i32)).is_some_and(|c| !c.is_air() && sim.materials().phys(c.material).kind == platypus_sim::Kind::Static))
+        });
+        let what: std::collections::BTreeMap<String, usize> = rock.into_iter().flat_map(|at| (-30..=30).flat_map(move |dx| (-30..=30).map(move |dy| CellPos::new(at.x as i32 + dx, at.y as i32 + dy)))).filter_map(|q| sim.world.get(q)).filter(|c| !c.is_air()).fold(Default::default(), |mut m, c| {
+            *m.entry(sim.materials().def(c.material).name.clone()).or_default() += 1;
+            m
+        });
+        // (Into it a way: past its skin.)
+        *rock = rock.map(|at| at + (at - me).normalize_or_zero() * 20.0);
+        info!("murk: rock at {:?}, {} solid, {what:?}", *rock, rock.map_or(0, solid));
+        st.0 = 2;
+    }
+    if let (true, Some(at)) = (test == "rock", *rock)
+        && t >= st.1
+        && t > 1.0
+    {
+        info!("murk: t {t:.2} rock {} solid", solid(at));
+    }
     if st.0 == 1 && t > 1.0 {
         // (`PLATYPUS_MURK_AT=x`: that far off instead.)
         let off = std::env::var("PLATYPUS_MURK_AT").ok().and_then(|v| v.parse().ok()).unwrap_or(130.0);
@@ -6454,6 +6477,18 @@ fn murk_script(
         ("maw", Some(at)) if held => {
             cursor.0 = Some(at);
             true
+        }
+        ("rock", _) if (2.0..4.0).contains(&t) => {
+            cursor.0 = *rock;
+            true
+        }
+        ("rock", _) if (4.0..4.5).contains(&t) => {
+            hand.slot = 1;
+            false
+        }
+        ("rock", _) if (5.0..6.6).contains(&t) => {
+            cursor.0 = *rock;
+            (t - 5.0).fract() < 0.1
         }
         ("fight", Some(at)) if (4.0..9.0).contains(&t) => {
             cursor.0 = Some(at);

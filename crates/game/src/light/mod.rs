@@ -474,7 +474,8 @@ fn collect_flashes(
     }
     for e in blasts.read() {
         let k = (e.radius / 30.0).min(2.0);
-        flashes.0.push(Flash { at: e.at, color: [1.3 * k, 0.95 * k, 0.55 * k], age: 0.0, life: 0.45 });
+        // (A big one lights the place up longer.)
+        flashes.0.push(Flash { at: e.at, color: [1.3 * k, 0.95 * k, 0.55 * k], age: 0.0, life: 0.45 * (e.radius / 12.0).clamp(1.0, 2.0) });
     }
     for Lightning(s) in bolts.read() {
         flashes.0.push(Flash { at: Vec2::new(s.hit.x as f32, s.hit.y as f32 + 6.0), color: [1.4, 1.45, 1.7], age: 0.0, life: 0.4 });
