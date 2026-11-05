@@ -6409,12 +6409,13 @@ fn murk_script(
     items: Option<Res<crate::hands::items::Items>>,
     (mut menu, mut cheats): (ResMut<crate::devmenu::DevMenu>, ResMut<crate::devmenu::Cheats>),
     mut hand: ResMut<crate::hands::Hand>,
-    mut player: Query<(&mut Kinematics, &crate::creatures::Health, &mut crate::hands::items::Inventory, &mut crate::gear::Equipment, Option<&crate::zerog::Turning>), With<LocalPlayer>>,
+    mut player: Query<(Entity, &mut Kinematics, &mut crate::creatures::Health, &mut crate::hands::items::Inventory, &mut crate::gear::Equipment, Option<&crate::zerog::Turning>), With<LocalPlayer>>,
     mut murks: ResMut<crate::murk::Murks>,
     (mut mouse, mut cursor, mut keys): (ResMut<ButtonInput<MouseButton>>, ResMut<CursorOverride>, ResMut<ButtonInput<KeyCode>>),
     mut st: Local<(u8, f32)>,
     (sim, mut rock): (Res<SimWorld>, Local<Option<Vec2>>),
     (mut spawn_kind, mut dev): (ResMut<crate::creatures::spawn::SpawnKind>, MessageWriter<crate::dev::DevAction>),
+    (mut hearts, mut drink): (ResMut<crate::hearts::DropHeart>, MessageWriter<crate::potion::Drink>),
 ) {
     if s.name != "murk" {
         return;
@@ -6423,8 +6424,45 @@ fn murk_script(
     cheats.god = std::env::var("PLATYPUS_MURK_GOD").is_ok();
     let t = s.elapsed;
     let test = std::env::var("PLATYPUS_MURK_TEST").unwrap_or_else(|_| "watch".into());
-    let (Some(items), Ok((mut k, health, mut inv, mut eq, turned))) = (items, player.single_mut()) else { return };
+    let (Some(items), Ok((who, mut k, mut health, mut inv, mut eq, turned))) = (items, player.single_mut()) else { return };
     let me = k.body.pos;
+    // (`heal`: no murk; hurt to a quarter (2 s), a red heart dropped just
+    // above (2.5 s), a gold one (4 s), hurt again (6 s) and a health potion
+    // drunk (6.5 s); its health logged.)
+    if test == "heal" {
+        k.body.vel = Vec2::ZERO;
+        let at = |a: f32| st.1 < a && t >= a;
+        if at(2.0) || at(6.0) {
+            health.hp = health.max * 0.25;
+        }
+        if at(0.8) {
+            hearts.0.push((me + Vec2::new(70.0, 10.0), false));
+        }
+        if at(2.5) || at(4.0) {
+            hearts.0.push((me + Vec2::new(14.0, 18.0), at(4.0)));
+        }
+        if at(6.5) {
+            inv.slots[5] = items.id("small_health_potion").map(|i| crate::hands::items::Stack::new(i, 1));
+        }
+        if at(6.6) {
+            drink.write(crate::potion::Drink { who, slot: 5 });
+        }
+        if (t * 4.0).floor() != (st.1 * 4.0).floor() {
+            info!("murk: heal t {t:.2} hp {:.1}/{:.0}", health.hp, health.max);
+        }
+        st.1 = t;
+        return;
+    }
+    // (`blade`: a longsword, swung at its heart over and over from 2 s,
+    // held at its edge, its mass between.)
+    if test == "blade" && st.0 >= 2 {
+        if let Some(&(heart, ..)) = murks.about().first() {
+            let r = 22.0;
+            k.body.pos = heart + (me - heart).normalize_or(Vec2::X) * r;
+            k.body.vel = Vec2::ZERO;
+            cursor.0 = Some(heart);
+        }
+    }
     // (`fight`: held where it is, not kicked back by its own shots.)
     if (test == "fight" || test == "comet" || test == "rock") && st.0 >= 2 {
         k.body.vel = Vec2::ZERO;
@@ -6436,6 +6474,9 @@ fn murk_script(
         }
         inv.slots[0] = stack("starforged_repeater", 1);
         inv.slots[1] = stack("comet_launcher", 1);
+        if test == "blade" {
+            inv.slots[0] = stack("longsword", 1);
+        }
         // (In the ammo slots: the dev kit's pack is full.)
         inv.slots[2] = stack("sunstone", 5);
         eq.worn[crate::gear::AMMO_FROM] = stack("starmetal_shot", 400);
@@ -6505,6 +6546,7 @@ fn murk_script(
             cursor.0 = Some(at);
             true
         }
+        ("blade", Some(_)) if t > 2.0 => true,
         ("fight", _) if (9.0..9.5).contains(&t) => {
             hand.slot = 1;
             false

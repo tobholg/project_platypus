@@ -4,10 +4,13 @@
 //! one: red (heals 20), now and then gold (40). The odds are its kind's (or
 //! by how tough it was), times how hurt the player is (`odds`): none at full
 //! health, steeply more the nearer death, never certain; and nearer death a
-//! larger share are gold. A heart pops out, falls, lies bobbing and glowing
-//! faintly; near the player it drifts to it (from further and faster the
-//! lower its health) and is taken on touch, no potion sickness; left, it
-//! fades. Dead, the player takes none (it waits, till it fades).
+//! larger share are gold. A heart pops out (a burst of its colour, a soft
+//! chime), falls, lies bobbing, beating (lub-dub, swelling), in a halo of
+//! its colour that beats with it, lighting what's round it, motes of it
+//! rising off it: you see one from across a cave. Near the player it
+//! drifts to it (from further and faster the lower its health) and is
+//! taken on touch, no potion sickness; left, it fades. Dead, the player
+//! takes none (it waits, till it fades).
 
 use std::collections::HashMap;
 
@@ -24,7 +27,7 @@ pub struct HeartsPlugin;
 impl Plugin for HeartsPlugin {
     fn build(&self, app: &mut App) {
         let rules: HeartRules = crate::data::load_ron(&crate::data::data_path("hearts.ron")).unwrap_or_else(|e| panic!("{e}"));
-        app.insert_resource(rules).add_systems(Startup, make_art).add_systems(Update, (drop, fly).chain());
+        app.insert_resource(rules).init_resource::<DropHeart>().add_systems(Startup, make_art).add_systems(Update, (drop, fly).chain());
     }
 }
 
@@ -72,6 +75,10 @@ impl HeartRules {
     }
 }
 
+/// Hearts asked for (a scenario's): where, gold.
+#[derive(Resource, Default)]
+pub struct DropHeart(pub Vec<(Vec2, bool)>);
+
 /// A heart lying (or falling, or drifting to the player).
 #[derive(Component)]
 pub struct Heart {
@@ -80,13 +87,39 @@ pub struct Heart {
     age: f32,
     vel: Vec2,
     at: Vec2,
+    /// Its halo; till the next mote rises off it.
+    halo: Entity,
+    twinkle: f32,
 }
 
-/// The two hearts' pictures.
+/// A heart's halo (a child of it).
+#[derive(Component)]
+struct Halo;
+
+/// The two hearts' pictures, and a soft round glow.
 #[derive(Resource)]
 struct HeartArt {
     red: Handle<Image>,
     gold: Handle<Image>,
+    halo: Handle<Image>,
+}
+
+/// A heart's size (× its picture), swelling this much more on a beat;
+/// beats a second; its halo's strength, and more on a beat; its light,
+/// and more on a beat.
+const SIZE: f32 = 1.5;
+const SWELL: f32 = 0.22;
+const BEATS: f32 = 1.1;
+const HALO: (f32, f32) = (0.3, 0.35);
+const LIGHT: (f32, f32) = (0.06, 0.09);
+/// Seconds between motes rising off it.
+const TWINKLE: f32 = 0.28;
+
+/// Lub-dub: how much of a beat it's in at `t` (0 to about 1).
+fn beat(t: f32) -> f32 {
+    let p = (t * BEATS).fract();
+    let pulse = |c: f32| (-((p - c) / 0.055).powi(2)).exp();
+    pulse(0.08) + 0.6 * pulse(0.27)
 }
 
 /// A heart, as text art ('o' its edge, 'H' it, 'h' its shade, 'W' a shine).
@@ -122,7 +155,25 @@ fn make_art(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     };
     let red = paint([226, 46, 62], [160, 26, 44]);
     let gold = paint([255, 206, 70], [206, 146, 34]);
-    commands.insert_resource(HeartArt { red, gold });
+    // (The halo: white, its alpha falling away soft from the middle; tinted.)
+    let n = 32u32;
+    let mut rgba = vec![0u8; (n * n * 4) as usize];
+    for y in 0..n {
+        for x in 0..n {
+            let d = Vec2::new(x as f32 + 0.5 - n as f32 / 2.0, y as f32 + 0.5 - n as f32 / 2.0).length() / (n as f32 / 2.0);
+            let a = ((1.0 - d).max(0.0)).powf(2.2);
+            let i = ((y * n + x) * 4) as usize;
+            rgba[i..i + 4].copy_from_slice(&[255, 255, 255, (a * 255.0) as u8]);
+        }
+    }
+    let halo = images.add(Image::new(
+        bevy::render::render_resource::Extent3d { width: n, height: n, depth_or_array_layers: 1 },
+        bevy::render::render_resource::TextureDimension::D2,
+        rgba,
+        bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb,
+        bevy::asset::RenderAssetUsages::MAIN_WORLD | bevy::asset::RenderAssetUsages::RENDER_WORLD,
+    ));
+    commands.insert_resource(HeartArt { red, gold, halo });
 }
 
 /// Over a heart's head as it's taken: a few sparks of its colour.
@@ -141,7 +192,18 @@ fn glint(gold: bool) -> Emitter {
     }
 }
 
+/// A heart's colour, for its halo and light.
+fn tint(gold: bool) -> (u8, u8, u8) {
+    if gold { (255, 206, 90) } else { (240, 60, 80) }
+}
+
+/// A heart popping out: a burst of its colour.
+fn burst(gold: bool) -> Emitter {
+    Emitter { count: 22.0, life: (0.25, 0.7), speed: 110.0, drag: 3.5, gravity: 40.0, ..glint(gold) }
+}
+
 /// Hearts out of the dying: what hunts, near the player, by the odds.
+#[allow(clippy::too_many_arguments)]
 fn drop(
     mut commands: Commands,
     rules: Res<HeartRules>,
@@ -149,32 +211,49 @@ fn drop(
     sim: Res<SimWorld>,
     mut died: MessageReader<Died>,
     player: Query<(&Kinematics, &Health), With<LocalPlayer>>,
+    mut sparks: ResMut<crate::vfx::Sparks>,
+    mut sounds: MessageWriter<crate::sound::PlaySound>,
+    mut asked: ResMut<DropHeart>,
 ) {
     let Some(art) = art else { return };
     let Ok((pk, h)) = player.single() else { return };
     let health = (h.hp / h.max.max(1.0)).clamp(0.0, 1.0);
-    for (n, d) in died.read().enumerate() {
+    let asked: Vec<(Vec2, bool)> = std::mem::take(&mut asked.0);
+    let dying = died.read().enumerate().filter_map(|(n, d)| {
         if d.empty || d.rising.is_some() || d.def.team != Team::Enemy || d.body.pos.distance(pk.body.pos) > rules.near {
-            continue;
+            return None;
         }
         let roll = |salt: u64| (platypus_sim::rng::hash(&[sim.world.tick(), n as u64, d.body.pos.x.to_bits() as u64, d.body.pos.y.to_bits() as u64, salt]) % 100_000) as f32 / 100_000.0;
         if roll(1) >= rules.odds(rules.base(&d.kind, d.def.health), health) {
-            continue;
+            return None;
         }
-        let gold = roll(2) < rules.gold_share(health, d.def.health);
-        let at = d.body.pos;
-        let vel = Vec2::new((roll(3) - 0.5) * 60.0, 90.0);
-        let (image, light) = if gold { (art.gold.clone(), (255, 206, 90)) } else { (art.red.clone(), (240, 60, 80)) };
-        commands.spawn((
-            Name::new("Heart"),
-            Heart { heal: if gold { rules.heal.1 } else { rules.heal.0 }, gold, age: 0.0, vel, at },
-            Sprite::from_image(image),
-            Transform::from_translation(at.extend(5.8)),
-            Visibility::default(),
-            crate::light::LightSource { color: crate::light::rgb(light, 0.04), flicker: 0.0 },
-        ));
+        Some((d.body.pos, roll(2) < rules.gold_share(health, d.def.health), roll(3)))
+    });
+    let all: Vec<(Vec2, bool, f32)> = dying.chain(asked.into_iter().map(|(at, gold)| (at, gold, 0.5))).collect();
+    for (at, gold, sway) in all {
+        let vel = Vec2::new((sway - 0.5) * 60.0, 90.0);
+        let image = if gold { art.gold.clone() } else { art.red.clone() };
+        let (r, g, b) = tint(gold);
+        let halo = commands
+            .spawn((Name::new("Heart halo"), Halo, Sprite { color: Color::srgba_u8(r, g, b, 0), custom_size: Some(Vec2::splat(18.0)), ..Sprite::from_image(art.halo.clone()) }, Transform::from_xyz(0.0, 0.0, -0.05)))
+            .id();
+        commands
+            .spawn((
+                Name::new("Heart"),
+                Heart { heal: if gold { rules.heal.1 } else { rules.heal.0 }, gold, age: 0.0, vel, at, halo, twinkle: 0.0 },
+                Sprite::from_image(image),
+                Transform::from_translation(at.extend(5.8)).with_scale(Vec3::splat(SIZE)),
+                Visibility::default(),
+                crate::light::LightSource { color: crate::light::rgb(tint(gold), LIGHT.0), flicker: 0.0 },
+            ))
+            .add_child(halo);
+        sparks.emit(&burst(gold), 22, at, Vec2::Y, Vec2::ZERO);
+        sounds.write(crate::sound::PlaySound::at("heart_drop", at));
     }
 }
+
+type Glowing<'a> = (&'a mut Sprite, &'a mut Transform);
+type Lying<'a> = (Entity, &'a mut Heart, &'a mut Transform, &'a mut Visibility, &'a mut crate::light::LightSource);
 
 /// Hearts falling, lying, drifting to the player and taken; fading.
 #[allow(clippy::too_many_arguments)]
@@ -187,7 +266,8 @@ fn fly(
     mut sparks: ResMut<crate::vfx::Sparks>,
     mut sounds: MessageWriter<crate::sound::PlaySound>,
     mut player: Query<(&Kinematics, &mut Health), With<LocalPlayer>>,
-    mut hearts: Query<(Entity, &mut Heart, &mut Transform, &mut Visibility)>,
+    mut hearts: Query<Lying>,
+    mut halos: Query<Glowing, (With<Halo>, Without<Heart>)>,
 ) {
     let dt = time.delta_secs().min(0.05);
     let Ok((pk, mut h)) = player.single_mut() else { return };
@@ -195,7 +275,7 @@ fn fly(
     let (reach, speed) = (rules.reach.0 + (rules.reach.1 - rules.reach.0) * low, rules.speed.0 + (rules.speed.1 - rules.speed.0) * low);
     let alive = dying.0.is_none();
     let solid = |p: Vec2| sim.world.is_solid(platypus_sim::CellPos::from_world(p.x, p.y));
-    for (e, mut heart, mut tf, mut vis) in &mut hearts {
+    for (e, mut heart, mut tf, mut vis, mut light) in &mut hearts {
         heart.age += dt;
         if heart.age > rules.life {
             commands.entity(e).despawn();
@@ -227,9 +307,26 @@ fn fly(
             commands.entity(e).despawn();
             continue;
         }
-        // Bobbing; blinking its last three seconds.
+        // Bobbing, beating (swelling, its halo and light with it), motes
+        // rising off it; blinking its last three seconds.
         let bob = (heart.age * 3.0).sin() * 1.2;
         tf.translation = (heart.at + Vec2::Y * (bob + 2.0)).extend(5.8);
+        let b = beat(heart.age);
+        // (Popping in: from nothing, a little past full, settling.)
+        let pop = (heart.age / 0.25).min(1.0);
+        let pop = 1.0 + 0.35 * (pop * std::f32::consts::PI).sin() * (1.0 - pop * 0.5) - (1.0 - pop).powi(2);
+        tf.scale = Vec3::splat(SIZE * pop * (1.0 + SWELL * b));
+        light.color = crate::light::rgb(tint(heart.gold), LIGHT.0 + LIGHT.1 * b);
+        if let Ok((mut halo, mut htf)) = halos.get_mut(heart.halo) {
+            let (r, g, bl) = tint(heart.gold);
+            halo.color = Color::srgba_u8(r, g, bl, ((HALO.0 + HALO.1 * b).min(1.0) * 255.0) as u8);
+            htf.scale = Vec3::splat(1.0 + 0.25 * b);
+        }
+        heart.twinkle -= dt;
+        if heart.twinkle <= 0.0 {
+            heart.twinkle = TWINKLE;
+            sparks.emit(&Emitter { count: 1.0, life: (0.5, 0.9), speed: 14.0, spread: 0.6, gravity: -24.0, drag: 1.0, ..glint(heart.gold) }, 1, heart.at + Vec2::new(((heart.age * 7.3).sin()) * 3.0, 3.0), Vec2::Y, Vec2::ZERO);
+        }
         let blink = rules.life - heart.age < 3.0 && (heart.age * 8.0).fract() < 0.4;
         let want = if blink { Visibility::Hidden } else { Visibility::Inherited };
         if *vis != want {

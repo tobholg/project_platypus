@@ -66,7 +66,7 @@ pub const DODGE_COST: f32 = 18.0;
 pub const SPRINT_DRAIN: f32 = 14.0;
 const DODGE_SAFE: f32 = 0.25;
 /// Hit-stop: seconds the world all but stops on a hit (heavier: longer).
-const STOP: f32 = 0.055;
+pub(crate) const STOP: f32 = 0.055;
 const STOP_SPEED: f32 = 0.03;
 
 // ---- data ----
@@ -861,6 +861,9 @@ pub struct LiveBlade {
     pub who: Entity,
     pub cells: Vec<Vec2>,
     pub knock: f32,
+    /// What it does (no crit), and which way it points.
+    pub damage: f32,
+    pub dir: Vec2,
 }
 
 #[derive(Resource, Default)]
@@ -1060,14 +1063,14 @@ pub struct Invulnerable {
 
 /// The world all but stops for a moment on a hit.
 #[derive(Resource, Default)]
-struct HitStop {
+pub(crate) struct HitStop {
     left: f32,
     /// The speed to go back to (while stopped).
     saved: Option<f32>,
 }
 
 impl HitStop {
-    fn hit(&mut self, secs: f32) {
+    pub(crate) fn hit(&mut self, secs: f32) {
         self.left = self.left.max(secs);
     }
 }
@@ -1432,6 +1435,8 @@ fn swing(
             who: me,
             cells: weapons.turned[s.weapon].cells(angle, facing).map(|c| hand_at + dir(angle) * thrust + c).collect(),
             knock: def.knock * mv.knock,
+            damage: stats.strike(def.damage * mv.damage, 0.0, 1.0, 0.0).0,
+            dir: dir(angle),
         });
         // (The blade moving: a whoosh, deeper for a heavy blade.)
         if !s.whooshed {

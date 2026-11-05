@@ -46,6 +46,7 @@ mod hands;
 mod hazards;
 mod breath;
 mod guns;
+mod healing;
 mod hearts;
 mod hud;
 mod kick;
@@ -210,7 +211,7 @@ fn main() {
         .add_plugins(zerog::ZeroGPlugin)
         .add_plugins(space::SpacePlugin)
         .add_plugins((reset::ResetPlugin, clock::ClockPlugin, gold::GoldPlugin, hearts::HeartsPlugin, breath::BreathPlugin, kick::KickPlugin, traps::TrapsPlugin, hazards::HazardsPlugin, death::DeathPlugin, talk::TalkPlugin, events::EventsPlugin, show::ShowPlugin, display::DisplayPlugin, pickups::PickupsPlugin, cursor::CursorPlugin))
-        .add_plugins((tempo::TempoPlugin, potion::PotionPlugin, screen_fx::ScreenFxPlugin, cloth::ClothPlugin))
+        .add_plugins((tempo::TempoPlugin, potion::PotionPlugin, screen_fx::ScreenFxPlugin, cloth::ClothPlugin, healing::HealingPlugin))
         .add_plugins((settings::SettingsPlugin, sound::SoundPlugin))
         .add_plugins(backdrop::BackdropPlugin)
         .insert_resource(mode)

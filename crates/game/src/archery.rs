@@ -260,6 +260,7 @@ fn fly(
     mut arrows: Query<(Entity, &mut Arrow, &mut Transform)>,
     targets: Query<Target, With<Health>>,
     factions: Query<&crate::creatures::factions::Faction>,
+    mut murks: ResMut<crate::murk::Murks>,
 ) {
     let Some(def) = weapons.as_ref().and_then(|w| w.arrow_def().cloned()) else { return };
     for (e, mut a, mut tf) in &mut arrows {
@@ -317,6 +318,12 @@ fn fly(
                 }
             } else {
                 // Off the loaded world.
+                commands.entity(e).despawn();
+                break 'flight;
+            }
+            // (Into a murk's thick: it stops there, tearing what it meets.)
+            if a.damage > 0.0 && murks.thick(tip) {
+                murks.struck(crate::murk::MurkHit { at: tip, dir, damage: a.damage, blast: 0.0, shown: true });
                 commands.entity(e).despawn();
                 break 'flight;
             }

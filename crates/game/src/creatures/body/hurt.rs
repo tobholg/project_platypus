@@ -211,17 +211,41 @@ pub fn notice(
         // (Side by side, a little, so hits in a row don't print over each other.)
         *shown = shown.wrapping_add(1);
         let at = k.body.pos + Vec2::new((*shown % 5) as f32 * 3.0 - 6.0, k.body.half.y + 6.0);
-        let e = commands
-            .spawn((
-                Name::new("Damage"),
-                DamageNumber { amount: lost, age: 0.0, crit },
-                Text2d::new(if crit { format!("{}!", digits(lost)) } else { digits(lost) }),
-                TextFont { font_size: FontSize::Px(if crit { NUMBER_SIZE * CRIT_SIZE } else { NUMBER_SIZE }), ..default() },
-                TextColor(color),
-                Transform::from_translation(at.extend(20.0)),
-            ))
-            .id();
-        h.number = Some(e);
+        h.number = Some(spawn_number(&mut commands, at, lost, color, crit));
+    }
+}
+
+/// A damage number, new, floating up from `at`.
+fn spawn_number(commands: &mut Commands, at: Vec2, amount: f32, color: Color, crit: bool) -> Entity {
+    commands
+        .spawn((
+            Name::new("Damage"),
+            DamageNumber { amount, age: 0.0, crit },
+            Text2d::new(if crit { format!("{}!", digits(amount)) } else { digits(amount) }),
+            TextFont { font_size: FontSize::Px(if crit { NUMBER_SIZE * CRIT_SIZE } else { NUMBER_SIZE }), ..default() },
+            TextColor(color),
+            Transform::from_translation(at.extend(20.0)),
+        ))
+        .id()
+}
+
+/// A number off what has no `Health` of its own (a murk): added to `last`
+/// while that's young (a stream of shots, one number), else a new one. A
+/// critical one (its heart) always its own.
+pub fn float_number(commands: &mut Commands, numbers: &mut Query<(&mut DamageNumber, &mut Text2d)>, last: &mut Option<Entity>, at: Vec2, amount: f32, color: Color, crit: bool) {
+    if !crit
+        && let Some(e) = *last
+        && let Ok((mut n, mut text)) = numbers.get_mut(e)
+        && n.age < MERGE
+        && !n.crit
+    {
+        n.amount += amount;
+        text.0 = digits(n.amount);
+        return;
+    }
+    let e = spawn_number(commands, at, amount, color, crit);
+    if !crit {
+        *last = Some(e);
     }
 }
 

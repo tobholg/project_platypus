@@ -73,6 +73,7 @@ impl Plugin for MurkPlugin {
         app.init_resource::<Murks>()
             .init_resource::<MurkCanvas>()
             .add_systems(FixedUpdate, (come_and_go, live).chain().in_set(TickSet::Bodies).after(crate::creatures::move_creatures))
+            .add_systems(Update, numbers)
             .add_systems(PostUpdate, show.before(bevy::transform::TransformSystems::Propagate));
     }
 }
@@ -196,6 +197,11 @@ const FEAST_BITE: f32 = 4.0;
 /// to this many times it.
 const SHOT_R: (f32, f32) = (2.5, 1.0 / 8.0);
 const SHOT_MOST: f32 = 1.2;
+/// A blade cuts it once a swing (ticks before the same blade may again),
+/// and all along it: past the first cut, this share of its damage every
+/// third cell.
+const CUT_AGAIN: u64 = 18;
+const CUT_ALONG: f32 = 0.6;
 const BLAST_TAKES: f32 = 0.8;
 const BLAST_SCATTERS: f32 = 2.4;
 /// Light: a light of strength 1 (its colour summed) drives motes back this
@@ -421,6 +427,18 @@ pub struct Murk {
     shard_ids: u16,
     /// Till it may spear, charge or shoot again.
     breath: f32,
+    /// Where it's been struck, just now (drawn: a flare, a ripple).
+    impacts: Vec<Impact>,
+}
+
+/// A blow landing in it: where, which way, how hard, how long ago; at its
+/// heart.
+struct Impact {
+    at: Vec2,
+    dir: Vec2,
+    power: f32,
+    age: f32,
+    heart: bool,
 }
 
 /// What a spell did meeting a murk: where it stopped, which way it was
@@ -431,6 +449,9 @@ pub struct MurkHit {
     pub dir: Vec2,
     pub damage: f32,
     pub blast: f32,
+    /// Its damage floats up off it as a number (one of a blade's cuts
+    /// along it doesn't: the first says it).
+    pub shown: bool,
 }
 
 #[derive(Resource, Default)]
@@ -443,6 +464,10 @@ pub struct Murks {
     hits: Vec<MurkHit>,
     /// Where shots struck lately, and when (tick).
     lately: Vec<(Vec2, u64)>,
+    /// Numbers to float up off it: where, how much, at its heart.
+    numbers: Vec<(Vec2, f32, bool)>,
+    /// Blades that cut it lately (one cut a swing), and when (tick).
+    cut_by: Vec<(Entity, u64)>,
 }
 
 impl Murks {
@@ -557,6 +582,7 @@ impl Murk {
             shards: Vec::new(),
             shard_ids: 0,
             breath: 0.0,
+            impacts: Vec::new(),
         };
         let r = body_radius(MOTES - TENDRILS * TENDRIL_MOTES);
         for i in 0..MOTES {
@@ -654,6 +680,21 @@ fn flow(p: Vec2, t: f32) -> Vec2 {
     Vec2::new((p.y * 0.17 + t * 1.3).sin() + (p.x * 0.05 - t * 0.7 + p.y * 0.03).sin(), (p.x * 0.15 - t * 1.1).cos() + (p.y * 0.06 + t * 0.6).cos())
 }
 
+/// What blows did to it, floating up (with damage numbers on): a pale
+/// violet number for what's torn out of its mass (a stream of shots adds
+/// up on one), a big gold one with a "!" for its heart.
+fn numbers(mut commands: Commands, display: Res<crate::display::Display>, mut murks: ResMut<Murks>, mut q: Query<(&mut crate::creatures::body::hurt::DamageNumber, &mut Text2d)>, mut last: Local<Option<Entity>>, mut n: Local<u32>) {
+    for (at, amount, heart) in std::mem::take(&mut murks.numbers) {
+        if !display.damage_numbers || amount <= 0.0 {
+            continue;
+        }
+        *n = n.wrapping_add(1);
+        let at = at + Vec2::new((*n % 5) as f32 * 3.0 - 6.0, 7.0);
+        let color = if heart { Color::srgb(1.0, 0.82, 0.2) } else { Color::srgb(0.84, 0.7, 1.0) };
+        crate::creatures::body::hurt::float_number(&mut commands, &mut q, &mut last, at, amount, color, heart);
+    }
+}
+
 /// Its mass's edge, that way (`a`), now: lumpy, breathing.
 fn edge(r: f32, a: f32, t: f32, seed: f32) -> f32 {
     r * (1.0 + 0.2 * (3.0 * a + 0.9 * t + seed).sin() + 0.12 * (5.0 * a - 1.4 * t + seed * 2.0).sin() + 0.07 * (9.0 * a + 2.1 * t).sin())
@@ -671,6 +712,34 @@ static TEAR: std::sync::LazyLock<Emitter> = std::sync::LazyLock::new(|| Emitter 
     size: 1.0,
     jitter: 0.5,
     glow: false,
+});
+
+/// Struck: bright violet flecks of it, sprayed back.
+static SPLASH: std::sync::LazyLock<Emitter> = std::sync::LazyLock::new(|| Emitter {
+    count: 12.0,
+    life: (0.12, 0.42),
+    colors: vec![(236, 220, 255), (190, 140, 255), (130, 70, 235)],
+    speed: 150.0,
+    spread: 0.9,
+    gravity: 0.0,
+    drag: 5.0,
+    size: 1.0,
+    jitter: 0.4,
+    glow: true,
+});
+
+/// Struck in its heart: hot pale-gold and rose, more of it.
+static HEART_SPLASH: std::sync::LazyLock<Emitter> = std::sync::LazyLock::new(|| Emitter {
+    count: 20.0,
+    life: (0.2, 0.6),
+    colors: vec![(255, 246, 220), (255, 200, 120), (240, 90, 160)],
+    speed: 190.0,
+    spread: 1.4,
+    gravity: 0.0,
+    drag: 4.0,
+    size: 1.0,
+    jitter: 0.5,
+    glow: true,
 });
 
 /// Burnt by light: pale sparks going out.
@@ -703,6 +772,7 @@ fn live(
     mut booms: MessageReader<crate::fx::Explosion>,
     items: Option<Res<crate::hands::items::Items>>,
     mut trauma: ResMut<crate::fx::Trauma>,
+    (blades, mut stop): (Res<crate::combat::LiveBlades>, ResMut<crate::combat::HitStop>),
 ) {
     let mut hits = std::mem::take(&mut murks.hits);
     // (Blasts: a bomb's, a meteor's. Not a shot's that struck it: its blast
@@ -710,8 +780,35 @@ fn live(
     let tick = sim.world.tick();
     murks.lately.retain(|(_, at)| tick.saturating_sub(*at) < 4);
     murks.lately.extend(hits.iter().map(|h| (h.at, tick)));
+    // (Blades through it: a cut a swing, along the blade; the first, or
+    // the one at its heart, says what it did.)
+    murks.cut_by.retain(|(_, at)| tick.saturating_sub(*at) < CUT_AGAIN);
+    if !murks.list.is_empty() {
+        let mut struck = false;
+        for b in &blades.0 {
+            if murks.cut_by.iter().any(|(w, _)| *w == b.who) {
+                continue;
+            }
+            let thick: Vec<Vec2> = b.cells.iter().copied().filter(|c| murks.thick(*c)).collect();
+            if thick.is_empty() {
+                continue;
+            }
+            let near_heart = |c: &Vec2| murks.list.iter().any(|m| m.dying.is_none() && m.core.distance(*c) < CORE_R + 3.0);
+            let first = thick.iter().copied().find(|c| near_heart(c)).unwrap_or(thick[0]);
+            hits.push(MurkHit { at: first, dir: b.dir, damage: b.damage, blast: 0.0, shown: true });
+            for c in thick.iter().step_by(3).filter(|c| **c != first && !near_heart(c)) {
+                hits.push(MurkHit { at: *c, dir: b.dir, damage: b.damage * CUT_ALONG, blast: 0.0, shown: false });
+            }
+            murks.cut_by.push((b.who, tick));
+            struck = true;
+        }
+        if struck {
+            stop.hit(crate::combat::STOP);
+            trauma.0 = (trauma.0 + 0.12).min(1.0);
+        }
+    }
     let lately = &murks.lately;
-    let blasts: Vec<MurkHit> = booms.read().filter(|b| lately.iter().all(|(s, _)| s.distance(b.at) > 6.0)).map(|b| MurkHit { at: b.at, dir: Vec2::ZERO, damage: b.power * 0.25, blast: b.radius }).collect();
+    let blasts: Vec<MurkHit> = booms.read().filter(|b| lately.iter().all(|(s, _)| s.distance(b.at) > 6.0)).map(|b| MurkHit { at: b.at, dir: Vec2::ZERO, damage: b.power * 0.25, blast: b.radius, shown: true }).collect();
     hits.extend(blasts);
     if murks.list.is_empty() {
         murks.field.clear();
@@ -723,8 +820,13 @@ fn live(
     let mut me = player.single_mut().ok();
     let full_body = MOTES - TENDRILS * TENDRIL_MOTES;
     let mut eaten: Vec<CellPos> = Vec::new();
+    let mut numbers = Vec::new();
     for m in &mut murks.list {
         m.age += dt;
+        m.impacts.retain_mut(|i| {
+            i.age += dt;
+            i.age < IMPACT_LIFE
+        });
         m.hurt = (m.hurt - dt * 2.5).max(0.0);
         m.scared = (m.scared - dt).max(0.0);
         m.lashed = (m.lashed - dt).max(0.0);
@@ -733,7 +835,13 @@ fn live(
         // What struck it.
         if m.dying.is_none() {
             for h in &hits {
-                take(m, h, &mut sparks, &mut sounds, tick);
+                if let Some(n) = take(m, h, &mut sparks, &mut sounds, tick) {
+                    // (At its heart: the world jolts.)
+                    if n.2 {
+                        trauma.0 = (trauma.0 + 0.3).min(1.0);
+                    }
+                    numbers.push(n);
+                }
             }
         }
         // Dead: scattering, fading; something left where its heart was.
@@ -1622,6 +1730,7 @@ fn live(
             sounds.write(crate::sound::PlaySound::at("murk_whisper", m.core).volume(v));
         }
     }
+    murks.numbers.extend(numbers);
     // Rubble eaten.
     for p in eaten {
         sim.world.set(p, platypus_sim::Cell::AIR);
@@ -1639,17 +1748,35 @@ fn live(
     }
 }
 
+/// A blow's flare and ripple last so long (s); the motes this far round
+/// where it landed (cells, and this much more a point of damage) are
+/// thrown back from it this hard (cells/s), drifting free a moment: a
+/// dent in it, filling back in.
+const IMPACT_LIFE: f32 = 0.34;
+const RIPPLE_R: (f32, f32) = (8.0, 0.3);
+const RIPPLE_KICK: f32 = 110.0;
+const RIPPLE_STUN: f32 = 0.16;
+/// A blow shoves the whole of it a little: cells/s a point of damage, at
+/// most this much.
+const SHOVE: (f32, f32) = (0.2, 6.0);
+/// What a blow landing shows at most at once.
+const IMPACTS: usize = 24;
+
 /// A shot or blast in it: the motes it meets gone (a tendril cut through
 /// there: what's past the cut drifts off), a blast's scattering the rest;
-/// its heart, if it got there.
-fn take(m: &mut Murk, h: &MurkHit, sparks: &mut crate::vfx::Sparks, sounds: &mut MessageWriter<crate::sound::PlaySound>, tick: u64) {
+/// its heart, if it got there. Each shows: a flare and a ripple where it
+/// landed, the motes round it thrown back, a spray of it, a wet tear of a
+/// sound. What it did, to float up: where, how much, at its heart.
+fn take(m: &mut Murk, h: &MurkHit, sparks: &mut crate::vfx::Sparks, sounds: &mut MessageWriter<crate::sound::PlaySound>, tick: u64) -> Option<(Vec2, f32, bool)> {
     let reach = body_radius(m.most) + REACH + h.blast * BLAST_SCATTERS + 20.0;
     let clumped = m.clumps.iter().any(|c| c.pos.distance(h.at) < 20.0 + h.blast * BLAST_SCATTERS);
     if h.at.distance(m.core) > reach && !clumped {
-        return;
+        return None;
     }
+    let mut heart = 0.0;
     if h.at.distance(m.core) < CORE_R + 1.5 + h.blast * 0.5 {
-        m.hp -= h.damage + h.blast * 2.0;
+        heart = h.damage + h.blast * 2.0;
+        m.hp -= heart;
         m.hurt = 1.0;
         m.scared = m.scared.max(0.8);
         m.scared_from = h.at - h.dir * 10.0;
@@ -1690,8 +1817,43 @@ fn take(m: &mut Murk, h: &MurkHit, sparks: &mut crate::vfx::Sparks, sounds: &mut
         }
     }
     if taken > 0 {
-        sparks.emit(&TEAR, (taken / 2).clamp(3, 30), h.at, -h.dir, Vec2::ZERO);
-        m.hurt = m.hurt.max(0.35);
+        sparks.emit(&TEAR, taken.clamp(6, 40), h.at, -h.dir, Vec2::ZERO);
+        m.hurt = m.hurt.max(0.45);
+    }
+    if taken == 0 && heart <= 0.0 {
+        return None;
+    }
+    // (A blow, not a blast: it dents it, and shoves it.)
+    if h.blast <= 0.0 {
+        let rr = RIPPLE_R.0 + h.damage * RIPPLE_R.1;
+        for o in m.motes.iter_mut().filter(|o| !matches!(o.role, Role::Loose | Role::Shard(_))) {
+            let d = o.pos.distance(h.at);
+            if d < rr {
+                let f = 1.0 - d / rr;
+                let out = (o.pos - h.at).normalize_or(h.dir);
+                o.vel += (out * 0.75 + h.dir * 0.45) * RIPPLE_KICK * f;
+                o.stun = o.stun.max(RIPPLE_STUN * f);
+            }
+        }
+        if h.shown {
+            m.vel += h.dir * (h.damage * SHOVE.0).min(SHOVE.1);
+        }
+    }
+    // (A spray of it back the way the blow came: bright flecks.)
+    if h.shown {
+        let n = (8.0 + h.damage * 0.7).min(34.0) as usize;
+        sparks.emit(if heart > 0.0 { &HEART_SPLASH } else { &SPLASH }, n, h.at, -h.dir, Vec2::ZERO);
+        let loud = (0.45 + h.damage / 40.0).min(1.0);
+        sounds.write(crate::sound::PlaySound::at("murk_hit", h.at).volume(loud).pitch(if heart > 0.0 { 0.7 } else { 1.0 }));
+    }
+    if m.impacts.len() >= IMPACTS {
+        m.impacts.remove(0);
+    }
+    m.impacts.push(Impact { at: h.at, dir: h.dir, power: if h.blast > 0.0 { h.blast } else { h.damage }, age: 0.0, heart: heart > 0.0 });
+    match () {
+        _ if heart > 0.0 => Some((h.at, heart, true)),
+        _ if h.shown => Some((h.at, h.damage, false)),
+        _ => None,
     }
 }
 
@@ -1805,6 +1967,27 @@ fn show(
         // (Brighter hunting, brightest charging; breathing.)
         let hot = if m.dying.is_some() { 0.0 } else { 0.6 + 0.25 * f32::from(m.hunting) + 0.5 * m.coil.max(f32::from(matches!(m.charge, Charge::Rush { .. }))) };
         let breathe = 0.8 + 0.2 * (t * 2.3 + m.seed as f32).sin();
+        // (Struck just now: the mass round the wound flares pale, fading
+        // as it fills back in.)
+        let lit: Vec<(Vec2, f32, f32, bool)> = m
+            .impacts
+            .iter()
+            .map(|i| {
+                let f = i.age / IMPACT_LIFE;
+                let r = if i.heart { 16.0 } else { (4.0 + i.power * 0.45).min(15.0) };
+                (i.at, r, (1.0 - f).powi(2), i.heart)
+            })
+            .collect();
+        let lit_at = |p: Vec2| {
+            lit.iter().fold((0.0f32, false), |(k, gold), &(at, r, s, heart)| {
+                let d = at.distance(p);
+                if d >= r {
+                    return (k, gold);
+                }
+                let here = (1.0 - d / r).powf(1.5) * s;
+                if here > k { (here, heart) } else { (k, gold) }
+            })
+        };
         for y in 0..h {
             for x in 0..w {
                 let (d, n) = (thick[y * w + x], here[y * w + x]);
@@ -1823,7 +2006,7 @@ fn show(
                 let edge = rim[y * w + x] == 1;
                 // (Inside: black, a dark sheen where a mote is (it moves in
                 // there); its edge violet; past it, fuzz.)
-                let (c, a) = match (d, edge, n > 0) {
+                let (c, a): ([f32; 3], f32) = match (d, edge, n > 0) {
                     (3.., false, false) => ([2.0, 0.0, 5.0], 1.0),
                     (3.., false, true) => ([10.0 + 8.0 * shimmer, 3.0, 22.0 + 14.0 * shimmer], 1.0),
                     (3.., true, true) => ([120.0 + 60.0 * shimmer, 62.0 + 26.0 * shimmer, 205.0 + 50.0 * shimmer], 0.97),
@@ -1833,7 +2016,55 @@ fn show(
                 };
                 // (Hurt: its edge flares.)
                 let c = if edge && flash > 0.0 { [c[0] + (190.0 - c[0]) * flash, c[1] + (120.0 - c[1]) * flash, c[2] + (255.0 - c[2]) * flash] } else { c };
+                let (k, gold) = if lit.is_empty() { (0.0, false) } else { lit_at(Vec2::new(cx as f32 + 0.5, cy as f32 + 0.5)) };
+                let (c, a) = if k > 0.0 {
+                    let to = if gold { [255.0, 228.0, 170.0] } else { [222.0, 190.0, 255.0] };
+                    let k = (k * 0.9).min(0.9);
+                    ([c[0] + (to[0] - c[0]) * k, c[1] + (to[1] - c[1]) * k, c[2] + (to[2] - c[2]) * k], a.max(k))
+                } else {
+                    (c, a)
+                };
                 px.put(cx, cy, rgba(c, a));
+            }
+        }
+        // Where it was struck: a white-hot point, and a ripple racing out
+        // through it (two, gold, at its heart), brighter in its thick.
+        for i in &m.impacts {
+            let f = i.age / IMPACT_LIFE;
+            let (pale, deep) = if i.heart { ([255.0, 246.0, 220.0], [255.0, 190.0, 110.0]) } else { ([246.0, 236.0, 255.0], [196.0, 150.0, 255.0]) };
+            if f < 0.3 {
+                let r = (1.4 + i.power * 0.07).min(if i.heart { 5.0 } else { 3.5 });
+                let a = 1.0 - f / 0.3;
+                let ri = r.ceil() as i32;
+                let c = i.at.floor().as_ivec2();
+                for dy in -ri..=ri {
+                    for dx in -ri..=ri {
+                        let l = Vec2::new(dx as f32, dy as f32).length();
+                        if l <= r {
+                            px.put(c.x + dx, c.y + dy, rgba(pale, a * (1.0 - 0.4 * l / r)));
+                        }
+                    }
+                }
+            }
+            let reach = if i.heart { 22.0 } else { (6.0 + i.power * 0.5).min(18.0) };
+            let rings: &[f32] = if i.heart { &[1.0, 0.6] } else { &[1.0] };
+            for &share in rings {
+                let out = 1.0 - (1.0 - f).powi(3);
+                let r = 1.5 + reach * share * out;
+                let a = 0.9 * (1.0 - f).powf(1.5);
+                let steps = (r * TAU * 1.4).ceil().max(8.0) as usize;
+                for s in 0..steps {
+                    let q = i.at + Vec2::from_angle(s as f32 / steps as f32 * TAU) * r;
+                    let cell = q.floor().as_ivec2();
+                    let inside = {
+                        let at = cell - lo;
+                        at.x >= 0 && at.y >= 0 && (at.x as usize) < w && (at.y as usize) < h && thick[at.y as usize * w + at.x as usize] >= 3
+                    };
+                    // (Leaning the way the blow went: brighter on its far side.)
+                    let ahead = 0.75 + 0.25 * (q - i.at).normalize_or_zero().dot(i.dir);
+                    let c = if inside { pale } else { deep };
+                    px.put(cell.x, cell.y, rgba(c, a * ahead * if inside { 1.0 } else { 0.7 }));
+                }
             }
         }
         if m.dying.is_some() {

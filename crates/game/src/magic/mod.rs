@@ -1104,7 +1104,7 @@ fn fly(
                 if murks.thick(next) {
                     let damage = s.cast.payloads.iter().map(|p| if let &Payload::Damage(d) = p { d } else { 0.0 }).sum();
                     let blast = s.cast.payloads.iter().map(|p| match *p { Payload::Blast { radius, .. } => radius as f32, Payload::Nova { radius, .. } => radius as f32, _ => 0.0 }).fold(0.0, f32::max);
-                    murks.struck(crate::murk::MurkHit { at: next, dir: s.vel.normalize_or(Vec2::X), damage, blast });
+                    murks.struck(crate::murk::MurkHit { at: next, dir: s.vel.normalize_or(Vec2::X), damage, blast, shown: true });
                     end = Some((None, Vec2::ZERO));
                     break;
                 }
