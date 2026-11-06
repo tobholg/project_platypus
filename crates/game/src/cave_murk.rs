@@ -25,7 +25,7 @@ use bevy::prelude::*;
 use platypus_sim::rng::hash;
 use platypus_sim::{CellPos, Kind};
 
-use crate::creatures::Kinematics;
+use crate::creatures::{Harm, Health, Kinematics};
 use crate::creatures::player::LocalPlayer;
 use crate::light::LightSource;
 use crate::magic::runes::Emitter;
@@ -46,7 +46,7 @@ impl Plugin for CaveMurkPlugin {
 }
 
 /// Motes in it.
-const MOTES: usize = 760;
+const MOTES: usize = 1500;
 /// Its motes' weight (cells/s²; you fall at 1350).
 const GRAVITY: f32 = 480.0;
 /// Motes closer than this (cells) push apart, this hard; and drag each
@@ -56,19 +56,19 @@ const PRESS: f32 = 1400.0;
 const THICKNESS: f32 = 9.0;
 /// Drawn to its heart: so hard a cell off, no harder than at so far.
 const PULL: f32 = 55.0;
-const PULL_FAR: f32 = 18.0;
+const PULL_FAR: f32 = 24.0;
 /// Against rock: what's left of its weight (it sticks), and how much it
 /// drags (s⁻¹). Climbing, it gathers itself: none of its weight against
 /// rock, this much off it (it hauls itself up its own film), drawn to its
 /// heart so much harder.
 const CLING: f32 = 0.12;
-const CLIMB_WEIGHT: f32 = 0.18;
-const CLIMB_PULL: f32 = 1.4;
+const CLIMB_WEIGHT: f32 = 0.08;
+const CLIMB_PULL: f32 = 1.8;
 const STICKY: f32 = 3.5;
 /// Its heart: how fast it goes (cells/s), how hard it's held to its mass.
 /// It goes on while so much of it's this near its heart (cells).
 const KEEP: f32 = 0.22;
-const KEEP_R: f32 = 10.0;
+const KEEP_R: f32 = 14.0;
 const CRAWL: f32 = 34.0;
 const HELD: f32 = 6.0;
 /// Waited this long (s) for its mass, its heart goes back to it.
@@ -76,23 +76,34 @@ const WAIT: f32 = 2.5;
 /// Behind its heart (more than this far back along its way: its cost,
 /// two a cell), it flows along its way this fast (cells/s), so hard.
 const FLOW_BEHIND: u32 = 16;
-const FLOW_FROM: f32 = 16.0;
+const FLOW_FROM: f32 = 22.0;
 const FLOW: f32 = 120.0;
 const FLOW_K: f32 = 5.0;
 /// Its heart's hollow (cells), and its glow.
-const CORE_R: f32 = 3.5;
+const CORE_R: f32 = 4.5;
 /// It looks for its way (to you) every so many ticks; it comes for you
 /// from so far (cells).
 const PATH_EVERY: u64 = 12;
 /// Its motes it finds the way for, no further off its mass than this.
 const SPREAD_MOST: i32 = 220;
+/// And round it all so far (cells): a way out round the long way.
+const MARGIN: i32 = 64;
 const AGGRO: f32 = 260.0;
+/// Once after you, it gives up only this far off.
+const LEASH: f32 = 420.0;
 /// Its way: the point so many cells along it.
 const AHEAD: usize = 14;
 /// Falling this fast (cells/s), then stopped: a splat.
 const SPLAT_FROM: f32 = 100.0;
 /// Fastest a mote goes (cells/s).
 const TOP: f32 = 520.0;
+/// Its middle: its motes so near its heart (cells).
+const MASS_R: f32 = 34.0;
+/// Over you: so many of its motes on you, it eats at you (health/s) and
+/// holds you (drag, s⁻¹).
+const ENGULF: usize = 50;
+const ENGULF_HIT: f32 = 8.0;
+const ENGULF_DRAG: f32 = 5.0;
 
 fn unit(seed: &[u64]) -> f32 {
     (hash(seed) % 100_000) as f32 / 100_000.0
@@ -141,6 +152,8 @@ pub struct CaveMurk {
     light: Entity,
     seed: u64,
     age: f32,
+    /// Eating at you: since its last gulp (s).
+    ate: f32,
 }
 
 #[derive(Resource, Default)]
@@ -162,7 +175,7 @@ impl CaveMurks {
                 Mote { pos, vel: Vec2::ZERO, stuck: false, floor: false }
             })
             .collect();
-        self.list.push(CaveMurk { heart: at, mass: at, mass_vel: Vec2::ZERO, motes, way: Vec::new(), goal: None, field: None, fall: 0.0, waited: 0.0, splat: 0.0, light, seed, age: 0.0 });
+        self.list.push(CaveMurk { heart: at, mass: at, mass_vel: Vec2::ZERO, motes, way: Vec::new(), goal: None, field: None, fall: 0.0, waited: 0.0, splat: 0.0, light, seed, age: 0.0, ate: 0.0 });
     }
 
     /// Each: its heart, its mass's middle, how many of its motes are
@@ -237,6 +250,9 @@ const WALL: u32 = 3;
 const CEILING: u32 = 7;
 const FALL: u32 = 1;
 const AIR: u32 = 14;
+/// Up through open air: it can't (it falls back), but a cell or two up
+/// off a floor to you, it can reach.
+const UP_AIR: u32 = 48;
 
 /// Its way to `to`, from `from`: the cells, through a crack a cell wide,
 /// keeping to rock (along floors, up walls, over ceilings: it creeps, it
@@ -246,8 +262,8 @@ fn find_way(sim: &SimWorld, from: Vec2, to: Vec2, spread: (Vec2, Vec2)) -> (Vec<
     let (a, b) = (from.floor().as_ivec2(), to.floor().as_ivec2());
     // (Round it all: it, where it's going, and all of its motes (no
     // further off it than `SPREAD_MOST`).)
-    let lo = a.min(b).min(spread.0.floor().as_ivec2().max(a - IVec2::splat(SPREAD_MOST))) - IVec2::splat(24);
-    let hi = a.max(b).max(spread.1.floor().as_ivec2().min(a + IVec2::splat(SPREAD_MOST))) + IVec2::splat(24);
+    let lo = a.min(b).min(spread.0.floor().as_ivec2().max(a - IVec2::splat(SPREAD_MOST))) - IVec2::splat(MARGIN);
+    let hi = a.max(b).max(spread.1.floor().as_ivec2().min(a + IVec2::splat(SPREAD_MOST))) + IVec2::splat(MARGIN);
     let (w, h) = ((hi.x - lo.x + 1) as usize, (hi.y - lo.y + 1) as usize);
     let idx = |p: IVec2| -> Option<usize> {
         let q = p - lo;
@@ -279,75 +295,70 @@ fn find_way(sim: &SimWorld, from: Vec2, to: Vec2, spread: (Vec2, Vec2)) -> (Vec<
     let near_open = |p: IVec2| (0..6).flat_map(|r| (-r..=r).flat_map(move |dy| (-r..=r).map(move |dx| p + IVec2::new(dx, dy)))).find_map(|q| idx(q).filter(|&i| open[i]));
     let (Some(bi), Some(ai)) = (near_open(b), near_open(a)) else { return (Vec::new(), None) };
     // (Out from where it's going, cheapest first (a bucket a cost), so the
-    // way's read back from its heart: each cell's next toward it.)
-    let mut cost = vec![u32::MAX; w * h];
-    let mut next = vec![u32::MAX; w * h];
-    let mut buckets: Vec<Vec<u32>> = vec![Vec::new(); 64];
-    cost[bi] = 0;
-    next[bi] = bi as u32;
-    buckets[0].push(bi as u32);
-    let mut c = 0u32;
-    let mut left = 1usize;
-    while left > 0 {
-        let slot = (c % 64) as usize;
-        let Some(qi) = buckets[slot].pop() else {
-            c += 1;
-            continue;
-        };
-        left -= 1;
-        let qi = qi as usize;
-        if cost[qi] != c {
-            continue;
-        }
-        if qi == ai {
-            break;
-        }
-        let q = at(qi);
-        for s in steps {
-            // (From `p` to `q`: a step back along the way.)
-            let p = q - s;
-            let Some(pi) = idx(p) else { continue };
-            if !open[pi] {
+    // way's read back from its heart: each cell's next toward it. All of
+    // it round: what's behind it needs its way too.)
+    let flood = |bi: usize| {
+        let mut cost = vec![u32::MAX; w * h];
+        let mut next = vec![u32::MAX; w * h];
+        let mut buckets: Vec<Vec<u32>> = vec![Vec::new(); 64];
+        cost[bi] = 0;
+        next[bi] = bi as u32;
+        buckets[0].push(bi as u32);
+        let mut c = 0u32;
+        let mut left = 1usize;
+        while left > 0 {
+            let slot = (c % 64) as usize;
+            let Some(qi) = buckets[slot].pop() else {
+                c += 1;
+                continue;
+            };
+            left -= 1;
+            let qi = qi as usize;
+            if cost[qi] != c {
                 continue;
             }
-            let step = if road[qi] > 0 { road[qi] } else if s == IVec2::NEG_Y { FALL } else { AIR };
-            let k = c + step;
-            if k < cost[pi] {
-                cost[pi] = k;
-                next[pi] = qi as u32;
-                buckets[(k % 64) as usize].push(pi as u32);
-                left += 1;
+            let q = at(qi);
+            for s in steps {
+                // (From `p` to `q`: a step back along the way.)
+                let p = q - s;
+                let Some(pi) = idx(p) else { continue };
+                if !open[pi] {
+                    continue;
+                }
+                let step = if road[qi] > 0 { road[qi] } else if s == IVec2::NEG_Y { FALL } else if s == IVec2::Y { UP_AIR } else { AIR };
+                let k = c + step;
+                if k < cost[pi] {
+                    cost[pi] = k;
+                    next[pi] = qi as u32;
+                    buckets[(k % 64) as usize].push(pi as u32);
+                    left += 1;
+                }
             }
         }
-    }
-    // (Finish the rest round it: what's behind it needs its way too.)
-    while left > 0 {
-        let slot = (c % 64) as usize;
-        let Some(qi) = buckets[slot].pop() else {
-            c += 1;
-            continue;
-        };
-        left -= 1;
-        let qi = qi as usize;
-        if cost[qi] != c {
-            continue;
-        }
-        let q = at(qi);
-        for s in steps {
-            let p = q - s;
-            let Some(pi) = idx(p) else { continue };
-            if !open[pi] {
-                continue;
-            }
-            let step = if road[qi] > 0 { road[qi] } else if s == IVec2::NEG_Y { FALL } else { AIR };
-            let k = c + step;
-            if k < cost[pi] {
-                cost[pi] = k;
-                next[pi] = qi as u32;
-                buckets[(k % 64) as usize].push(pi as u32);
-                left += 1;
+        (cost, next)
+    };
+    let (mut cost, mut next) = flood(bi);
+    let mut bi = bi;
+    // (No way to you from here (you're in another cave, or round further
+    // than it looks): as near you as it can get, then; it waits there.)
+    if next[ai] == u32::MAX {
+        let mut seen = vec![false; w * h];
+        let mut todo = vec![ai];
+        seen[ai] = true;
+        let mut best = (at(ai).distance_squared(b), ai);
+        while let Some(qi) = todo.pop() {
+            for s in steps {
+                let Some(pi) = idx(at(qi) + s).filter(|&j| open[j] && !seen[j]) else { continue };
+                seen[pi] = true;
+                best = best.min((at(pi).distance_squared(b), pi));
+                todo.push(pi);
             }
         }
+        if best.1 == ai {
+            return (Vec::new(), None);
+        }
+        (cost, next) = flood(best.1);
+        bi = best.1;
     }
     if next[ai] == u32::MAX {
         return (Vec::new(), None);
@@ -362,20 +373,20 @@ fn find_way(sim: &SimWorld, from: Vec2, to: Vec2, spread: (Vec2, Vec2)) -> (Vec<
 }
 
 /// Each cave murk's life, a tick: its way, its heart, its motes.
-fn live(mut sim: ResMut<SimWorld>, mut murks: ResMut<CaveMurks>, player: Query<&Kinematics, With<LocalPlayer>>, mut hearts: Query<&mut Transform, With<CaveLight>>, mut sparks: ResMut<crate::vfx::Sparks>, mut sounds: MessageWriter<crate::sound::PlaySound>) {
+fn live(mut sim: ResMut<SimWorld>, mut murks: ResMut<CaveMurks>, mut player: Query<(&mut Kinematics, &mut Health), With<LocalPlayer>>, mut hearts: Query<&mut Transform, With<CaveLight>>, mut sparks: ResMut<crate::vfx::Sparks>, mut sounds: MessageWriter<crate::sound::PlaySound>) {
     if murks.list.is_empty() {
         return;
     }
     let sim = &mut *sim;
     let dt = 1.0 / TICK_HZ as f32;
     let tick = sim.world.tick();
-    let you = player.single().ok().map(|k| k.body.pos);
+    let you = player.single().ok().map(|(k, _)| k.body.pos);
     let goal = murks.goal.or(you);
     for m in &mut murks.list {
         m.age += dt;
         m.splat = (m.splat - dt * 1.5).max(0.0);
         // Its way: to you, when you're near enough.
-        let target = goal.filter(|g| g.distance(m.heart) < AGGRO);
+        let target = goal.filter(|g| g.distance(m.heart) < if m.goal.is_some() { LEASH } else { AGGRO });
         if (tick + m.seed).is_multiple_of(PATH_EVERY) || target.is_some() != m.goal.is_some() {
             let spread = m.motes.iter().fold((Vec2::MAX, Vec2::MIN), |(lo, hi), o| (lo.min(o.pos), hi.max(o.pos)));
             (m.way, m.field) = target.map_or((Vec::new(), None), |g| find_way(sim, m.mass, g, spread));
@@ -387,7 +398,7 @@ fn live(mut sim: ResMut<SimWorld>, mut murks: ResMut<CaveMurks>, player: Query<&
         }
         // Its mass's middle: what's near its heart (a trickle off through a
         // crack isn't it).
-        let (sum, n) = m.motes.iter().filter(|o| o.pos.distance(m.heart) < 26.0).fold((Vec2::ZERO, 0.0), |(s, n), o| (s + o.pos, n + 1.0));
+        let (sum, n) = m.motes.iter().filter(|o| o.pos.distance(m.heart) < MASS_R).fold((Vec2::ZERO, 0.0), |(s, n), o| (s + o.pos, n + 1.0));
         let mass = if n > 0.0 { sum / n } else { m.motes.iter().fold(Vec2::ZERO, |s, o| s + o.pos) / m.motes.len().max(1) as f32 };
         let vel = (mass - m.mass) / dt;
         // (Falling fast, then not: it splats.)
@@ -416,7 +427,7 @@ fn live(mut sim: ResMut<SimWorld>, mut murks: ResMut<CaveMurks>, player: Query<&
         let unheld = ![IVec2::X, IVec2::NEG_X, IVec2::Y, IVec2::NEG_Y, IVec2::new(0, -2)].iter().any(|s| solid_cell(sim, hc + *s));
         let landed = solid_cell(sim, hc - IVec2::Y) || solid_cell(sim, hc - IVec2::new(0, 2));
         let dropping = (unheld && on.is_some_and(|n| n.y < m.heart.y - 0.3)) || (m.fall > 0.0 && !landed);
-        m.fall = if dropping { m.fall + GRAVITY * dt } else { 0.0 };
+        m.fall = if dropping { (m.fall + GRAVITY * dt).min(TOP) } else { 0.0 };
         let (want, speed) = match on {
             Some(_) if dropping => (m.heart - Vec2::Y * 50.0, m.fall.max(CRAWL)),
             Some(n) if round > KEEP => (n, CRAWL),
@@ -425,13 +436,20 @@ fn live(mut sim: ResMut<SimWorld>, mut murks: ResMut<CaveMurks>, player: Query<&
         };
         m.waited = if speed == 0.0 { m.waited + dt } else if round > KEEP { 0.0 } else { m.waited };
         let step = ((want - m.heart) * HELD).clamp_length_max(speed) * dt;
-        let next = m.heart + step;
-        if !solid(sim, next) {
-            m.heart = next;
-        } else if !solid(sim, Vec2::new(next.x, m.heart.y)) {
-            m.heart.x = next.x;
-        } else if !solid(sim, Vec2::new(m.heart.x, next.y)) {
-            m.heart.y = next.y;
+        // (Less than a cell at a time, an axis at a time: it lands on what
+        // it falls onto, however fast.)
+        let n = (step.abs().max_element() / 0.8).ceil().max(1.0) as usize;
+        let s = step / n as f32;
+        for _ in 0..n {
+            if !solid(sim, Vec2::new(m.heart.x + s.x, m.heart.y)) {
+                m.heart.x += s.x;
+            }
+            if !solid(sim, Vec2::new(m.heart.x, m.heart.y + s.y)) {
+                m.heart.y += s.y;
+            } else if s.y < 0.0 {
+                m.fall = 0.0;
+                break;
+            }
         }
         // Its motes: pressing apart, dragging each other, drawn to its
         // heart, weighed down (less against rock: it sticks).
@@ -525,6 +543,21 @@ fn live(mut sim: ResMut<SimWorld>, mut murks: ResMut<CaveMurks>, player: Query<&
             let c = o.pos.floor().as_ivec2();
             o.floor = solid_cell(sim, c - IVec2::Y);
             o.stuck = o.floor || [IVec2::X, IVec2::NEG_X, IVec2::Y].iter().any(|s| solid_cell(sim, c + *s));
+        }
+        // Over you: it eats at you, and holds you in it.
+        if let Ok((mut k, mut h)) = player.single_mut() {
+            let (lo, hi) = (k.body.pos - k.body.half - Vec2::ONE, k.body.pos + k.body.half + Vec2::ONE);
+            let on = m.motes.iter().filter(|o| o.pos.cmpge(lo).all() && o.pos.cmple(hi).all()).count();
+            if on >= ENGULF {
+                let k = &mut *k;
+                k.body.vel *= 1.0 - (ENGULF_DRAG * dt).min(1.0);
+                h.harm_by(ENGULF_HIT * dt, Harm::Void, || crate::death::Cause::new("The cave murk", "swallowed by the cave murk"));
+                m.ate += dt;
+                if m.ate > 0.4 {
+                    m.ate = 0.0;
+                    sounds.write(crate::sound::PlaySound::at("murk_hit", k.body.pos).volume(0.35).pitch(0.6));
+                }
+            }
         }
         if let Ok(mut tf) = hearts.get_mut(m.light) {
             tf.translation = m.heart.extend(tf.translation.z);

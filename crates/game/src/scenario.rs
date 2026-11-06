@@ -227,6 +227,9 @@
 //!   to the chamber you're held in) and a cave murk put down at its far
 //!   end (2 s): it should pour into the pit, climb out, and squeeze
 //!   through the crack to you. Logs where it is every half second.
+//!   With `PLATYPUS_SURVEY_AT=cave` (or `deep`): in a real cave instead,
+//!   summoned `CAVEMURK_FAR` (90) cells off, somewhere air reaches you
+//!   from; `CAVEMURK_MORTAL=1` turns god mode off (it eats at you).
 //! - `murk` (`PLATYPUS_SURVEY_AT=space`) a murk summoned 130 cells off the player
 //!   (`PLATYPUS_MURK_AT`: another distance)
 //!   (in the void gear) at 1 s; `PLATYPUS_MURK_TEST=watch` (the default) lets
@@ -6094,7 +6097,7 @@ fn cavemurk_script(
     mut commands: Commands,
     s: Res<Scenario>,
     mut sim: ResMut<SimWorld>,
-    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    mut player: Query<(&mut Kinematics, &crate::creatures::Health), With<LocalPlayer>>,
     mut murks: ResMut<crate::cave_murk::CaveMurks>,
     mut cheats: ResMut<crate::devmenu::Cheats>,
     mut st: Local<(u8, f32, Vec2)>,
@@ -6103,9 +6106,54 @@ fn cavemurk_script(
         return;
     }
     let t = s.elapsed;
-    let Ok(mut k) = player.single_mut() else { return };
-    cheats.god = true;
+    let Ok((mut k, health)) = player.single_mut() else { return };
+    cheats.god = std::env::var("CAVEMURK_MORTAL").is_err();
     let (step, next, o) = &mut *st;
+    // (In a real cave (`PLATYPUS_SURVEY_AT=cave` or `deep`): you stood on
+    // the floor, it summoned in the open, as far off as `CAVEMURK_FAR`
+    // (90), somewhere air reaches you from. `CAVEMURK_MORTAL`: no god mode.)
+    if std::env::var("PLATYPUS_SURVEY_AT").is_ok() {
+        // (Stood on the floor under where the survey left you.)
+        if *step == 0 && t > 2.8 && *next == 0.0 {
+            let solid = |x: i32, y: i32| sim.world.get(CellPos::new(x, y)).is_none_or(|c| !c.is_air());
+            let (x, y) = (k.body.pos.x as i32, (k.body.pos.y - k.body.half.y) as i32);
+            if let Some(d) = (0..200).find(|d| solid(x, y - d)) {
+                k.body.pos.y = (y - d + 1) as f32 + k.body.half.y + 0.05;
+                k.body.vel = Vec2::ZERO;
+            }
+            *next = 1.0;
+        }
+        let you = k.body.pos;
+        if *step == 0 && t > 3.5 {
+            let air = |x: i32, y: i32| sim.world.get(CellPos::new(x, y)).is_some_and(|c| c.is_air());
+            // (Open to you: a fill from you, through air, so far.)
+            let far: i32 = std::env::var("CAVEMURK_FAR").ok().and_then(|v| v.parse().ok()).unwrap_or(90);
+            let mut reach = std::collections::HashSet::new();
+            let mut todo = vec![(you.x as i32, you.y as i32)];
+            while let Some((x, y)) = todo.pop() {
+                if (x - you.x as i32).abs() > far + 20 || (y - you.y as i32).abs() > far + 20 || !air(x, y) || !reach.insert((x, y)) {
+                    continue;
+                }
+                todo.extend([(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]);
+            }
+            let mut spots: Vec<(i32, i32)> = reach.iter().copied().filter(|&(x, y)| (-3..=3).all(|i| (-3..=3).all(|j| reach.contains(&(x + i, y + j)))) && !air(x, y - 6)).collect();
+            spots.sort_by_key(|&(x, y)| (((x as f32 - you.x).hypot(y as f32 - you.y) - far as f32).abs() as i32, x, y));
+            let spot = spots.first().copied();
+            let Some((x, y)) = spot else { return error!("cavemurk: no open spot near {you:?}") };
+            *o = Vec2::new(x as f32, y as f32);
+            murks.summon(&mut commands, *o, 0xCA11);
+            info!("cavemurk: real cave, you at {you:?}, summoned at {o:?} ({:.0} off)", o.distance(you));
+            *step = 3;
+            *next = t;
+        }
+        if *step == 3 && t >= *next {
+            *next += 0.5;
+            for (heart, mass, stuck, way) in murks.about() {
+                info!("cavemurk: t {t:.1} heart ({:.0}, {:.0}) mass ({:.0}, {:.0}) to you {:.0} stuck {stuck} way {way} hp {:.0}", heart.x, heart.y, mass.x, mass.y, heart.distance(you), health.hp);
+            }
+        }
+        return;
+    }
     if *step == 0 && t > 0.4 {
         *o = (k.body.pos + Vec2::new(-290.0, 300.0)).floor();
         *step = 1;
