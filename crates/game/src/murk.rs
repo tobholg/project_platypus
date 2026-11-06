@@ -2112,48 +2112,6 @@ fn show(
                 }
             }
         }
-        // Its maw: a throat glowing dull red where it's parted, pale fangs
-        // along its lips.
-        if m.maw > 0.15 {
-            let r_body = body_radius(m.motes.iter().filter(|o| o.role == Role::Body).count());
-            let (at, gap) = (m.maw_dir.to_angle(), 0.8 * m.maw);
-            let reach = r_body * 1.25;
-            let ri = reach.ceil() as i32;
-            let c = m.core;
-            for dy in -ri..=ri {
-                for dx in -ri..=ri {
-                    let d = Vec2::new(dx as f32, dy as f32);
-                    let l = d.length();
-                    if l > reach || l < 1.0 {
-                        continue;
-                    }
-                    let off = ((d.to_angle() - at + std::f32::consts::PI).rem_euclid(TAU) - std::f32::consts::PI).abs();
-                    if off > gap * 0.85 {
-                        continue;
-                    }
-                    let k = (1.0 - l / reach) * (1.0 - off / gap) * m.maw;
-                    let pulse = 0.75 + 0.25 * (t * 9.0 - l * 0.4).sin();
-                    px.put((c.x + d.x).floor() as i32, (c.y + d.y).floor() as i32, rgba([110.0 * pulse, 12.0, 46.0 * pulse], (0.85 * k).min(0.8)));
-                }
-            }
-            // (Fangs: along each lip, pointing in across the opening.)
-            for side in [-1.0f32, 1.0] {
-                let lip = Vec2::from_angle(at + side * gap * 0.85);
-                let inward = Vec2::from_angle(at + side * gap * 0.85 - side * std::f32::consts::FRAC_PI_2);
-                let mut l = HOLLOW + 1.0;
-                while l < r_body * 1.1 {
-                    let base = c + lip * l;
-                    let long = 1.0 + 2.5 * m.maw * (1.0 - l / (r_body * 1.1));
-                    let mut f = 0.0;
-                    while f <= long {
-                        let q = base + inward * f;
-                        px.put(q.x.floor() as i32, q.y.floor() as i32, rgba([232.0, 220.0, 250.0], 0.95));
-                        f += 0.7;
-                    }
-                    l += 3.2;
-                }
-            }
-        }
         // Its heart, beating in its hollow (bigger, brighter, bared).
         let beat = (t * TAU * if m.hunting { 1.6 } else { 0.9 }).sin().max(0.0).powi(3);
         let bare = m.maw;
