@@ -902,7 +902,7 @@ fn rebuild(
             commands.entity(e).despawn_related::<Children>();
             let packs: Vec<String> = crate::creatures::spawn::packs().into_keys().filter(|k| matches(k)).collect();
             // (And the murk: not a creature, placed as one.)
-            let kinds: Vec<String> = crate::arena::creature_kinds().into_iter().chain([crate::murk::KIND.to_string()]).filter(|k| matches(k)).collect();
+            let kinds: Vec<String> = crate::arena::creature_kinds().into_iter().chain([crate::murk::KIND.to_string(), crate::cave_murk::KIND.to_string()]).filter(|k| matches(k)).collect();
             commands.entity(e).with_children(|p| {
                 for (name, list) in [("Packs (packs.ron)", packs), ("Kinds", kinds)] {
                     if list.is_empty() {

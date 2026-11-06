@@ -222,6 +222,11 @@
 //!   in a three-cell water puddle (a little wet, not put out: logs it at
 //!   4.4 s; `PLATYPUS_SCENARIO_SECS=5.3` for a screenshot of it), then into
 //!   deep water (the acid washed off, the fire out)
+//! - `cavemurk` a stone course built high over the start (a corridor, a
+//!   pit 45 deep, a wall to climb out of it, a crack a cell high through
+//!   to the chamber you're held in) and a cave murk put down at its far
+//!   end (2 s): it should pour into the pit, climb out, and squeeze
+//!   through the crack to you. Logs where it is every half second.
 //! - `murk` (`PLATYPUS_SURVEY_AT=space`) a murk summoned 130 cells off the player
 //!   (`PLATYPUS_MURK_AT`: another distance)
 //!   (in the void gear) at 1 s; `PLATYPUS_MURK_TEST=watch` (the default) lets
@@ -469,6 +474,7 @@ impl Plugin for ScenarioPlugin {
             .add_systems(PreUpdate, guns_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(Update, spaceboots_script)
             .add_systems(PreUpdate, murk_script.after(InputSystems).before(crate::camera::track_cursor))
+            .add_systems(PreUpdate, cavemurk_script.after(InputSystems).before(crate::camera::track_cursor))
             .add_systems(PreUpdate, (hands_script, chest_script, drop_script, chestfall_script, zoom_script, shroom_script, magic_script, shock_script, inventory_script, well_script, force_script, wellwater_script, splash_script, airjump_script, critters_script, arena_script, wands_script, melee_script, fight_script, archery_script).after(InputSystems).before(crate::camera::track_cursor));
     }
 }
@@ -6080,6 +6086,66 @@ fn dig_script(mut commands: Commands, s: Res<Scenario>, mut sim: ResMut<SimWorld
     if *step == 1 && t > s.duration - 1.2 {
         info!("dig: the spider isn't in ({wall}); {d:.0} away at the end");
         *step = 3;
+    }
+}
+
+/// `cavemurk`: see the list at the top.
+fn cavemurk_script(
+    mut commands: Commands,
+    s: Res<Scenario>,
+    mut sim: ResMut<SimWorld>,
+    mut player: Query<&mut Kinematics, With<LocalPlayer>>,
+    mut murks: ResMut<crate::cave_murk::CaveMurks>,
+    mut cheats: ResMut<crate::devmenu::Cheats>,
+    mut st: Local<(u8, f32, Vec2)>,
+) {
+    if s.name != "cavemurk" {
+        return;
+    }
+    let t = s.elapsed;
+    let Ok(mut k) = player.single_mut() else { return };
+    cheats.god = true;
+    let (step, next, o) = &mut *st;
+    if *step == 0 && t > 0.4 {
+        *o = (k.body.pos + Vec2::new(-290.0, 300.0)).floor();
+        *step = 1;
+    }
+    if *step == 0 {
+        return;
+    }
+    // (Held in the chamber.)
+    let o = *o;
+    k.body.pos = o + Vec2::new(290.0, 61.0 + k.body.half.y);
+    k.body.vel = Vec2::ZERO;
+    if *step == 1 && t > 1.4 {
+        let Some(stone) = sim.materials().id("stone") else { return error!("cavemurk: no stone") };
+        let open = |x: i32, y: i32| {
+            let inr = |a: i32, b: i32, c: i32, d: i32| (a..b).contains(&x) && (c..d).contains(&y);
+            inr(10, 110, 60, 80) || inr(110, 170, 15, 80) || inr(92, 110, 15, 50) || inr(170, 250, 60, 80) || (inr(250, 256, 62, 63)) || inr(256, 310, 60, 90)
+        };
+        let mut missed = 0;
+        for x in 0..320 {
+            for y in 0..130 {
+                let c = if open(x, y) { platypus_sim::Cell::AIR } else { platypus_sim::Cell::new(stone, ((x * 7 + y * 13) & 255) as u8) };
+                if !sim.world.set(CellPos::new(o.x as i32 + x, o.y as i32 + y), c) {
+                    missed += 1;
+                }
+            }
+        }
+        info!("cavemurk: course built at {o:?} ({missed} cells not set)");
+        *step = 2;
+    }
+    if *step == 2 && t > 2.0 {
+        murks.summon(&mut commands, o + Vec2::new(40.0, 70.0), 0xCA11);
+        *step = 3;
+        *next = t;
+    }
+    if *step == 3 && t >= *next {
+        *next += 0.5;
+        for (((heart, mass, stuck, way), past), cover) in murks.about().into_iter().zip(murks.past(o.x + 253.0)).zip(murks.cover()) {
+            let (h, m) = (heart - o, mass - o);
+            info!("cavemurk: t {t:.1} heart ({:.0}, {:.0}) mass ({:.0}, {:.0}) stuck {stuck} way {way} through {past} cover {cover}", h.x, h.y, m.x, m.y);
+        }
     }
 }
 

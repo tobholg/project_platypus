@@ -248,6 +248,7 @@ fn debug_spawn(
     player: Query<&Kinematics, With<LocalPlayer>>,
     mut tape: ResMut<crate::replay::Tape>,
     mut murks: ResMut<crate::murk::Murks>,
+    mut caves: ResMut<crate::cave_murk::CaveMurks>,
 ) {
     // Played back: what was put down then, as it was (asks now ignored).
     let asked: Vec<(String, Vec2)> = if tape.playing() {
@@ -269,6 +270,10 @@ fn debug_spawn(
         // (The murk's no creature: its motes are its own, `murk.rs`.)
         if kind == crate::murk::KIND {
             murks.summon(&mut commands, at, platypus_sim::rng::hash(&[at.x.to_bits() as u64, at.y.to_bits() as u64, 0x3A12]));
+            continue;
+        }
+        if kind == crate::cave_murk::KIND {
+            caves.summon(&mut commands, at, crate::cave_murk::seed_at(at));
             continue;
         }
         let Some(pack) = packs().remove(&kind) else {
