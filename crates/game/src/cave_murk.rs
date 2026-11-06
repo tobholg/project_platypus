@@ -20,7 +20,7 @@
 //! Like the space murk, not in the cell grid: points, reading the grid for
 //! rock, drawn a cell at a time on a canvas.
 
-use bevy::platform::collections::HashMap;
+use bevy::platform::collections::{HashMap, HashSet};
 use bevy::prelude::*;
 use platypus_sim::rng::hash;
 use platypus_sim::{CellPos, Kind};
@@ -101,9 +101,25 @@ const TOP: f32 = 520.0;
 const MASS_R: f32 = 34.0;
 /// Over you: so many of its motes on you, it eats at you (health/s) and
 /// holds you (drag, s⁻¹).
-const ENGULF: usize = 50;
+const ENGULF: usize = 40;
 const ENGULF_HIT: f32 = 8.0;
 const ENGULF_DRAG: f32 = 5.0;
+/// It starts eating at you with so few of its motes on you (more, harder,
+/// full at `ENGULF`); this near you (cells), it reaches for you: its motes
+/// so near you climb you, this hard.
+const ENGULF_FROM: usize = 6;
+const REACH: f32 = 18.0;
+const GRAB_R: f32 = 12.0;
+const GRAB: f32 = 900.0;
+/// Cut off from its body (no drop touching it back to its heart), a drop
+/// barely feels its heart (it falls, it doesn't fly back); cut off this
+/// long (s), it seeps back to it through the rock this fast (cells/s);
+/// touching it again, it's its body again.
+const LOOSE: f32 = 0.08;
+/// Its body's told block by block, so big (cells).
+const BLOCK: f32 = 4.0;
+const SEEP_AFTER: f32 = 2.0;
+const SEEP: f32 = 45.0;
 
 fn unit(seed: &[u64]) -> f32 {
     (hash(seed) % 100_000) as f32 / 100_000.0
@@ -114,6 +130,12 @@ fn unit(seed: &[u64]) -> f32 {
 fn solid_cell(sim: &SimWorld, p: IVec2) -> bool {
     let mats = sim.world.materials();
     sim.world.get(CellPos::new(p.x, p.y)).is_none_or(|c| !c.is_air() && matches!(mats.phys(c.material).kind, Kind::Static | Kind::Powder))
+}
+
+/// Nothing solid on the straight line from `a` to `b`.
+fn clear(sim: &SimWorld, a: Vec2, b: Vec2) -> bool {
+    let n = (a.distance(b) * 2.0).ceil().max(1.0) as usize;
+    (0..=n).all(|i| !solid(sim, a.lerp(b, i as f32 / n as f32)))
 }
 
 fn solid(sim: &SimWorld, p: Vec2) -> bool {
@@ -128,6 +150,12 @@ struct Mote {
     stuck: bool,
     /// On a floor (rock under it) last tick: no sticking there, it slides.
     floor: bool,
+    /// Off its body this long (s): past `SEEP_AFTER`, it seeps back
+    /// through the rock to it.
+    apart: f32,
+    seep: bool,
+    /// In rock (seeping) last tick: drawn as an ember vein in it.
+    buried: bool,
 }
 
 pub struct CaveMurk {
@@ -154,6 +182,8 @@ pub struct CaveMurk {
     age: f32,
     /// Eating at you: since its last gulp (s).
     ate: f32,
+    /// Its motes cut off from it (not seeping yet), last tick.
+    cut: usize,
 }
 
 #[derive(Resource, Default)]
@@ -172,16 +202,21 @@ impl CaveMurks {
             .map(|i| {
                 let i = i as u64;
                 let pos = at + Vec2::from_angle(unit(&[seed, i, 1]) * std::f32::consts::TAU) * unit(&[seed, i, 2]).sqrt() * r;
-                Mote { pos, vel: Vec2::ZERO, stuck: false, floor: false }
+                Mote { pos, vel: Vec2::ZERO, stuck: false, floor: false, apart: 0.0, seep: false, buried: false }
             })
             .collect();
-        self.list.push(CaveMurk { heart: at, mass: at, mass_vel: Vec2::ZERO, motes, way: Vec::new(), goal: None, field: None, fall: 0.0, waited: 0.0, splat: 0.0, light, seed, age: 0.0, ate: 0.0 });
+        self.list.push(CaveMurk { heart: at, mass: at, mass_vel: Vec2::ZERO, motes, way: Vec::new(), goal: None, field: None, fall: 0.0, waited: 0.0, splat: 0.0, light, seed, age: 0.0, ate: 0.0, cut: 0 });
     }
 
     /// Each: its heart, its mass's middle, how many of its motes are
     /// against rock, its way's length (for the scenarios).
     pub fn about(&self) -> Vec<(Vec2, Vec2, usize, usize)> {
         self.list.iter().map(|m| (m.heart, m.mass, m.motes.iter().filter(|o| o.stuck).count(), m.way.len())).collect()
+    }
+
+    /// Each one's motes off its body (not seeping), and seeping back.
+    pub fn strays(&self) -> Vec<(usize, usize)> {
+        self.list.iter().map(|m| (m.cut, m.motes.iter().filter(|o| o.seep).count())).collect()
     }
 
     /// Each one's motes past `x` (for the scenarios: through the crack).
@@ -389,7 +424,10 @@ fn live(mut sim: ResMut<SimWorld>, mut murks: ResMut<CaveMurks>, mut player: Que
         let target = goal.filter(|g| g.distance(m.heart) < if m.goal.is_some() { LEASH } else { AGGRO });
         if (tick + m.seed).is_multiple_of(PATH_EVERY) || target.is_some() != m.goal.is_some() {
             let spread = m.motes.iter().fold((Vec2::MAX, Vec2::MIN), |(lo, hi), o| (lo.min(o.pos), hi.max(o.pos)));
-            (m.way, m.field) = target.map_or((Vec::new(), None), |g| find_way(sim, m.mass, g, spread));
+            // (From its mass, unless there's rock between it and its heart
+            // (it's draped over a ledge): from its heart, then.)
+            let from = if clear(sim, m.heart, m.mass) { m.mass } else { m.heart };
+            (m.way, m.field) = target.map_or((Vec::new(), None), |g| find_way(sim, from, g, spread));
             m.goal = target;
         }
         // (Moving on along it as the heart goes.)
@@ -398,7 +436,7 @@ fn live(mut sim: ResMut<SimWorld>, mut murks: ResMut<CaveMurks>, mut player: Que
         }
         // Its mass's middle: what's near its heart (a trickle off through a
         // crack isn't it).
-        let (sum, n) = m.motes.iter().filter(|o| o.pos.distance(m.heart) < MASS_R).fold((Vec2::ZERO, 0.0), |(s, n), o| (s + o.pos, n + 1.0));
+        let (sum, n) = m.motes.iter().filter(|o| !o.seep && o.pos.distance(m.heart) < MASS_R).fold((Vec2::ZERO, 0.0), |(s, n), o| (s + o.pos, n + 1.0));
         let mass = if n > 0.0 { sum / n } else { m.motes.iter().fold(Vec2::ZERO, |s, o| s + o.pos) / m.motes.len().max(1) as f32 };
         let vel = (mass - m.mass) / dt;
         // (Falling fast, then not: it splats.)
@@ -421,12 +459,14 @@ fn live(mut sim: ResMut<SimWorld>, mut murks: ResMut<CaveMurks>, mut player: Que
         // ahead of it, it waits; left behind (it fell), back to it.)
         let on = m.way.get(3.min(m.way.len().saturating_sub(1))).map(|c| c.as_vec2() + Vec2::splat(0.5));
         // (Its mass keeps up: so much of it round its heart.)
-        let round = m.motes.iter().filter(|o| o.pos.distance_squared(m.heart) < KEEP_R * KEEP_R).count() as f32 / m.motes.len().max(1) as f32;
+        let round = m.motes.iter().filter(|o| !o.seep && o.pos.distance_squared(m.heart) < KEEP_R * KEEP_R).count() as f32 / m.motes.iter().filter(|o| !o.seep).count().max(1) as f32;
         // (Off a ledge, nothing round it: it drops, its mass with it.)
         let hc = m.heart.floor().as_ivec2();
         let unheld = ![IVec2::X, IVec2::NEG_X, IVec2::Y, IVec2::NEG_Y, IVec2::new(0, -2)].iter().any(|s| solid_cell(sim, hc + *s));
         let landed = solid_cell(sim, hc - IVec2::Y) || solid_cell(sim, hc - IVec2::new(0, 2));
-        let dropping = (unheld && on.is_some_and(|n| n.y < m.heart.y - 0.3)) || (m.fall > 0.0 && !landed);
+        // (Its way drops here: straight down, cell after cell.)
+        let sheer = m.way.len() > 4 && m.way[..5].windows(2).all(|p| p[1] - p[0] == IVec2::NEG_Y);
+        let dropping = (unheld && sheer) || (m.fall > 0.0 && !landed);
         m.fall = if dropping { (m.fall + GRAVITY * dt).min(TOP) } else { 0.0 };
         let (want, speed) = match on {
             Some(_) if dropping => (m.heart - Vec2::Y * 50.0, m.fall.max(CRAWL)),
@@ -458,8 +498,51 @@ fn live(mut sim: ResMut<SimWorld>, mut murks: ResMut<CaveMurks>, mut player: Que
             grid.entry((o.pos / PRESS_R).floor().as_ivec2()).or_default().push(i as u16);
         }
         let heart = m.heart;
+        let age = m.age;
         let field = m.field.as_ref();
         let here = field.and_then(|f| f.on(heart)).map_or(0, |(_, c)| c);
+        // (You, near enough: it reaches for you.)
+        let grab = you.filter(|y| y.distance_squared(heart) < REACH * REACH);
+        // (Its body: the most of it that hangs together, block to block (a
+        // gap of a few cells is still it: spray, a stream). What isn't is
+        // cut off: it falls, and after a while seeps back.)
+        let block = |p: Vec2| (p / BLOCK).floor().as_ivec2();
+        let mut cells: HashMap<IVec2, u32> = HashMap::default();
+        for o in m.motes.iter().filter(|o| !o.seep) {
+            *cells.entry(block(o.pos)).or_default() += 1;
+        }
+        let mut seen: HashSet<IVec2> = HashSet::default();
+        let mut body: HashSet<IVec2> = HashSet::default();
+        let mut most = 0;
+        for &c0 in cells.keys() {
+            if seen.contains(&c0) {
+                continue;
+            }
+            let (mut part, mut n, mut todo) = (HashSet::default(), 0, vec![c0]);
+            while let Some(c) = todo.pop() {
+                if !seen.insert(c) {
+                    continue;
+                }
+                n += cells[&c];
+                part.insert(c);
+                for dy in -1..=1 {
+                    for dx in -1..=1 {
+                        let q = c + IVec2::new(dx, dy);
+                        if cells.contains_key(&q) && !seen.contains(&q) {
+                            todo.push(q);
+                        }
+                    }
+                }
+            }
+            if n > most {
+                (most, body) = (n, part);
+            }
+        }
+        let whole = body.is_empty();
+        let joined = |p: Vec2| whole || body.contains(&block(p));
+        // (Touching it: in a block of it, or next to one.)
+        let touching = |p: Vec2| whole || (-1..=1).any(|dy| (-1..=1).any(|dx| body.contains(&(block(p) + IVec2::new(dx, dy)))));
+        m.cut = m.motes.iter().filter(|o| !o.seep && !joined(o.pos)).count();
         let mut acc = vec![Vec2::ZERO; m.motes.len()];
         for (i, o) in m.motes.iter().enumerate() {
             let c = (o.pos / PRESS_R).floor().as_ivec2();
@@ -484,15 +567,29 @@ fn live(mut sim: ResMut<SimWorld>, mut murks: ResMut<CaveMurks>, mut player: Que
                     }
                 }
             }
-            // (Behind its heart along its way: flowing along it, round
-            // corners, through cracks; with it: drawn to it.)
-            let behind = field.filter(|_| o.pos.distance_squared(heart) > FLOW_FROM * FLOW_FROM).and_then(|f| f.on(o.pos)).filter(|(_, c)| *c > here + FLOW_BEHIND);
+            let to = heart - o.pos;
+            let l = to.length();
+            // (Seeping back: straight to its heart through rock and air
+            // alike, slow, wavering: embers drifting home.)
+            if o.seep {
+                let waver = Vec2::new(to.y, -to.x).normalize_or_zero() * (age * 3.0 + i as f32 * 0.37).sin() * 0.6;
+                acc[i] = ((to.normalize_or_zero() + waver) * SEEP - o.vel) * 8.0;
+                continue;
+            }
+            // (Reaching for you: climbing you.)
+            if let Some(y) = grab.filter(|y| o.pos.distance_squared(*y) < GRAB_R * GRAB_R) {
+                acc[i] = a + ((y - o.pos).normalize_or_zero() * GRAB - o.vel * 4.0);
+                continue;
+            }
+            // (Behind its heart along its way, in its body or creeping over
+            // rock: flowing along it, round corners, up walls, through
+            // cracks; with it: drawn to it. Cut off, in the open: it falls.)
+            let behind = field.filter(|_| (o.stuck || joined(o.pos)) && o.pos.distance_squared(heart) > FLOW_FROM * FLOW_FROM).and_then(|f| f.on(o.pos)).filter(|(_, c)| *c > here + FLOW_BEHIND);
             if let Some((dir, _)) = behind {
                 a += (dir * FLOW - o.vel) * FLOW_K;
             } else {
-                let to = heart - o.pos;
-                let l = to.length();
-                a += to.normalize_or_zero() * PULL * l.min(PULL_FAR) * if climbing { CLIMB_PULL } else { 1.0 };
+                let loose = if joined(o.pos) { 1.0 } else { LOOSE };
+                a += to.normalize_or_zero() * PULL * l.min(PULL_FAR) * loose * if climbing { CLIMB_PULL } else { 1.0 };
             }
             let weight = match (o.stuck, climbing) {
                 (true, true) => 0.0,
@@ -511,6 +608,26 @@ fn live(mut sim: ResMut<SimWorld>, mut murks: ResMut<CaveMurks>, mut player: Que
         for (o, a) in m.motes.iter_mut().zip(acc) {
             o.vel = (o.vel + a * dt).clamp_length_max(TOP);
             let d = o.vel * dt;
+            // (Off its body too long: it seeps back; back in it, it's its
+            // body again, once it's out of the rock.)
+            let far = !joined(o.pos) && grab.is_none_or(|y| o.pos.distance_squared(y) > GRAB_R * GRAB_R);
+            o.apart = if far { o.apart + dt } else { 0.0 };
+            if o.apart > SEEP_AFTER {
+                o.seep = true;
+            }
+            if o.seep {
+                o.pos += d;
+                o.buried = solid(sim, o.pos);
+                if !o.buried && (touching(o.pos) || o.pos.distance_squared(heart) < KEEP_R * KEEP_R) {
+                    o.seep = false;
+                    o.apart = 0.0;
+                    o.vel *= 0.3;
+                }
+                o.stuck = false;
+                o.floor = false;
+                continue;
+            }
+            o.buried = false;
             let n = (d.abs().max_element() / 0.8).ceil().max(1.0) as usize;
             let s = d / n as f32;
             for _ in 0..n {
@@ -546,12 +663,14 @@ fn live(mut sim: ResMut<SimWorld>, mut murks: ResMut<CaveMurks>, mut player: Que
         }
         // Over you: it eats at you, and holds you in it.
         if let Ok((mut k, mut h)) = player.single_mut() {
-            let (lo, hi) = (k.body.pos - k.body.half - Vec2::ONE, k.body.pos + k.body.half + Vec2::ONE);
-            let on = m.motes.iter().filter(|o| o.pos.cmpge(lo).all() && o.pos.cmple(hi).all()).count();
-            if on >= ENGULF {
+            // (On you, or under your feet, a cell or two round.)
+            let (lo, hi) = (k.body.pos - k.body.half - Vec2::splat(2.0), k.body.pos + k.body.half + Vec2::splat(2.0));
+            let on = m.motes.iter().filter(|o| !o.seep && o.pos.cmpge(lo).all() && o.pos.cmple(hi).all()).count();
+            if on >= ENGULF_FROM {
+                let much = (on as f32 / ENGULF as f32).min(1.0);
                 let k = &mut *k;
-                k.body.vel *= 1.0 - (ENGULF_DRAG * dt).min(1.0);
-                h.harm_by(ENGULF_HIT * dt, Harm::Void, || crate::death::Cause::new("The cave murk", "swallowed by the cave murk"));
+                k.body.vel *= 1.0 - (ENGULF_DRAG * much * dt).min(1.0);
+                h.harm_by(ENGULF_HIT * much * dt, Harm::Void, || crate::death::Cause::new("The cave murk", "swallowed by the cave murk"));
                 m.ate += dt;
                 if m.ate > 0.4 {
                     m.ate = 0.0;
@@ -612,7 +731,7 @@ fn show(
         // How thick, cell by cell: motes in each, then in the 5×5 round it
         // (smooth: its body's whole, what's thinner is spray).
         let mut here = vec![0u8; w * h];
-        for o in &m.motes {
+        for o in m.motes.iter().filter(|o| !o.seep) {
             let c = o.pos.floor().as_ivec2() - lo;
             if c.x >= 0 && c.y >= 0 && (c.x as usize) < w && (c.y as usize) < h {
                 let i = c.y as usize * w + c.x as usize;
@@ -683,8 +802,16 @@ fn show(
                 px.put(cx, cy, rgba(c, a));
             }
         }
-        // Drips: what's falling off it, a short ember streak.
+        // Drips: what's falling off it, a short ember streak. Seeping back
+        // to it: faint embers drifting through rock and air.
         for o in &m.motes {
+            if o.seep {
+                let b = o.pos - o.vel.normalize_or_zero();
+                let k = 0.5 + 0.5 * (t * 5.0 + o.pos.x * 0.7 + o.pos.y * 0.4).sin();
+                px.put(o.pos.x.floor() as i32, o.pos.y.floor() as i32, rgba([150.0 + 60.0 * k, 55.0 + 20.0 * k, 14.0], 0.55 + 0.25 * k));
+                px.put(b.x.floor() as i32, b.y.floor() as i32, rgba([90.0, 32.0, 10.0], 0.35));
+                continue;
+            }
             if o.vel.y < -120.0 {
                 let b = o.pos - o.vel * 0.02;
                 px.put(b.x.floor() as i32, b.y.floor() as i32, rgba([120.0, 46.0, 14.0], 0.6));

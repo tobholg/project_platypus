@@ -6148,8 +6148,8 @@ fn cavemurk_script(
         }
         if *step == 3 && t >= *next {
             *next += 0.5;
-            for (heart, mass, stuck, way) in murks.about() {
-                info!("cavemurk: t {t:.1} heart ({:.0}, {:.0}) mass ({:.0}, {:.0}) to you {:.0} stuck {stuck} way {way} hp {:.0}", heart.x, heart.y, mass.x, mass.y, heart.distance(you), health.hp);
+            for ((heart, mass, stuck, way), (off, seep)) in murks.about().into_iter().zip(murks.strays()) {
+                info!("cavemurk: t {t:.1} heart ({:.0}, {:.0}) mass ({:.0}, {:.0}) to you {:.0} stuck {stuck} way {way} off {off} seep {seep} hp {:.0}", heart.x, heart.y, mass.x, mass.y, heart.distance(you), health.hp);
             }
         }
         return;
